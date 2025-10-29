@@ -5,13 +5,15 @@ const state = {
   filters: {
     muscles: new Set(),
     equipment: new Set(),
-    mode: { muscles: 'OR', equipment: 'OR' } // OR = any match, AND = must include all selected
+    subMuscles: new Set(),
+    mode: { muscles: 'OR', equipment: 'OR', subMuscles: 'OR' } // OR = any match, AND = must include all selected
   },
   search: '',
   sort: 'AZ',
   muscles: [],
+  subMuscles: [],
   equipment: [],
-  buttons: { muscles: new Map(), equipment: new Map() }
+  buttons: { muscles: new Map(), equipment: new Map(), subMuscles: new Map() }
 };
 
 const els = {
@@ -36,7 +38,13 @@ const els = {
   muscleModeOR: document.getElementById('muscleModeOR'),
   muscleModeAND: document.getElementById('muscleModeAND'),
   equipmentModeOR: document.getElementById('equipmentModeOR'),
-  equipmentModeAND: document.getElementById('equipmentModeAND')
+  equipmentModeAND: document.getElementById('equipmentModeAND'),
+  // Right sidebar (specific muscles)
+  subMuscleFilters: document.getElementById('subMuscleFilters'),
+  clearSubMuscles: document.getElementById('clearSubMuscles'),
+  subMuscleModeBar: document.getElementById('subMuscleModeBar'),
+  subMuscleModeOR: document.getElementById('subMuscleModeOR'),
+  subMuscleModeAND: document.getElementById('subMuscleModeAND')
 };
 
 // Utility: dedupe and sort
@@ -83,6 +91,21 @@ function buildFilters() {
     state.buttons.equipment.set(e, btn);
     els.equipmentFilters.appendChild(btn);
   }
+  // Buttons for specific muscles (right bar)
+  els.subMuscleFilters.innerHTML = '';
+  state.buttons.subMuscles.clear();
+  for (const s of state.subMuscles) {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = niceName(s);
+    btn.title = 'Click to toggle. Hover to set AND/OR.';
+    btn.addEventListener('click', () => {
+      toggleSelection(state.filters.subMuscles, s, btn);
+      render();
+    });
+    state.buttons.subMuscles.set(s, btn);
+    els.subMuscleFilters.appendChild(btn);
+  }
   // Clear buttons
   els.clearMuscles.addEventListener('click', () => {
     state.filters.muscles.clear();
@@ -91,6 +114,11 @@ function buildFilters() {
   });
   els.clearEquipment.addEventListener('click', () => {
     state.filters.equipment.clear();
+    syncButtonStates();
+    render();
+  });
+  els.clearSubMuscles.addEventListener('click', () => {
+    state.filters.subMuscles.clear();
     syncButtonStates();
     render();
   });
@@ -108,12 +136,22 @@ function buildFilters() {
   els.equipmentFilters.addEventListener('mouseleave', hideEquipMode);
   els.equipmentModeBar.addEventListener('mouseenter', showEquipMode);
   els.equipmentModeBar.addEventListener('mouseleave', hideEquipMode);
+  const showSubMuscleMode = () => els.subMuscleModeBar.classList.add('show');
+  const hideSubMuscleMode = () => els.subMuscleModeBar.classList.remove('show');
+  els.subMuscleFilters.addEventListener('mouseenter', showSubMuscleMode);
+  els.subMuscleFilters.addEventListener('mouseleave', hideSubMuscleMode);
+  els.subMuscleModeBar.addEventListener('mouseenter', showSubMuscleMode);
+  els.subMuscleModeBar.addEventListener('mouseleave', hideSubMuscleMode);
 
   // Mode toggles
   els.muscleModeOR.addEventListener('click', () => setMode('muscles', 'OR'));
   els.muscleModeAND.addEventListener('click', () => setMode('muscles', 'AND'));
   els.equipmentModeOR.addEventListener('click', () => setMode('equipment', 'OR'));
   els.equipmentModeAND.addEventListener('click', () => setMode('equipment', 'AND'));
+  els.subMuscleModeOR.addEventListener('click', () => setMode('subMuscles', 'OR'));
+  els.subMuscleModeAND.addEventListener('click', () => setMode('subMuscles', 'AND'));
+  els.subMuscleModeOR.addEventListener('click', () => setMode('subMuscles', 'OR'));
+  els.subMuscleModeAND.addEventListener('click', () => setMode('subMuscles', 'AND'));
 
   // Search + Sort
   els.searchInput.addEventListener('input', () => {
@@ -140,6 +178,7 @@ function toggleSelection(set, value, btn) {
 function syncButtonStates() {
   for (const [m, btn] of state.buttons.muscles) btn.classList.toggle('active', state.filters.muscles.has(m));
   for (const [e, btn] of state.buttons.equipment) btn.classList.toggle('active', state.filters.equipment.has(e));
+  for (const [s, btn] of state.buttons.subMuscles) btn.classList.toggle('active', state.filters.subMuscles.has(s));
 }
 
 function buildMuscleTiles() {
@@ -179,17 +218,21 @@ function cssSafe(name) {
 function filterData() {
   const selM = state.filters.muscles;
   const selE = state.filters.equipment;
+  const selS = state.filters.subMuscles;
   const modeM = state.filters.mode.muscles;
   const modeE = state.filters.mode.equipment;
+  const modeS = state.filters.mode.subMuscles;
   const q = (state.search || '').trim().toLowerCase();
   const filtered = state.data.filter(ex => {
     const exM = new Set(ex.muscleGroups || []);
     const exE = new Set(ex.equipment || []);
+    const exS = new Set(ex.muscles || []);
     const mgOk = selM.size === 0 || (modeM === 'OR' ? intersects(exM, selM) : isSuperset(exM, selM));
     const eqOk = selE.size === 0 || (modeE === 'OR' ? intersects(exE, selE) : isSuperset(exE, selE));
+    const smOk = selS.size === 0 || (modeS === 'OR' ? intersects(exS, selS) : isSuperset(exS, selS));
     const name = (ex.name || '').toLowerCase();
     const searchOk = q.length === 0 || name.includes(q);
-    return mgOk && eqOk && searchOk;
+    return mgOk && eqOk && smOk && searchOk;
   });
   // Sort by name
   filtered.sort((a, b) => {
@@ -292,15 +335,18 @@ function render() {
   const parts = [];
   if (state.filters.muscles.size) parts.push(`${state.filters.mode.muscles === 'AND' ? 'ALL of' : 'ANY of'} ${state.filters.muscles.size} muscle${state.filters.muscles.size>1?'s':''}`);
   if (state.filters.equipment.size) parts.push(`${state.filters.mode.equipment === 'AND' ? 'ALL of' : 'ANY of'} ${state.filters.equipment.size} equipment`);
+  if (state.filters.subMuscles.size) parts.push(`${state.filters.mode.subMuscles === 'AND' ? 'ALL of' : 'ANY of'} ${state.filters.subMuscles.size} target muscle${state.filters.subMuscles.size>1?'s':''}`);
   els.gridTitle.textContent = parts.length ? `Exercises • ${parts.join(' + ')}` : 'Exercises';
   els.count.textContent = `${list.length} shown of ${state.data.length}`;
 
   // Show selected filter names in Title Case, underscores to spaces
   const musclesSel = Array.from(state.filters.muscles).map(niceName);
   const equipSel = Array.from(state.filters.equipment).map(niceName);
+  const subMusclesSel = Array.from(state.filters.subMuscles).map(niceName);
   const descs = [];
   if (musclesSel.length) descs.push(`Muscles: ${musclesSel.join(', ')}`);
   if (equipSel.length) descs.push(`Equipment: ${equipSel.join(', ')}`);
+  if (subMusclesSel.length) descs.push(`Target Muscles: ${subMusclesSel.join(', ')}`);
   els.activeFilters.textContent = descs.join(' • ');
 }
 
@@ -318,6 +364,7 @@ async function init() {
 
   // Collect unique muscles and equipment from the dataset
   state.muscles = uniq(state.data.flatMap(ex => ex.muscleGroups || []));
+  state.subMuscles = uniq(state.data.flatMap(ex => ex.muscles || []));
   state.equipment = uniq(state.data.flatMap(ex => ex.equipment || []));
 
   buildFilters();
@@ -424,6 +471,11 @@ function setMode(group, mode) {
     els.equipmentModeAND.classList.toggle('active', mode === 'AND');
     els.equipmentModeOR.setAttribute('aria-selected', String(mode === 'OR'));
     els.equipmentModeAND.setAttribute('aria-selected', String(mode === 'AND'));
+  } else if (group === 'subMuscles') {
+    els.subMuscleModeOR.classList.toggle('active', mode === 'OR');
+    els.subMuscleModeAND.classList.toggle('active', mode === 'AND');
+    els.subMuscleModeOR.setAttribute('aria-selected', String(mode === 'OR'));
+    els.subMuscleModeAND.setAttribute('aria-selected', String(mode === 'AND'));
   }
   render();
 }

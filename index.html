@@ -41,6 +41,20 @@
           </div>
           <div class="filter-block">
             <div class="block-head">
+              <span class="label">Muscles</span>
+              <button id="clearSubMuscles" class="btn subtle" title="Clear specific muscles filter">Clear</button>
+            </div>
+            <div id="subMuscleFilters" class="btnrow"></div>
+            <div class="modebar" id="subMuscleModeBar" aria-hidden="true">
+              <span class="muted small">Match:</span>
+              <div class="seg" role="tablist" aria-label="Muscles match mode">
+                <button id="subMuscleModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
+                <button id="subMuscleModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+              </div>
+            </div>
+          </div>
+          <div class="filter-block">
+            <div class="block-head">
               <span class="label">Equipment</span>
               <button id="clearEquipment" class="btn subtle" title="Clear equipment filter">Clear</button>
             </div>
@@ -67,6 +81,7 @@
         <div id="activeFilters" class="active-filters muted small"></div>
         <div id="exerciseGrid" class="grid"></div>
       </section>
+
     </main>
 
     <footer class="container muted small">
