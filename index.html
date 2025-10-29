@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Exercise Library Explorer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="container">
+      <h1>Exercise Library</h1>
+      <p class="sub">Browse by muscle group, filter by equipment, and preview videos by hovering over thumbnails. Click a card to view the video larger.</p>
+    </header>
+
+    <main class="container layout">
+      <aside class="sidebar">
+        <h2>Filters</h2>
+        <div class="search-sort">
+          <label>
+            Search
+            <div class="search-group">
+              <input id="searchInput" type="text" placeholder="Search exercises..." />
+              <button id="searchClear" class="btn subtle small" title="Clear search">Clear</button>
+            </div>
+          </label>
+        </div>
+        <div class="filters-sections">
+          <div class="filter-block">
+            <div class="block-head">
+              <span class="label">Muscle Groups</span>
+              <button id="clearMuscles" class="btn subtle" title="Clear muscle filter">Clear</button>
+            </div>
+            <div id="muscleFilters" class="btnrow"></div>
+            <div class="modebar" id="muscleModeBar" aria-hidden="true">
+              <span class="muted small">Match:</span>
+              <div class="seg" role="tablist" aria-label="Muscle group match mode">
+                <button id="muscleModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
+                <button id="muscleModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+              </div>
+            </div>
+          </div>
+          <div class="filter-block">
+            <div class="block-head">
+              <span class="label">Equipment</span>
+              <button id="clearEquipment" class="btn subtle" title="Clear equipment filter">Clear</button>
+            </div>
+            <div id="equipmentFilters" class="btnrow"></div>
+            <div class="modebar" id="equipmentModeBar" aria-hidden="true">
+              <span class="muted small">Match:</span>
+              <div class="seg" role="tablist" aria-label="Equipment match mode">
+                <button id="equipmentModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
+                <button id="equipmentModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="content">
+        <div class="grid-head">
+          <h2 id="gridTitle">Exercises</h2>
+        </div>
+        <div class="toolbar">
+          <button id="sortToggle" class="btn sort-toggle" title="Toggle alphabetical order">A→Z</button>
+          <div id="count" class="muted"></div>
+        </div>
+        <div id="activeFilters" class="active-filters muted small"></div>
+        <div id="exerciseGrid" class="grid"></div>
+      </section>
+    </main>
+
+    <footer class="container muted small">
+      <p>
+        Tip: open this folder with a local web server (e.g. <code>python -m http.server</code>) to avoid browser file:// restrictions when loading <code>exercise_dump.json</code>.
+      </p>
+    </footer>
+
+    <!-- Modal for full video view -->
+    <div id="modal" class="modal hidden" aria-hidden="true" role="dialog" aria-label="Video dialog">
+      <div class="dialog">
+        <button id="modalClose" class="close" aria-label="Close">×</button>
+        <video id="modalVideo" controls playsinline style="width:100%;height:auto;background:#000"></video>
+        <div id="modalNotice" class="modal-notice muted small"></div>
+      </div>
+    </div>
+
+    <button id="backToTop" class="back-to-top" title="Back to top">↑</button>
+
+    <script src="app.js"></script>
+  </body>
+  </html>
