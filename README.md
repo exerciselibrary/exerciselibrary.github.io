@@ -1,24 +1,31 @@
 Exercise Library Explorer
 
-Quick static UI to browse exercises from `exercise_dump.json`, explore by muscle group, filter by equipment, and preview videos on hover (MP4 sources only).
+Static UI that loads `exercise_dump.json`, lets you explore exercises with rich filters, preview videos, and assemble a printable/exportable workout plan.
 
-How to run
+Run locally
 
-- Place `index.html`, `styles.css`, `app.js`, and `exercise_dump.json` in the same folder (already done here).
-- Start a simple local server from this folder (to allow the page to `fetch` the JSON file):
+- Keep `index.html`, `styles.css`, `app.js`, and `exercise_dump.json` together (already staged here).
+- Serve the folder so the browser can fetch the JSON:
   - Python: `python -m http.server 8000`
-  - Node (serve): `npx serve .` (if installed)
-  - PowerShell: `Start-Process http://localhost:8000` after starting the python server
-- Open `http://localhost:8000` in your browser.
+  - Node: `npx serve .`
+  - PowerShell: `Start-Process http://localhost:8000` after starting one of the above servers
+- Open `http://localhost:8000`.
 
-Features
+What's included
 
-- Colored muscle-group tiles with counts and quick filtering.
-- Dropdown filters for Muscle Group and Equipment.
-- Exercise grid with thumbnails, muscle/equipment tags, and hover-to-play preview for MP4 sources.
+- Multi-select filters for muscle groups, individual muscles, and equipment with OR/AND matching.
+- Hover posters that auto-play MP4 previews plus a modal viewer for full-size playback.
+- Share button on every card that copies a deep link (`?exercise=ID`) to the clipboard.
+- Workout builder tab: add exercises, configure sets/reps/weight/mode (capped at 220 lbs or 100 kg per cable), and keep totals in view.
+- Unit toggle (lbs/kg) that converts existing entries and updates export/print outputs.
+- Filter the library down to just the exercises in your workout with one click.
+- Export workout to an Excel `.xlsx` workbook or generate a print-friendly view (optional checkbox column included).
+- Share the entire workout via a generated link; state also persists locally between refreshes.
+- Sticky filter sidebar, searchable library, alphabetical toggle (A-Z / Z-A), and jump-to-top/bottom controls.
 
 Notes
 
-- Some exercises reference `.m3u8` (HLS) URLs which don’t play natively in all browsers without a helper library. The hover preview currently plays only `.mp4` URLs. If you want HLS hover previews too, I can add a local copy of `hls.js` and wire it in.
-- The dataset expects fields like `muscleGroups`, `equipment`, and `videos[{ thumbnail, video }]` as present in the included `exercise_dump.json`.
-
+- `.m3u8` videos need native HLS (e.g., Safari). The page still links to the stream if playback fails.
+- The builder stores one weight value per set to reflect the single cable limit (220 lbs).
+- All data comes from `exercise_dump.json` (`muscleGroups`, `muscles`, `equipment`, `videos[{ thumbnail, video }]`).
+- Workout selections persist automatically in `localStorage`; use the Clear button to reset locally.

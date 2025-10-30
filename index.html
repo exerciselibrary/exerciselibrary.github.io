@@ -71,15 +71,38 @@
       </aside>
 
       <section class="content">
-        <div class="grid-head">
-          <h2 id="gridTitle">Exercises</h2>
+        <div class="tabs">
+          <button id="tabLibrary" class="tab active" data-target="libraryPanel">Exercise Library</button>
+          <button id="tabBuilder" class="tab" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
         </div>
-        <div class="toolbar">
-          <button id="sortToggle" class="btn sort-toggle" title="Toggle alphabetical order">A→Z</button>
-          <div id="count" class="muted"></div>
+
+        <div id="libraryPanel" class="panel active">
+          <div class="grid-head">
+            <h2 id="gridTitle">Exercises</h2>
+          </div>
+          <div class="toolbar">
+            <button id="sortToggle" class="btn sort-toggle" title="Toggle alphabetical order">A-Z</button>
+            <button id="toggleBuilderFilter" class="btn small" title="Toggle to show only exercises in the workout">Show Workout Only</button>
+            <div id="count" class="muted"></div>
+          </div>
+          <div id="activeFilters" class="active-filters muted small"></div>
+          <div id="exerciseGrid" class="grid"></div>
         </div>
-        <div id="activeFilters" class="active-filters muted small"></div>
-        <div id="exerciseGrid" class="grid"></div>
+
+        <div id="builderPanel" class="panel">
+          <div class="builder-header">
+            <div id="builderSummary" class="muted">No exercises selected yet.</div>
+            <div class="builder-actions">
+              <button id="exportWorkout" class="btn small" title="Download as Excel">Export to Excel</button>
+              <button id="printWorkout" class="btn small" title="Print workout">Print</button>
+              <button id="shareWorkout" class="btn small" title="Copy a shareable workout link">Share</button>
+              <button id="unitToggle" class="btn small" title="Switch between pounds and kilograms">Units: lbs</button>
+              <button id="clearWorkout" class="btn danger small" title="Remove all exercises">Clear</button>
+              <label class="option"><input type="checkbox" id="includeCheckboxes" /> Include checkboxes</label>
+            </div>
+          </div>
+          <div id="builderList" class="builder-list"></div>
+        </div>
       </section>
 
     </main>
@@ -93,14 +116,22 @@
     <!-- Modal for full video view -->
     <div id="modal" class="modal hidden" aria-hidden="true" role="dialog" aria-label="Video dialog">
       <div class="dialog">
-        <button id="modalClose" class="close" aria-label="Close">×</button>
+        <button id="modalClose" class="close" aria-label="Close">&times;</button>
         <video id="modalVideo" controls playsinline style="width:100%;height:auto;background:#000"></video>
         <div id="modalNotice" class="modal-notice muted small"></div>
       </div>
     </div>
 
-    <button id="backToTop" class="back-to-top" title="Back to top">↑</button>
+    <button id="scrollUp" class="scroll-btn up" title="Back to top">&uarr;</button>
+
+    <button id="scrollDown" class="scroll-btn down" title="Jump to bottom">&darr;</button>
 
     <script src="app.js"></script>
   </body>
   </html>
+
+
+
+
+
+
