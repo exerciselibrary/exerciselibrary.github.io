@@ -37,18 +37,66 @@ const state = {
   },
   buttons: { muscles: new Map(), subMuscles: new Map(), equipment: new Map() },
   search: '',
-  sort: 'AZ',
+  sortMode: 'AZ',
+  randomOrderMap: null,
   builder: { order: [], items: new Map() },
   highlightId: null,
   highlightHandled: false,
   activeTab: 'library',
   showWorkoutOnly: false,
+  groupByEquipment: false,
+  groupByMuscles: false,
+  groupByMuscleGroups: false,
   includeCheckboxes: false,
   weightUnit: 'LBS'
 };
 
 let dragDidDrop = false;
-
+let searchIndex = null;
+const groupColorMap = new Map();
+const EQUIPMENT_COLORS = [
+  '#7aa2f7',
+  '#22d3ee',
+  '#34d399',
+  '#facc15',
+  '#f472b6',
+  '#fb923c',
+  '#a855f7',
+  '#f87171',
+  '#38bdf8',
+  '#fbbf24'
+];
+function normalizeMuscleName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+const MUSCLE_COVERAGE = [
+  { key: 'abductors', label: 'Abductors', aliases: ['abductor', 'abductors', 'hip abductors', 'gluteus medius', 'gluteus minimus'] },
+  { key: 'biceps', label: 'Biceps', aliases: ['biceps', 'bicep', 'biceps brachii'] },
+  { key: 'calves', label: 'Calves', aliases: ['calf', 'calves', 'gastrocnemius', 'soleus'] },
+  { key: 'chest', label: 'Chest', aliases: ['chest', 'pectoralis', 'pectoralis major', 'pecs', 'pectoral'] },
+  { key: 'core', label: 'Core', aliases: ['core', 'abs', 'abdominals', 'rectus abdominis', 'transverse abdominis', 'transversus abdominis'] },
+  { key: 'forearms', label: 'Forearms', aliases: ['forearm', 'forearms', 'brachioradialis', 'pronator', 'supinator', 'wrist flexors', 'wrist extensors'] },
+  { key: 'glutes', label: 'Glutes', aliases: ['glutes', 'glute', 'gluteus', 'gluteus maximus', 'gluteus medius', 'gluteus minimus'] },
+  { key: 'hamstrings', label: 'Hamstrings', aliases: ['hamstring', 'hamstrings', 'biceps femoris', 'semimembranosus', 'semitendinosus'] },
+  { key: 'lats', label: 'Lats', aliases: ['lats', 'lat', 'latissimus', 'latissimus dorsi'] },
+  { key: 'lower_back', label: 'Lower Back', aliases: ['lower back', 'lower_back', 'lumbar', 'erector spinae', 'spinal erectors'] },
+  { key: 'obliques', label: 'Obliques', aliases: ['oblique', 'obliques', 'internal oblique', 'external oblique', 'serratus', 'serratus anterior'] },
+  { key: 'quads', label: 'Quads', aliases: ['quad', 'quads', 'quadriceps', 'vastus', 'rectus femoris'] },
+  { key: 'shoulders', label: 'Shoulders', aliases: ['shoulder', 'shoulders', 'delts', 'deltoids', 'anterior deltoid', 'lateral deltoid', 'posterior deltoid'] },
+  { key: 'traps', label: 'Traps', aliases: ['traps', 'trap', 'trapezius', 'upper trapezius'] },
+  { key: 'triceps', label: 'Triceps', aliases: ['triceps', 'tricep', 'triceps brachii'] },
+  { key: 'upper_back', label: 'Upper Back', aliases: ['upper back', 'upper_back', 'upper-back', 'upperback', 'middle back', 'mid back', 'rhomboids', 'rhomboid', 'teres major', 'teres minor'] }
+];
+const MUSCLE_ALIAS_LOOKUP = new Map();
+MUSCLE_COVERAGE.forEach((group) => {
+  group.aliases.forEach((alias) => {
+    MUSCLE_ALIAS_LOOKUP.set(normalizeMuscleName(alias), group.key);
+  });
+});
 const SHARE_ICON_HTML = '<span aria-hidden="true">&#128279;</span><span class="sr-only">Share</span>';
 const SHARE_SUCCESS_HTML = '<span aria-hidden="true">&#10003;</span><span class="sr-only">Copied</span>';
 const SHARE_ERROR_HTML = '<span aria-hidden="true">!</span><span class="sr-only">Copy failed</span>';
@@ -72,6 +120,7 @@ const els = {
   searchInput: document.getElementById('searchInput'),
   searchClear: document.getElementById('searchClear'),
   sortToggle: document.getElementById('sortToggle'),
+  randomizeLibrary: document.getElementById('randomizeLibrary'),
   unitToggle: document.getElementById('unitToggle'),
   toggleBuilderFilter: document.getElementById('toggleBuilderFilter'),
   grid: document.getElementById('exerciseGrid'),
@@ -85,9 +134,14 @@ const els = {
   builderList: document.getElementById('builderList'),
   builderSummary: document.getElementById('builderSummary'),
   builderCount: document.getElementById('builderCount'),
+  builderMuscles: document.getElementById('builderMuscles'),
   exportWorkout: document.getElementById('exportWorkout'),
   printWorkout: document.getElementById('printWorkout'),
   shareWorkout: document.getElementById('shareWorkout'),
+  shuffleBuilder: document.getElementById('shuffleBuilder'),
+  groupEquipment: document.getElementById('groupEquipment'),
+  groupMuscles: document.getElementById('groupMuscles'),
+  groupMuscleGroups: document.getElementById('groupMuscleGroups'),
   clearWorkout: document.getElementById('clearWorkout'),
   includeCheckboxes: document.getElementById('includeCheckboxes'),
   modal: document.getElementById('modal'),
@@ -115,6 +169,347 @@ const intersects = (a, b) => {
 
 const isSuperset = (set, subset) => {
   for (const v of subset) if (!set.has(v)) return false;
+  return true;
+};
+
+const tokenizeSearch = (text) => String(text || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .split(' ')
+  .filter(Boolean);
+
+const collectTokens = (values) => {
+  const tokens = [];
+  for (const value of values || []) {
+    if (value == null) continue;
+    if (Array.isArray(value)) {
+      tokens.push(...collectTokens(value));
+    } else {
+      tokens.push(...tokenizeSearch(value));
+    }
+  }
+  return tokens;
+};
+
+const levenshteinDistance = (a, b) => {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  if (Math.abs(a.length - b.length) > 2) return Math.abs(a.length - b.length);
+  const prev = [];
+  for (let j = 0; j <= b.length; j += 1) prev[j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    let prevDiag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const temp = prev[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const deletion = prev[j] + 1;
+      const insertion = prev[j - 1] + 1;
+      const substitution = prevDiag + cost;
+      prev[j] = Math.min(deletion, insertion, substitution);
+      prevDiag = temp;
+    }
+  }
+  return prev[b.length];
+};
+
+const buildSearchEntry = (exercise) => {
+  const name = exercise?.name || '';
+  const nameLower = name.toLowerCase();
+  const nameTokens = tokenizeSearch(name);
+  const primarySet = new Set(nameTokens);
+
+  const attributeSources = [
+    exercise?.muscleGroups || [],
+    exercise?.muscles || [],
+    exercise?.equipment || [],
+    exercise?.tags || [],
+    exercise?.category || '',
+    exercise?.mode || ''
+  ];
+  const secondaryTokens = collectTokens(attributeSources);
+  const secondarySet = new Set(secondaryTokens);
+
+  const allTokens = Array.from(new Set([...nameTokens, ...secondaryTokens]));
+
+  const fallbackFields = [
+    nameLower,
+    (exercise?.muscleGroups || []).join(' ').toLowerCase(),
+    (exercise?.muscles || []).join(' ').toLowerCase(),
+    (exercise?.equipment || []).join(' ').toLowerCase()
+  ];
+
+  return {
+    id: exercise?.id,
+    nameLower,
+    nameTokens,
+    primarySet,
+    secondarySet,
+    allTokens,
+    fallbackFields
+  };
+};
+
+const buildSearchIndex = (collection) => {
+  const index = new Map();
+  for (const item of collection) {
+    if (!item?.id) continue;
+    index.set(item.id, buildSearchEntry(item));
+  }
+  return index;
+};
+
+const computeSearchScore = (entry, queryTokens) => {
+  if (!entry) return 0;
+  let score = 0;
+  let matched = 0;
+
+  for (const token of queryTokens) {
+    if (!token) continue;
+    let tokenScore = 0;
+
+    if (entry.primarySet.has(token)) {
+      tokenScore = 14;
+    } else {
+      if (entry.nameTokens.some((word) => word.startsWith(token))) tokenScore = Math.max(tokenScore, 10);
+      if (entry.nameLower.includes(token)) tokenScore = Math.max(tokenScore, 7);
+    }
+
+    if (entry.secondarySet.has(token)) {
+      tokenScore = Math.max(tokenScore, 8);
+    }
+
+    if (!tokenScore && token.length > 2) {
+      for (const candidate of entry.allTokens) {
+        if (Math.abs(candidate.length - token.length) > 2) continue;
+        if (levenshteinDistance(candidate, token) <= 1) {
+          tokenScore = 4;
+          break;
+        }
+      }
+    }
+
+    if (tokenScore) {
+      score += tokenScore;
+      matched += 1;
+    }
+  }
+
+  if (!score) {
+    const joined = queryTokens.join(' ');
+    if (joined) {
+      for (const field of entry.fallbackFields) {
+        if (field && field.includes(joined)) {
+          score = 6;
+          break;
+        }
+      }
+    }
+  }
+
+  if (matched > 1 && matched === queryTokens.length) {
+    score += 6;
+  }
+
+  return score;
+};
+
+const searchExercises = (query, candidates) => {
+  if (!query.trim()) {
+    return candidates.map((exercise) => ({ exercise, score: 0 }));
+  }
+  const tokens = tokenizeSearch(query);
+  if (!tokens.length) {
+    return candidates.map((exercise) => ({ exercise, score: 0 }));
+  }
+
+  const results = [];
+  for (const exercise of candidates) {
+    const entry = searchIndex?.get(exercise.id) || buildSearchEntry(exercise);
+    const score = computeSearchScore(entry, tokens);
+    if (score > 0) {
+      results.push({ exercise, score });
+    }
+  }
+
+  if (!results.length) {
+    const fallback = candidates.filter((exercise) => {
+      const name = (exercise?.name || '').toLowerCase();
+      return tokens.every((token) => name.includes(token));
+    });
+    return fallback.map((exercise) => ({ exercise, score: 1 }));
+  }
+
+  results.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const an = (a.exercise?.name || '').toLowerCase();
+    const bn = (b.exercise?.name || '').toLowerCase();
+    return an.localeCompare(bn);
+  });
+
+  return results;
+};
+
+const shuffleArray = (source) => {
+  const arr = Array.from(source);
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
+const ensureRandomOrderMap = () => {
+  if (state.randomOrderMap instanceof Map && state.randomOrderMap.size === state.data.length) return;
+  const ids = state.data.map((ex) => ex.id);
+  const shuffled = shuffleArray(ids);
+  state.randomOrderMap = new Map(shuffled.map((id, idx) => [id, idx]));
+};
+
+const shuffleLibraryExercises = () => {
+  if (!state.data.length) return;
+  const shuffled = shuffleArray(state.data.map((ex) => ex.id));
+  state.randomOrderMap = new Map(shuffled.map((id, idx) => [id, idx]));
+  state.sortMode = 'RANDOM';
+};
+
+const buildEquipmentKey = (exercise) => {
+  const equipment = Array.isArray(exercise?.equipment) ? exercise.equipment : [];
+  if (!equipment.length) return '__none__';
+  const normalized = equipment
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .sort();
+  return normalized.length ? normalized.join('|') : '__none__';
+};
+
+const getGroupColor = (type, key) => {
+  const cacheKey = `${type}:${key}`;
+  if (!groupColorMap.has(cacheKey)) {
+    const index = groupColorMap.size % EQUIPMENT_COLORS.length;
+    groupColorMap.set(cacheKey, EQUIPMENT_COLORS[index]);
+  }
+  return groupColorMap.get(cacheKey) || '#7aa2f7';
+};
+
+const formatListLabel = (values, fallback) => {
+  const list = Array.isArray(values) ? values : [];
+  if (!list.length) return fallback;
+  const names = list.map((item) => niceName(item)).filter(Boolean);
+  return names.length ? names.join(', ') : fallback;
+};
+
+const buildAttributeKey = (values, normalizer = normalizeMuscleName) => {
+  const list = Array.isArray(values) ? values : [];
+  const normalized = list
+    .map((item) => normalizer(item))
+    .filter(Boolean)
+    .sort();
+  return normalized.length ? normalized.join('|') : '__none__';
+};
+
+const getGroupingKey = (exercise, type) => {
+  if (type === 'equipment') return buildEquipmentKey(exercise);
+  if (type === 'muscles') return buildAttributeKey(exercise?.muscles);
+  if (type === 'muscleGroups') return buildAttributeKey(exercise?.muscleGroups);
+  return '__none__';
+};
+
+const formatGroupingLabel = (exercise, type) => {
+  if (type === 'equipment') {
+    const equipment = Array.isArray(exercise?.equipment) ? exercise.equipment : [];
+    if (!equipment.length) return 'No Equipment';
+    const names = equipment.map((item) => niceName(item)).filter(Boolean);
+    return names.length ? names.join(' + ') : 'No Equipment';
+  }
+  if (type === 'muscles') return formatListLabel(exercise?.muscles, 'No Muscles');
+  if (type === 'muscleGroups') return formatListLabel(exercise?.muscleGroups, 'No Muscle Groups');
+  return 'No Data';
+};
+
+const GROUPING_LABELS = {
+  equipment: 'equipment group',
+  muscles: 'muscle cluster',
+  muscleGroups: 'muscle group'
+};
+
+const getActiveGrouping = () => {
+  if (state.groupByEquipment) return 'equipment';
+  if (state.groupByMuscles) return 'muscles';
+  if (state.groupByMuscleGroups) return 'muscleGroups';
+  return null;
+};
+
+const setActiveGrouping = (type) => {
+  state.groupByEquipment = type === 'equipment';
+  state.groupByMuscles = type === 'muscles';
+  state.groupByMuscleGroups = type === 'muscleGroups';
+};
+
+const getGroupingClusters = (order, items, type) => {
+  const groups = [];
+  let current = null;
+  order.forEach((id) => {
+    const entry = items.get(id);
+    if (!entry) return;
+    const key = getGroupingKey(entry.exercise, type);
+    if (!current || current.key !== key) {
+      current = {
+        key,
+        ids: [],
+        label: formatGroupingLabel(entry.exercise, type),
+        color: getGroupColor(type, key)
+      };
+      groups.push(current);
+    }
+    current.ids.push(id);
+  });
+  return groups;
+};
+
+const applyGrouping = (type) => {
+  if (!type || state.builder.order.length < 2) return false;
+  const groups = new Map();
+  const keyOrder = [];
+  for (const id of state.builder.order) {
+    const entry = state.builder.items.get(id);
+    if (!entry) continue;
+    const key = getGroupingKey(entry.exercise, type);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      keyOrder.push(key);
+    }
+    groups.get(key).push(id);
+  }
+  if (!keyOrder.length) return false;
+  const grouped = [];
+  for (const key of keyOrder) {
+    grouped.push(...(groups.get(key) || []));
+  }
+  const changed = grouped.length === state.builder.order.length && grouped.some((id, idx) => id !== state.builder.order[idx]);
+  if (!changed) return false;
+  state.builder.order = grouped;
+  return true;
+};
+
+const shuffleBuilderOrder = () => {
+  if (state.builder.order.length < 2) return false;
+  const grouping = getActiveGrouping();
+  if (grouping) {
+    const groups = getGroupingClusters(state.builder.order, state.builder.items, grouping);
+    if (!groups.length) return false;
+    const shuffledGroups = shuffleArray(groups);
+    const newOrder = [];
+    shuffledGroups.forEach((group) => {
+      const shuffledIds = shuffleArray(group.ids);
+      newOrder.push(...shuffledIds);
+    });
+    state.builder.order = newOrder;
+  } else {
+    state.builder.order = shuffleArray(state.builder.order);
+  }
+  persistState();
   return true;
 };
 
@@ -405,6 +800,7 @@ const getBuilderSnapshot = () => ({
         i: id,
         n: entry.exercise.name,
         g: entry.exercise.muscleGroups || [],
+        m: entry.exercise.muscles || [],
         q: entry.exercise.equipment || [],
         s: entry.sets.map((set) => [
           set.reps ?? '',
@@ -426,12 +822,16 @@ const applyBuilderSnapshot = (snapshot) => {
   snapshot.items.forEach((item) => {
     if (!item) return;
     if (Array.isArray(item.s)) {
-      itemMap.set(item.i || item.id, item);
+      itemMap.set(item.i || item.id, {
+        ...item,
+        m: Array.isArray(item.m) ? item.m : []
+      });
     } else if (Array.isArray(item.sets)) {
       itemMap.set(item.id, {
         i: item.id,
         n: item.exercise?.name,
         g: item.exercise?.muscleGroups || [],
+        m: item.exercise?.muscles || [],
         q: item.exercise?.equipment || [],
         s: item.sets.map((set) => [
           set.reps ?? '',
@@ -457,12 +857,21 @@ const applyBuilderSnapshot = (snapshot) => {
     if (!sets.length) sets.push(createSet());
 
     const catalogue = state.data.find((ex) => ex.id === id);
-    const exercise = catalogue || {
+    const musclesFromItem = Array.isArray(item.m) ? item.m : [];
+    const baseExercise = catalogue || {
       id,
       name: item.n || 'Exercise',
       muscleGroups: item.g || [],
+      muscles: musclesFromItem,
       equipment: item.q || [],
       videos: item.v || []
+    };
+    const exercise = {
+      ...baseExercise,
+      muscleGroups: baseExercise.muscleGroups || [],
+      muscles: Array.isArray(baseExercise.muscles) ? baseExercise.muscles : musclesFromItem,
+      equipment: baseExercise.equipment || [],
+      videos: baseExercise.videos || []
     };
 
     state.builder.order.push(id);
@@ -471,6 +880,7 @@ const applyBuilderSnapshot = (snapshot) => {
         id: exercise.id,
         name: exercise.name,
         muscleGroups: exercise.muscleGroups || [],
+        muscles: exercise.muscles || musclesFromItem,
         equipment: exercise.equipment || [],
         videos: exercise.videos || []
       },
@@ -487,7 +897,11 @@ const persistState = (options = {}) => {
         showWorkoutOnly: state.showWorkoutOnly,
         includeCheckboxes: state.includeCheckboxes,
         activeTab: state.activeTab,
-        weightUnit: state.weightUnit
+        weightUnit: state.weightUnit,
+        sortMode: state.sortMode,
+        groupByEquipment: state.groupByEquipment,
+        groupByMuscles: state.groupByMuscles,
+        groupByMuscleGroups: state.groupByMuscleGroups
       }
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
@@ -514,6 +928,18 @@ const loadPersistedState = () => {
       if (parsed.flags.activeTab === 'builder') state.activeTab = 'builder';
       if (parsed.flags.weightUnit === 'KG') state.weightUnit = 'KG';
       else state.weightUnit = 'LBS';
+      if (parsed.flags.sortMode === 'ZA' || parsed.flags.sortMode === 'RANDOM' || parsed.flags.sortMode === 'AZ') {
+        state.sortMode = parsed.flags.sortMode;
+      } else {
+        state.sortMode = 'AZ';
+      }
+      const equipmentActive = Boolean(parsed.flags.groupByEquipment);
+      const musclesActive = Boolean(parsed.flags.groupByMuscles);
+      const muscleGroupsActive = Boolean(parsed.flags.groupByMuscleGroups);
+      if (equipmentActive) setActiveGrouping('equipment');
+      else if (musclesActive) setActiveGrouping('muscles');
+      else if (muscleGroupsActive) setActiveGrouping('muscleGroups');
+      else setActiveGrouping(null);
     }
     if (parsed?.builder) applyBuilderSnapshot(parsed.builder);
   } catch (err) {
@@ -548,6 +974,14 @@ const applyWorkoutFromParam = (encoded) => {
         state.includeCheckboxes = Boolean(payload.flags.includeCheckboxes);
         if (payload.flags.activeTab === 'builder') state.activeTab = 'builder';
         if (payload.flags.weightUnit === 'KG') state.weightUnit = 'KG';
+        if (Object.prototype.hasOwnProperty.call(payload.flags, 'groupByEquipment')
+          || Object.prototype.hasOwnProperty.call(payload.flags, 'groupByMuscles')
+          || Object.prototype.hasOwnProperty.call(payload.flags, 'groupByMuscleGroups')) {
+          if (payload.flags.groupByEquipment) setActiveGrouping('equipment');
+          else if (payload.flags.groupByMuscles) setActiveGrouping('muscles');
+          else if (payload.flags.groupByMuscleGroups) setActiveGrouping('muscleGroups');
+          else setActiveGrouping(null);
+        }
       }
     }
     persistState({ skipCleanup: true });
@@ -569,17 +1003,25 @@ function init() {
       state.muscles = uniq(state.data.flatMap((ex) => ex.muscleGroups || []));
       state.subMuscles = uniq(state.data.flatMap((ex) => ex.muscles || []));
       state.equipment = uniq(state.data.flatMap((ex) => ex.equipment || []));
+      searchIndex = buildSearchIndex(state.data);
 
       if (workoutParam) applyWorkoutFromParam(workoutParam);
       else loadPersistedState();
 
+      const initialGrouping = getActiveGrouping();
+      if (initialGrouping) applyGrouping(initialGrouping);
+      if (state.sortMode === 'RANDOM') ensureRandomOrderMap();
+
       buildFilters();
       syncButtonStates();
       bindGlobalEvents();
-      syncSortToggle();
+      syncSortControls();
       updateUnitToggle();
       updateBuilderFilterControl();
       if (els.includeCheckboxes) els.includeCheckboxes.checked = state.includeCheckboxes;
+      if (els.searchInput && state.search) {
+        els.searchInput.value = state.search;
+      }
       render();
       applyDeepLink();
     })
@@ -664,7 +1106,13 @@ function wireModeBar(area, bar) {
 
 function bindGlobalEvents() {
   els.searchInput.addEventListener('input', () => {
-    state.search = els.searchInput.value || '';
+    const value = els.searchInput.value || '';
+    state.search = value;
+    if (value.trim() && state.sortMode === 'RANDOM') {
+      state.sortMode = 'AZ';
+      state.randomOrderMap = null;
+      syncSortControls();
+    }
     render();
   });
   els.searchClear.addEventListener('click', () => {
@@ -673,8 +1121,20 @@ function bindGlobalEvents() {
     render();
   });
   els.sortToggle.addEventListener('click', () => {
-    state.sort = state.sort === 'AZ' ? 'ZA' : 'AZ';
-    syncSortToggle();
+    if (state.sortMode === 'RANDOM') {
+      state.sortMode = 'AZ';
+    } else {
+      state.sortMode = state.sortMode === 'AZ' ? 'ZA' : 'AZ';
+    }
+    if (state.sortMode !== 'RANDOM') state.randomOrderMap = null;
+    syncSortControls();
+    render();
+    persistState();
+  });
+
+  els.randomizeLibrary?.addEventListener('click', () => {
+    shuffleLibraryExercises();
+    syncSortControls();
     render();
     persistState();
   });
@@ -694,6 +1154,12 @@ function bindGlobalEvents() {
   els.exportWorkout.addEventListener('click', exportWorkout);
   els.printWorkout.addEventListener('click', printWorkout);
   els.shareWorkout.addEventListener('click', shareWorkout);
+  els.shuffleBuilder?.addEventListener('click', () => {
+    if (shuffleBuilderOrder()) render();
+  });
+  els.groupEquipment?.addEventListener('click', () => toggleGrouping('equipment'));
+  els.groupMuscles?.addEventListener('click', () => toggleGrouping('muscles'));
+  els.groupMuscleGroups?.addEventListener('click', () => toggleGrouping('muscleGroups'));
   els.clearWorkout.addEventListener('click', () => {
     state.builder.order = [];
     state.builder.items.clear();
@@ -708,6 +1174,8 @@ function bindGlobalEvents() {
   if (els.builderList) {
     els.builderList.addEventListener('dragover', handleBuilderDragOver);
     els.builderList.addEventListener('drop', handleBuilderDrop);
+    els.builderList.addEventListener('dragover', handleGroupDragOver);
+    els.builderList.addEventListener('drop', handleGroupDrop);
   }
 
   els.modalClose.addEventListener('click', closeModal);
@@ -733,8 +1201,13 @@ function bindGlobalEvents() {
       }
     } else if ((evt.key === 's' || evt.key === 'S') && !typing) {
       evt.preventDefault();
-      state.sort = state.sort === 'AZ' ? 'ZA' : 'AZ';
-      syncSortToggle();
+      if (state.sortMode === 'RANDOM') {
+        state.sortMode = 'AZ';
+      } else {
+        state.sortMode = state.sortMode === 'AZ' ? 'ZA' : 'AZ';
+      }
+      if (state.sortMode !== 'RANDOM') state.randomOrderMap = null;
+      syncSortControls();
       render();
       persistState();
     } else if ((evt.key === 'b' || evt.key === 'B') && !typing) {
@@ -771,8 +1244,149 @@ const getDragAfterElement = (container, y) => {
   }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
 };
 
+const getGroupAfterElement = (container, y) => {
+  const elements = [...container.querySelectorAll('.builder-group:not(.dragging)')];
+  return elements.reduce((closest, child) => {
+    const rect = child.getBoundingClientRect();
+    const offset = y - rect.top - rect.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      return { offset, element: child };
+    }
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+};
+
+function attachGroupBodyEvents(body, type, groupKey) {
+  if (!body) return;
+  body.dataset.groupKey = groupKey;
+  body.dataset.groupType = type;
+  body.addEventListener('dragover', handleGroupedCardDragOver);
+  body.addEventListener('drop', handleGroupedCardDrop);
+}
+
+function handleGroupedCardDragOver(evt) {
+  const grouping = getActiveGrouping();
+  if (!grouping) return;
+  evt.preventDefault();
+  evt.stopPropagation();
+  const body = evt.currentTarget;
+  if (body.dataset.groupType !== grouping) return;
+  const dragging = body.querySelector('.builder-card.dragging');
+  if (!dragging) return;
+  const afterElement = getDragAfterElement(body, evt.clientY);
+  if (!afterElement) {
+    body.appendChild(dragging);
+  } else if (afterElement !== dragging) {
+    body.insertBefore(dragging, afterElement);
+  }
+}
+
+function handleGroupedCardDrop(evt) {
+  const grouping = getActiveGrouping();
+  if (!grouping) return;
+  evt.preventDefault();
+  evt.stopPropagation();
+  const body = evt.currentTarget;
+  if (body.dataset.groupType !== grouping) return;
+  const groupKey = body.dataset.groupKey;
+  const dragging = body.querySelector('.builder-card.dragging');
+  if (dragging) dragging.classList.remove('dragging');
+  const newIds = Array.from(body.querySelectorAll('.builder-card'))
+    .map((node) => node.dataset.exerciseId)
+    .filter(Boolean);
+  const changed = reorderGroupBlock(grouping, groupKey, newIds);
+  if (changed) persistState();
+  render();
+  dragDidDrop = true;
+}
+
+function reorderGroupBlock(type, groupKey, newIds) {
+  if (!type || !groupKey || !Array.isArray(newIds) || !newIds.length) return false;
+  const currentOrder = state.builder.order;
+  const items = state.builder.items;
+  let start = -1;
+  let end = -1;
+  for (let i = 0; i < currentOrder.length; i += 1) {
+    const entry = items.get(currentOrder[i]);
+    if (!entry) continue;
+    const key = getGroupingKey(entry.exercise, type);
+    if (key === groupKey) {
+      if (start === -1) start = i;
+      end = i;
+    } else if (start !== -1) {
+      break;
+    }
+  }
+  if (start === -1) return false;
+  end += 1;
+  const block = currentOrder.slice(start, end);
+  if (block.length !== newIds.length) return false;
+  const sameMembers = block.every((id) => newIds.includes(id));
+  if (!sameMembers) return false;
+  const changed = block.some((id, idx) => id !== newIds[idx]);
+  if (!changed) return false;
+  state.builder.order = [
+    ...currentOrder.slice(0, start),
+    ...newIds,
+    ...currentOrder.slice(end)
+  ];
+  return true;
+}
+
+function handleGroupDragOver(evt) {
+  const grouping = getActiveGrouping();
+  if (!grouping || !els.builderList) return;
+  evt.preventDefault();
+  evt.stopPropagation();
+  if (evt.dataTransfer) evt.dataTransfer.dropEffect = 'move';
+  const dragging = els.builderList.querySelector('.builder-group.dragging');
+  if (!dragging) return;
+  if (dragging.dataset.groupType !== grouping) return;
+  const afterElement = getGroupAfterElement(els.builderList, evt.clientY);
+  if (!afterElement) {
+    els.builderList.appendChild(dragging);
+  } else if (afterElement !== dragging) {
+    els.builderList.insertBefore(dragging, afterElement);
+  }
+}
+
+function handleGroupDrop(evt) {
+  const grouping = getActiveGrouping();
+  if (!grouping || !els.builderList) return;
+  evt.preventDefault();
+  evt.stopPropagation();
+  const dragging = els.builderList.querySelector('.builder-group.dragging');
+  if (dragging) dragging.classList.remove('dragging');
+  const orderKeys = Array.from(els.builderList.querySelectorAll('.builder-group'))
+    .filter((node) => node.dataset.groupType === grouping)
+    .map((node) => node.dataset.groupKey);
+  const clusters = getGroupingClusters(state.builder.order, state.builder.items, grouping);
+  const map = new Map(clusters.map((group) => [group.key, group.ids]));
+  const newOrder = [];
+  const keySet = new Set(orderKeys);
+  orderKeys.forEach((key) => {
+    if (!key) return;
+    const ids = map.get(key);
+    if (ids) newOrder.push(...ids);
+  });
+  map.forEach((ids, key) => {
+    if (!keySet.has(key) && ids) newOrder.push(...ids);
+  });
+  const changed = newOrder.length === state.builder.order.length
+    ? newOrder.some((id, idx) => id !== state.builder.order[idx])
+    : true;
+  if (newOrder.length && changed) {
+    state.builder.order = newOrder;
+    persistState();
+    render();
+  } else {
+    render();
+  }
+  dragDidDrop = true;
+}
+
 function handleBuilderDragOver(evt) {
-  if (!els.builderList) return;
+  if (!els.builderList || getActiveGrouping()) return;
   evt.preventDefault();
   if (evt.dataTransfer) evt.dataTransfer.dropEffect = 'move';
   const dragging = els.builderList.querySelector('.builder-card.dragging');
@@ -786,7 +1400,7 @@ function handleBuilderDragOver(evt) {
 }
 
 function handleBuilderDrop(evt) {
-  if (!els.builderList) return;
+  if (!els.builderList || getActiveGrouping()) return;
   evt.preventDefault();
   const dragging = els.builderList.querySelector('.builder-card.dragging');
   if (dragging) dragging.classList.remove('dragging');
@@ -836,9 +1450,9 @@ function setMode(group, mode) {
 
 function filterData() {
   const { muscles, subMuscles, equipment, mode } = state.filters;
-  const q = state.search.trim().toLowerCase();
+  const query = state.search.trim();
 
-  const list = state.data.filter((ex) => {
+  const baseList = state.data.filter((ex) => {
     const muscleGroups = new Set(ex.muscleGroups || []);
     const muscleList = new Set(ex.muscles || []);
     const equipmentList = new Set(ex.equipment || []);
@@ -847,17 +1461,35 @@ function filterData() {
     const subMuscleOk = subMuscles.size === 0 || (mode.subMuscles === 'OR' ? intersects(muscleList, subMuscles) : isSuperset(muscleList, subMuscles));
     const equipmentOk = equipment.size === 0 || (mode.equipment === 'OR' ? intersects(equipmentList, equipment) : isSuperset(equipmentList, equipment));
 
-    const name = (ex.name || '').toLowerCase();
-    const searchOk = q === '' || name.includes(q);
-    return muscleOk && subMuscleOk && equipmentOk && searchOk;
+    return muscleOk && subMuscleOk && equipmentOk;
   });
 
-  list.sort((a, b) => {
-    const an = (a.name || '').toLowerCase();
-    const bn = (b.name || '').toLowerCase();
-    const cmp = an.localeCompare(bn);
-    return state.sort === 'ZA' ? -cmp : cmp;
-  });
+  if (query) {
+    const results = searchExercises(query, baseList);
+    return results.map((entry) => entry.exercise);
+  }
+
+  const list = [...baseList];
+  if (state.sortMode === 'RANDOM') {
+    ensureRandomOrderMap();
+    list.sort((a, b) => {
+      const idxA = state.randomOrderMap?.get(a.id);
+      const idxB = state.randomOrderMap?.get(b.id);
+      if (idxA !== undefined && idxB !== undefined) return idxA - idxB;
+      if (idxA !== undefined) return -1;
+      if (idxB !== undefined) return 1;
+      const an = (a.name || '').toLowerCase();
+      const bn = (b.name || '').toLowerCase();
+      return an.localeCompare(bn);
+    });
+  } else {
+    list.sort((a, b) => {
+      const an = (a.name || '').toLowerCase();
+      const bn = (b.name || '').toLowerCase();
+      const cmp = an.localeCompare(bn);
+      return state.sortMode === 'ZA' ? -cmp : cmp;
+    });
+  }
 
   return list;
 }
@@ -892,6 +1524,7 @@ function render() {
 
   updateBuilderBadge();
   updateBuilderFilterControl();
+  updateGroupingButtons();
   if (els.includeCheckboxes) els.includeCheckboxes.checked = state.includeCheckboxes;
   handleScrollButtons();
 }
@@ -993,8 +1626,13 @@ function renderGrid(exercises) {
 
     const addBtn = document.createElement('button');
     addBtn.className = 'card-action';
-    if (inBuilder) addBtn.classList.add('primary');
-    addBtn.textContent = inBuilder ? 'Remove from Workout' : 'Add to Workout';
+    if (inBuilder) {
+      addBtn.classList.add('danger');
+      addBtn.textContent = 'Remove from Workout';
+    } else {
+      addBtn.classList.add('primary');
+      addBtn.textContent = 'Add to Workout';
+    }
     addBtn.addEventListener('click', (evt) => {
       evt.stopPropagation();
       if (state.builder.items.has(ex.id)) {
@@ -1003,7 +1641,6 @@ function renderGrid(exercises) {
         addExerciseToBuilder(ex);
       }
       render();
-      persistState();
     });
 
     actions.append(shareBtn, addBtn);
@@ -1017,107 +1654,271 @@ function renderGrid(exercises) {
 function renderBuilder() {
   const { order, items } = state.builder;
   if (!order.length) {
+    els.builderList.classList.remove('grouped');
     els.builderList.innerHTML = '<div class="empty">Add exercises from the library to build a custom workout.</div>';
     els.builderSummary.textContent = 'No exercises selected yet.';
+    renderMuscleSummary();
     return;
   }
 
-  els.builderList.innerHTML = '';
   let setTotal = 0;
+  let summaryExtra = '';
+  let displayIndex = 0;
+  const grouping = getActiveGrouping();
 
-  order.forEach((id, idx) => {
-    const entry = items.get(id);
-    if (!entry) return;
+  if (grouping) {
+    const groups = getGroupingClusters(order, items, grouping);
+    els.builderList.classList.add('grouped');
+    els.builderList.innerHTML = '';
 
-    const card = document.createElement('div');
-    card.className = 'builder-card';
-    card.dataset.exerciseId = id;
+    groups.forEach((group) => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'builder-group';
+      groupEl.dataset.groupKey = group.key;
+      groupEl.dataset.groupType = grouping;
+      groupEl.dataset.count = String(group.ids.length);
+      groupEl.style.setProperty('--group-color', group.color);
 
-    const controls = document.createElement('div');
-    controls.className = 'builder-controls';
+      const head = document.createElement('div');
+      head.className = 'builder-group-head';
+      const label = document.createElement('div');
+      label.className = 'group-label';
+      label.textContent = group.label;
+      const handle = document.createElement('div');
+      handle.className = 'builder-group-handle';
+      handle.textContent = 'Drag Group';
+      head.append(label, handle);
 
-    const header = document.createElement('div');
-    header.className = 'builder-header-main';
-    header.tabIndex = 0;
-    const title = document.createElement('h3');
-    title.textContent = `${idx + 1}. ${entry.exercise.name}`;
-    const meta = document.createElement('div');
-    meta.className = 'builder-meta';
-    const metaParts = [];
-    if (entry.exercise.muscleGroups?.length) {
-      metaParts.push(`Groups: ${entry.exercise.muscleGroups.map(niceName).join(', ')}`);
+      const body = document.createElement('div');
+      body.className = 'builder-group-body';
+      attachGroupBodyEvents(body, grouping, group.key);
+
+      group.ids.forEach((id) => {
+        const entry = items.get(id);
+        if (!entry) return;
+        displayIndex += 1;
+        const { card, setCount } = buildBuilderCard(entry, displayIndex, { groupColor: group.color, groupKey: group.key });
+        setTotal += setCount;
+        body.appendChild(card);
+      });
+
+      groupEl.append(head, body);
+      attachGroupDragEvents(groupEl, handle, grouping);
+      els.builderList.appendChild(groupEl);
+    });
+
+    if (groups.length) {
+      const labelBase = GROUPING_LABELS[grouping] || 'group';
+      summaryExtra = ` | ${groups.length} ${labelBase}${groups.length === 1 ? '' : 's'}`;
     }
-    if (entry.exercise.equipment?.length) {
-      metaParts.push(`Equipment: ${entry.exercise.equipment.map(niceName).join(', ')}`);
+  } else {
+    els.builderList.classList.remove('grouped');
+    els.builderList.innerHTML = '';
+    order.forEach((id, idx) => {
+      const entry = items.get(id);
+      if (!entry) return;
+      const { card, setCount } = buildBuilderCard(entry, idx + 1);
+      setTotal += setCount;
+      els.builderList.appendChild(card);
+    });
+  }
+
+  const exerciseWord = order.length === 1 ? 'exercise' : 'exercises';
+  const setWord = setTotal === 1 ? 'set' : 'sets';
+  els.builderSummary.textContent = `${order.length} ${exerciseWord} | ${setTotal} ${setWord}${summaryExtra}`;
+
+  renderMuscleSummary();
+}
+
+function buildBuilderCard(entry, displayIndex, options = {}) {
+  const { groupColor = null, groupKey = null } = options;
+  const id = entry.exercise.id;
+  const card = document.createElement('div');
+  card.className = 'builder-card';
+  if (groupColor) card.style.setProperty('--group-color', groupColor);
+  if (groupKey) {
+    card.classList.add('grouped');
+    card.dataset.groupKey = groupKey;
+  }
+  card.dataset.exerciseId = id;
+
+  const controls = document.createElement('div');
+  controls.className = 'builder-controls';
+
+  const header = document.createElement('div');
+  header.className = 'builder-header-main';
+  header.tabIndex = 0;
+
+  const title = document.createElement('h3');
+  title.textContent = `${displayIndex}. ${entry.exercise.name}`;
+  const meta = document.createElement('div');
+  meta.className = 'builder-meta';
+
+  const metaFragments = [];
+  if (entry.exercise.muscleGroups?.length) {
+    const span = document.createElement('span');
+    span.innerHTML = `<strong>Groups:</strong> ${entry.exercise.muscleGroups.map(niceName).join(', ')}`;
+    metaFragments.push(span);
+  }
+  if (entry.exercise.muscles?.length) {
+    const span = document.createElement('span');
+    span.innerHTML = `<strong>Muscles:</strong> ${entry.exercise.muscles.map(niceName).join(', ')}`;
+    metaFragments.push(span);
+  }
+  if (entry.exercise.equipment?.length) {
+    const span = document.createElement('span');
+    span.innerHTML = `<strong>Equipment:</strong> ${entry.exercise.equipment.map(niceName).join(', ')}`;
+    metaFragments.push(span);
+  }
+
+  metaFragments.forEach((fragment, index) => {
+    meta.appendChild(fragment);
+    if (index < metaFragments.length - 1) {
+      meta.appendChild(document.createTextNode(' | '));
     }
-    meta.textContent = metaParts.join(' | ');
-    header.append(title, meta);
+  });
+  header.append(title, meta);
 
-    const openReference = () => {
-      openExerciseModal(entry.exercise);
-    };
-    header.addEventListener('click', openReference);
-    header.addEventListener('keydown', (evt) => {
-      if (evt.key === 'Enter' || evt.key === ' ') {
-        evt.preventDefault();
-        openReference();
-      }
-    });
+  const thumbUrl = entry.exercise.videos?.[0]?.thumbnail || entry.exercise.thumbnail || '';
+  if (thumbUrl) {
+    const preview = document.createElement('img');
+    preview.className = 'builder-thumb';
+    preview.src = thumbUrl;
+    preview.alt = '';
+    preview.loading = 'lazy';
+    header.appendChild(preview);
+  }
 
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'btn danger small';
-    removeBtn.textContent = 'Remove';
-    removeBtn.addEventListener('click', (evt) => {
-      evt.stopPropagation();
-      removeExerciseFromBuilder(id);
-      render();
-    });
-
-    controls.append(header, removeBtn);
-    card.appendChild(controls);
-
-    card.draggable = true;
-    card.addEventListener('dragstart', (evt) => {
-      dragDidDrop = false;
-      evt.dataTransfer.effectAllowed = 'move';
-      evt.dataTransfer.setData('text/plain', id);
-      card.classList.add('dragging');
-    });
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      if (!dragDidDrop) render();
-      dragDidDrop = false;
-    });
-
-    const table = document.createElement('table');
-    table.className = 'sets-table';
-    const thead = document.createElement('thead');
-    thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps</th><th>Weight (${getWeightLabel()})</th><th></th></tr>`;
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    entry.sets.forEach((set, index) => {
-      setTotal += 1;
-      tbody.appendChild(renderSetRow(id, set, index));
-    });
-    table.appendChild(tbody);
-
-    const addSetBtn = document.createElement('button');
-    addSetBtn.className = 'btn small add-set';
-    addSetBtn.textContent = 'Add Set';
-    addSetBtn.addEventListener('click', () => {
-      entry.sets.push(createSet());
-      render();
-      persistState();
-    });
-
-    card.append(table, addSetBtn);
-    els.builderList.appendChild(card);
+  const openReference = () => {
+    openExerciseModal(entry.exercise);
+  };
+  header.addEventListener('click', openReference);
+  header.addEventListener('keydown', (evt) => {
+    if (evt.key === 'Enter' || evt.key === ' ') {
+      evt.preventDefault();
+      openReference();
+    }
   });
 
-  const exerciseWord = state.builder.order.length === 1 ? 'exercise' : 'exercises';
-  const setWord = setTotal === 1 ? 'set' : 'sets';
-  els.builderSummary.textContent = `${state.builder.order.length} ${exerciseWord} | ${setTotal} ${setWord}`;
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn danger small';
+  removeBtn.textContent = 'Remove';
+  removeBtn.addEventListener('click', (evt) => {
+    evt.stopPropagation();
+    removeExerciseFromBuilder(id);
+    render();
+  });
+
+  controls.append(header, removeBtn);
+  card.appendChild(controls);
+
+  card.draggable = true;
+  card.addEventListener('dragstart', (evt) => {
+    dragDidDrop = false;
+    evt.dataTransfer.effectAllowed = 'move';
+    evt.dataTransfer.setData('text/plain', id);
+    card.classList.add('dragging');
+  });
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    if (!dragDidDrop) render();
+    dragDidDrop = false;
+  });
+
+  const table = document.createElement('table');
+  table.className = 'sets-table';
+  const thead = document.createElement('thead');
+  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps</th><th>Weight (${getWeightLabel()})</th><th></th></tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  let setCount = 0;
+  entry.sets.forEach((set, index) => {
+    setCount += 1;
+    tbody.appendChild(renderSetRow(id, set, index));
+  });
+  table.appendChild(tbody);
+
+  const addSetBtn = document.createElement('button');
+  addSetBtn.className = 'btn small add-set';
+  addSetBtn.textContent = 'Add Set';
+  addSetBtn.addEventListener('click', () => {
+    entry.sets.push(createSet());
+    render();
+    persistState();
+  });
+
+  card.append(table, addSetBtn);
+
+  return { card, setCount };
+}
+
+function attachGroupDragEvents(groupEl, handle, type) {
+  if (!groupEl || !handle) return;
+  groupEl.dataset.groupType = type;
+  handle.draggable = true;
+  handle.addEventListener('dragstart', (evt) => {
+    if (getActiveGrouping() !== type) {
+      evt.preventDefault();
+      return;
+    }
+    dragDidDrop = false;
+    evt.dataTransfer.effectAllowed = 'move';
+    evt.dataTransfer.setData('text/plain', groupEl.dataset.groupKey || '');
+    groupEl.classList.add('dragging');
+  });
+  handle.addEventListener('dragend', () => {
+    groupEl.classList.remove('dragging');
+    if (!dragDidDrop) render();
+    dragDidDrop = false;
+  });
+}
+
+function computeMuscleSummary() {
+  const hits = new Set();
+  state.builder.order.forEach((id) => {
+    const entry = state.builder.items.get(id);
+    if (!entry) return;
+    let muscles = entry.exercise.muscles;
+    if (!Array.isArray(muscles) || muscles.length === 0) {
+      const fallback = state.data.find((ex) => ex.id === id);
+      muscles = fallback?.muscles || [];
+    }
+    muscles.forEach((muscle) => {
+      const normalized = normalizeMuscleName(muscle);
+      if (!normalized) return;
+      const key = MUSCLE_ALIAS_LOOKUP.get(normalized);
+      if (key) hits.add(key);
+    });
+  });
+
+  const labels = MUSCLE_COVERAGE
+    .filter((group) => hits.has(group.key))
+    .map((group) => group.label)
+    .sort((a, b) => a.localeCompare(b));
+
+  return {
+    hitCount: hits.size,
+    total: MUSCLE_COVERAGE.length,
+    labels
+  };
+}
+
+function renderMuscleSummary() {
+  if (!els.builderMuscles) return;
+  if (!state.builder.order.length) {
+    els.builderMuscles.textContent = `Muscles hit: 0/${MUSCLE_COVERAGE.length}.`;
+    return;
+  }
+
+  const summary = computeMuscleSummary();
+  if (!summary.hitCount) {
+    els.builderMuscles.textContent = `Muscles hit: 0/${summary.total}.`;
+    return;
+  }
+
+  const listText = summary.labels.join(', ');
+  els.builderMuscles.textContent = `Muscles hit: ${summary.hitCount}/${summary.total} (${listText})`;
 }
 
 function renderSetRow(exerciseId, set, index) {
@@ -1243,13 +2044,40 @@ function addExerciseToBuilder(exercise) {
       id: exercise.id,
       name: exercise.name,
       muscleGroups: exercise.muscleGroups || [],
+      muscles: exercise.muscles || [],
       equipment: exercise.equipment || [],
       videos: exercise.videos || []
     },
     sets: [createSet()]
   };
   state.builder.items.set(exercise.id, entry);
-  state.builder.order.push(exercise.id);
+
+  const grouping = getActiveGrouping();
+  if (grouping) {
+    const key = getGroupingKey(entry.exercise, grouping);
+    let inserted = false;
+    for (let i = 0; i < state.builder.order.length; i += 1) {
+      const currentId = state.builder.order[i];
+      const currentEntry = state.builder.items.get(currentId);
+      if (!currentEntry) continue;
+      const currentKey = getGroupingKey(currentEntry.exercise, grouping);
+      if (currentKey === key) {
+        let insertPos = i;
+        while (insertPos < state.builder.order.length) {
+          const nextEntry = state.builder.items.get(state.builder.order[insertPos]);
+          if (!nextEntry || getGroupingKey(nextEntry.exercise, grouping) !== key) break;
+          insertPos += 1;
+        }
+        state.builder.order.splice(insertPos, 0, exercise.id);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) state.builder.order.push(exercise.id);
+    applyGrouping(grouping);
+  } else {
+    state.builder.order.push(exercise.id);
+  }
   persistState();
 }
 
@@ -1281,6 +2109,50 @@ function updateBuilderFilterControl() {
   if (!btn) return;
   btn.textContent = state.showWorkoutOnly ? 'Show All Exercises' : 'Show Workout Only';
   btn.classList.toggle('toggle-active', state.showWorkoutOnly);
+}
+
+function updateGroupingButtons() {
+  if (els.groupEquipment) {
+    const active = state.groupByEquipment;
+    els.groupEquipment.textContent = active ? 'Ungroup Equipment' : 'Group Equipment';
+    els.groupEquipment.classList.toggle('toggle-active', active);
+    els.groupEquipment.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  if (els.groupMuscles) {
+    const active = state.groupByMuscles;
+    els.groupMuscles.textContent = active ? 'Ungroup Muscles' : 'Group Muscles';
+    els.groupMuscles.classList.toggle('toggle-active', active);
+    els.groupMuscles.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  if (els.groupMuscleGroups) {
+    const active = state.groupByMuscleGroups;
+    els.groupMuscleGroups.textContent = active ? 'Ungroup Muscle Groups' : 'Group Muscle Groups';
+    els.groupMuscleGroups.classList.toggle('toggle-active', active);
+    els.groupMuscleGroups.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+function toggleGrouping(type) {
+  if (!type) return;
+  const current = getActiveGrouping();
+  if (!state.builder.order.length) {
+    if (current === type) setActiveGrouping(null);
+    else setActiveGrouping(type);
+    updateGroupingButtons();
+    render();
+    persistState();
+    return;
+  }
+  if (current === type) {
+    setActiveGrouping(null);
+  } else {
+    setActiveGrouping(type);
+  }
+  const active = getActiveGrouping();
+  if (active) applyGrouping(active);
+  updateGroupingButtons();
+  render();
+  persistState();
 }
 
 function shareExercise(exercise, button) {
@@ -1315,7 +2187,6 @@ function shareExercise(exercise, button) {
 
   state.highlightId = exercise.id;
   state.highlightHandled = false;
-  updateUrlExercise(exercise.id);
   document.querySelectorAll('.card.highlight').forEach((el) => {
     if (el.dataset.exerciseId !== exercise.id) el.classList.remove('highlight');
   });
@@ -1458,12 +2329,23 @@ function supportsNativeHls(videoEl) {
   return can === 'probably' || can === 'maybe';
 }
 
-function syncSortToggle() {
+function syncSortControls() {
   if (!els.sortToggle) return;
-  const asc = state.sort === 'AZ';
-  els.sortToggle.textContent = asc ? 'A-Z' : 'Z-A';
-  els.sortToggle.classList.toggle('asc', asc);
-  els.sortToggle.classList.toggle('desc', !asc);
+  const mode = state.sortMode;
+  const isAsc = mode === 'AZ';
+  const isDesc = mode === 'ZA';
+  els.sortToggle.textContent = isDesc ? 'Z-A' : 'A-Z';
+  els.sortToggle.classList.toggle('asc', isAsc);
+  els.sortToggle.classList.toggle('desc', isDesc);
+  if (mode === 'RANDOM') {
+    els.sortToggle.classList.remove('asc');
+    els.sortToggle.classList.remove('desc');
+  }
+  if (els.randomizeLibrary) {
+    const active = mode === 'RANDOM';
+    els.randomizeLibrary.classList.toggle('toggle-active', active);
+    els.randomizeLibrary.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
 }
 
 function exportWorkout() {

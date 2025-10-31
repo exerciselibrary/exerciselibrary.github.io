@@ -71,9 +71,11 @@
       </aside>
 
       <section class="content">
-        <div class="tabs">
-          <button id="tabLibrary" class="tab active" data-target="libraryPanel">Exercise Library</button>
-          <button id="tabBuilder" class="tab" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
+        <div class="view-bar">
+          <div class="view-links">
+            <button type="button" id="tabLibrary" class="view-link active" data-target="libraryPanel">Exercise Library</button>
+            <button type="button" id="tabBuilder" class="view-link" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
+          </div>
         </div>
 
         <div id="libraryPanel" class="panel active">
@@ -81,8 +83,11 @@
             <h2 id="gridTitle">Exercises</h2>
           </div>
           <div class="toolbar">
-            <button id="sortToggle" class="btn sort-toggle" title="Toggle alphabetical order">A-Z</button>
-            <button id="toggleBuilderFilter" class="btn small" title="Toggle to show only exercises in the workout">Show Workout Only</button>
+            <div class="toolbar-left">
+              <button id="sortToggle" class="btn sort-toggle" title="Toggle alphabetical order">A-Z</button>
+              <button id="toggleBuilderFilter" class="btn small" title="Toggle to show only exercises in the workout">Show Workout Only</button>
+              <button id="randomizeLibrary" class="btn small" title="Shuffle exercises randomly">Shuffle</button>
+            </div>
             <div id="count" class="muted"></div>
           </div>
           <div id="activeFilters" class="active-filters muted small"></div>
@@ -91,11 +96,18 @@
 
         <div id="builderPanel" class="panel">
           <div class="builder-header">
-            <div id="builderSummary" class="muted">No exercises selected yet.</div>
+            <div class="builder-info">
+              <div id="builderSummary" class="muted">No exercises selected yet.</div>
+              <div id="builderMuscles" class="muted small"></div>
+            </div>
             <div class="builder-actions">
               <button id="exportWorkout" class="btn small" title="Download as Excel">Export to Excel</button>
               <button id="printWorkout" class="btn small" title="Print workout">Print</button>
               <button id="shareWorkout" class="btn small" title="Copy a shareable workout link">Share</button>
+              <button id="shuffleBuilder" class="btn small" title="Randomize exercise order">Shuffle</button>
+              <button id="groupEquipment" class="btn small" title="Group exercises by equipment">Group Equipment</button>
+              <button id="groupMuscles" class="btn small" title="Group exercises by muscles">Group Muscles</button>
+              <button id="groupMuscleGroups" class="btn small" title="Group exercises by muscle groups">Group Muscle Groups</button>
               <button id="unitToggle" class="btn small" title="Switch between pounds and kilograms">Units: lbs</button>
               <button id="clearWorkout" class="btn danger small" title="Remove all exercises">Clear</button>
               <label class="option"><input type="checkbox" id="includeCheckboxes" /> Include checkboxes</label>
