@@ -88,6 +88,7 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .sort-toggle { min-width: 110px; text-align: center; }
 .sort-toggle.asc { background: #163922; border-color: #22c55e; color: #e8ffe8; box-shadow: inset 0 0 0 2px rgba(34,197,94,.25), 0 0 12px rgba(34,197,94,.12); }
 .sort-toggle.desc { background: #3a1616; border-color: #ef4444; color: #ffe8e8; box-shadow: inset 0 0 0 2px rgba(239,68,68,.25), 0 0 12px rgba(239,68,68,.12); }
+.sort-toggle.shuffled::after { content: ' ⤮'; font-size: 0.9em; margin-left: 4px; opacity: 0.85; }
 
 .grid-head {
   display: flex;

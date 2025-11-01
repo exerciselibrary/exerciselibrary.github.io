@@ -4,12 +4,27 @@ Static UI that loads `exercise_dump.json`, lets you explore exercises with rich 
 
 Run locally
 
-- Keep `index.html`, `styles.css`, `app.js`, and `exercise_dump.json` together (already staged here).
+- Keep `index.html`, `styles.css`, the `js/` directory, and `exercise_dump.json` together (already staged here).
 - Serve the folder so the browser can fetch the JSON:
   - Python: `python -m http.server 8000`
   - Node: `npx serve .`
   - PowerShell: `Start-Process http://localhost:8000` after starting one of the above servers
 - Open `http://localhost:8000`.
+
+Code structure (new modular layout)
+
+- `js/main.js` — entry point that wires modules together, bootstraps data, and binds global events.
+- `js/constants.js` — shared constants (modes, weight limits, labels, color palette).
+- `js/context.js` — single source of truth for application state and DOM references.
+- `js/utils.js` — reusable helpers (naming, set logic, shuffling, spreadsheet export, weight math).
+- `js/muscles.js` — canonical muscle metadata and normalization helpers.
+- `js/search.js` — tokenisation and scoring logic for fuzzy exercise search.
+- `js/library.js` — filter controls, search orchestration, and exercise card rendering.
+- `js/builder.js` — workout builder UI, drag-and-drop ordering, export/print/share actions.
+- `js/grouping.js` — grouping helpers (by equipment, muscles, or muscle groups) shared by builder.
+- `js/storage.js` — localStorage persistence, deep-link encoding, and workout restoration.
+
+Each module is documented at the top to make it clear what part of the experience it owns. The builder and library modules also register a render callback so UI updates stay centralised in `main.js`.
 
 What's included
 
