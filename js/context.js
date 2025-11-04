@@ -1,6 +1,15 @@
 // Shared application state and common DOM references.
 // Import from this module whenever you need to read or mutate global state.
 
+const todayISO = (() => {
+  const now = new Date();
+  const local = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const year = local.getFullYear();
+  const month = String(local.getMonth() + 1).padStart(2, '0');
+  const day = String(local.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+})();
+
 export const state = {
   data: [],
   muscles: [],
@@ -26,7 +35,16 @@ export const state = {
   groupByMuscles: false,
   groupByMuscleGroups: false,
   includeCheckboxes: false,
-  weightUnit: 'LBS'
+  weightUnit: 'LBS',
+  plan: {
+    name: '',
+    schedule: {
+      startDate: todayISO,
+      endDate: null,
+      repeatInterval: 1,
+      daysOfWeek: new Set()
+    }
+  }
 };
 
 export const els = {
@@ -57,6 +75,7 @@ export const els = {
   activeFilters: document.getElementById('activeFilters'),
   tabLibrary: document.getElementById('tabLibrary'),
   tabBuilder: document.getElementById('tabBuilder'),
+  tabWorkout: document.getElementById('tabWorkout'),
   libraryPanel: document.getElementById('libraryPanel'),
   builderPanel: document.getElementById('builderPanel'),
   builderList: document.getElementById('builderList'),
@@ -72,6 +91,15 @@ export const els = {
   groupMuscleGroups: document.getElementById('groupMuscleGroups'),
   clearWorkout: document.getElementById('clearWorkout'),
   includeCheckboxes: document.getElementById('includeCheckboxes'),
+  planNameInput: document.getElementById('planNameInput'),
+  scheduleStart: document.getElementById('scheduleStart'),
+  scheduleEnd: document.getElementById('scheduleEnd'),
+  scheduleInterval: document.getElementById('scheduleInterval'),
+  scheduleDays: document.getElementById('scheduleDays'),
+  scheduleCalendar: document.getElementById('scheduleCalendar'),
+  connectDropbox: document.getElementById('connectDropbox'),
+  syncToDropbox: document.getElementById('syncToDropbox'),
+  builderSyncStatus: document.getElementById('builderSyncStatus'),
   modal: document.getElementById('modal'),
   modalVideo: document.getElementById('modalVideo'),
   modalNotice: document.getElementById('modalNotice'),

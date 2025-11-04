@@ -8,7 +8,10 @@ export const createSet = () => ({
   reps: '',
   weight: '',
   mode: 'OLD_SCHOOL',
-  echoLevel: ECHO_LEVELS[0].value
+  echoLevel: ECHO_LEVELS[0].value,
+  eccentricPct: 100,
+  progression: '',
+  progressionPercent: ''
 });
 
 export const getBuilderSnapshot = () => ({
@@ -27,7 +30,12 @@ export const getBuilderSnapshot = () => ({
           set.reps ?? '',
           set.weight ?? '',
           set.mode || 'OLD_SCHOOL',
-          set.echoLevel || ECHO_LEVELS[0].value
+          set.echoLevel || ECHO_LEVELS[0].value,
+          Number.isFinite(Number.parseInt(set.eccentricPct, 10))
+            ? Number.parseInt(set.eccentricPct, 10)
+            : 100,
+          set.progression ?? '',
+          set.progressionPercent ?? ''
         ])
       };
     })
@@ -58,7 +66,12 @@ export const applyBuilderSnapshot = (snapshot) => {
           set.reps ?? '',
           set.weight ?? '',
           set.mode || 'OLD_SCHOOL',
-          set.echoLevel || ECHO_LEVELS[0].value
+          set.echoLevel || ECHO_LEVELS[0].value,
+          Number.isFinite(Number.parseInt(set.eccentricPct, 10))
+            ? Number.parseInt(set.eccentricPct, 10)
+            : 100,
+          set.progression ?? '',
+          set.progressionPercent ?? ''
         ])
       });
     }
@@ -73,7 +86,12 @@ export const applyBuilderSnapshot = (snapshot) => {
       reps: values[0] ?? '',
       weight: values[1] ?? '',
       mode: values[2] || 'OLD_SCHOOL',
-      echoLevel: values[3] || ECHO_LEVELS[0].value
+      echoLevel: values[3] || ECHO_LEVELS[0].value,
+      eccentricPct: Number.isFinite(Number.parseInt(values[4], 10))
+        ? Number.parseInt(values[4], 10)
+        : 100,
+      progression: values[5] ?? '',
+      progressionPercent: values[6] ?? ''
     }));
     if (!sets.length) sets.push(createSet());
 
@@ -114,6 +132,15 @@ export const persistState = (options = {}) => {
   try {
     const snapshot = {
       builder: getBuilderSnapshot(),
+      plan: {
+        name: state.plan.name || '',
+        schedule: {
+          startDate: state.plan.schedule.startDate || null,
+          endDate: state.plan.schedule.endDate || null,
+          repeatInterval: state.plan.schedule.repeatInterval || 1,
+          daysOfWeek: Array.from(state.plan.schedule.daysOfWeek || [])
+        }
+      },
       flags: {
         showWorkoutOnly: state.showWorkoutOnly,
         includeCheckboxes: state.includeCheckboxes,
@@ -144,10 +171,28 @@ export const loadPersistedState = () => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
+    if (parsed?.plan) {
+      state.plan.name = parsed.plan.name || '';
+      const sched = parsed.plan.schedule || {};
+      state.plan.schedule.startDate = sched.startDate || state.plan.schedule.startDate || null;
+      state.plan.schedule.endDate = sched.endDate || null;
+      const interval = parseInt(sched.repeatInterval, 10);
+      state.plan.schedule.repeatInterval = Number.isFinite(interval) && interval > 0 ? interval : 1;
+      const days = Array.isArray(sched.daysOfWeek) ? sched.daysOfWeek : [];
+      state.plan.schedule.daysOfWeek = new Set(
+        days
+          .map((val) => Number(val))
+          .filter((val) => Number.isInteger(val) && val >= 0 && val <= 6)
+      );
+    }
     if (parsed?.flags) {
       state.showWorkoutOnly = Boolean(parsed.flags.showWorkoutOnly);
       state.includeCheckboxes = Boolean(parsed.flags.includeCheckboxes);
-      if (parsed.flags.activeTab === 'builder') state.activeTab = 'builder';
+      if (parsed.flags.activeTab === 'builder') {
+        state.activeTab = 'builder';
+      } else {
+        state.activeTab = 'library';
+      }
       state.weightUnit = parsed.flags.weightUnit === 'KG' ? 'KG' : 'LBS';
       if (parsed.flags.sortMode === 'ZA' || parsed.flags.sortMode === 'AZ') {
         state.sortMode = parsed.flags.sortMode;

@@ -17,6 +17,14 @@ import {
   syncSortControls,
   exportWorkout,
   printWorkout,
+  syncPlanControls,
+  renderSchedulePreview,
+  setPlanName,
+  setScheduleStart,
+  setScheduleEnd,
+  setScheduleInterval,
+  toggleScheduleDay,
+  buildPlanSyncPayload,
   handleScrollButtons,
   handleBuilderDragOver,
   handleBuilderDrop,
@@ -37,6 +45,37 @@ import {
 } from './library.js';
 import { persistState, loadPersistedState, applyWorkoutFromParam } from './storage.js';
 import { getActiveGrouping, applyGrouping } from './grouping.js';
+
+const dropboxManager = typeof DropboxManager !== 'undefined' ? new DropboxManager() : null;
+let dropboxInitialized = false;
+
+function setupSchedulePickers() {
+  if (typeof flatpickr === 'undefined') {
+    return;
+  }
+
+  if (els.scheduleStart) {
+    flatpickr(els.scheduleStart, {
+      dateFormat: 'Y-m-d',
+      allowInput: true,
+      defaultDate: state.plan.schedule.startDate || null,
+      onChange: (selectedDates, dateStr) => {
+        setScheduleStart(dateStr || '');
+      }
+    });
+  }
+
+  if (els.scheduleEnd) {
+    flatpickr(els.scheduleEnd, {
+      dateFormat: 'Y-m-d',
+      allowInput: true,
+      defaultDate: state.plan.schedule.endDate || null,
+      onChange: (selectedDates, dateStr) => {
+        setScheduleEnd(dateStr || '');
+      }
+    });
+  }
+}
 
 function render() {
   const filtered = filterData();
@@ -69,6 +108,9 @@ function render() {
   updateBuilderBadge();
   updateBuilderFilterControl();
   updateGroupingButtons();
+  syncPlanControls();
+  renderSchedulePreview();
+  refreshDropboxButton();
   if (els.includeCheckboxes) els.includeCheckboxes.checked = state.includeCheckboxes;
   handleScrollButtons();
 }
@@ -119,6 +161,9 @@ function bindGlobalEvents() {
 
   els.tabLibrary.addEventListener('click', () => switchTab('library'));
   els.tabBuilder.addEventListener('click', () => switchTab('builder'));
+  els.tabWorkout?.addEventListener('click', () => {
+    window.location.href = 'workout-time/index.html';
+  });
 
   els.exportWorkout.addEventListener('click', exportWorkout);
   els.printWorkout.addEventListener('click', printWorkout);
@@ -143,6 +188,19 @@ function bindGlobalEvents() {
     persistState();
     render();
   });
+
+  els.planNameInput?.addEventListener('input', () => setPlanName(els.planNameInput.value));
+  els.scheduleStart?.addEventListener('change', (event) => setScheduleStart(event.target.value));
+  els.scheduleEnd?.addEventListener('change', (event) => setScheduleEnd(event.target.value));
+  els.scheduleInterval?.addEventListener('change', (event) => setScheduleInterval(event.target.value));
+  if (els.scheduleDays) {
+    els.scheduleDays.querySelectorAll('button[data-day]').forEach((button) => {
+      button.addEventListener('click', () => toggleScheduleDay(button.dataset.day));
+    });
+  }
+
+  els.connectDropbox?.addEventListener('click', handleDropboxButtonClick);
+  els.syncToDropbox?.addEventListener('click', handleSyncToDropbox);
 
   if (els.builderList) {
     els.builderList.addEventListener('dragover', handleBuilderDragOver);
@@ -191,11 +249,138 @@ function bindGlobalEvents() {
   });
 }
 
-function init() {
+const updateSyncStatus = (message, status) => {
+  if (!els.builderSyncStatus) return;
+  els.builderSyncStatus.textContent = message || '';
+  els.builderSyncStatus.classList.remove('success', 'error', 'pending');
+  if (status) {
+    els.builderSyncStatus.classList.add(status);
+  }
+};
+
+const setSyncButtonDisabled = (disabled) => {
+  if (els.syncToDropbox) {
+    els.syncToDropbox.disabled = Boolean(disabled);
+  }
+};
+
+const refreshDropboxButton = () => {
+  if (!els.connectDropbox) return;
+  if (!dropboxManager) {
+    els.connectDropbox.disabled = true;
+    els.connectDropbox.textContent = 'Dropbox unavailable';
+    return;
+  }
+  els.connectDropbox.disabled = false;
+  if (dropboxManager.isConnected) {
+    const name = dropboxManager.account?.name?.display_name || 'Dropbox';
+    els.connectDropbox.textContent = `Disconnect ${name}`;
+    els.connectDropbox.setAttribute('aria-pressed', 'true');
+  } else {
+    els.connectDropbox.textContent = 'Connect Dropbox';
+    els.connectDropbox.setAttribute('aria-pressed', 'false');
+  }
+};
+
+const initializeDropbox = async () => {
+  if (!dropboxManager || dropboxInitialized) {
+    refreshDropboxButton();
+    return;
+  }
+
+  dropboxManager.onConnectionChange = () => {
+    refreshDropboxButton();
+    if (!dropboxManager.isConnected) {
+      setSyncButtonDisabled(false);
+      updateSyncStatus('Disconnected from Dropbox.', null);
+    } else {
+      const name = dropboxManager.account?.name?.display_name || 'Dropbox';
+      updateSyncStatus(`Connected to Dropbox as ${name}.`, 'success');
+    }
+  };
+  dropboxManager.onLog = (message, type) => {
+    if (type === 'error') {
+      updateSyncStatus(message, 'error');
+    }
+  };
+
+  try {
+    await dropboxManager.init();
+    dropboxInitialized = true;
+    if (dropboxManager.isConnected) {
+      await dropboxManager.initializeFolderStructure();
+    }
+  } catch (error) {
+    console.error('Dropbox initialization failed:', error);
+    updateSyncStatus(`Dropbox init failed: ${error.message}`, 'error');
+  } finally {
+    setSyncButtonDisabled(false);
+    refreshDropboxButton();
+  }
+};
+
+const handleDropboxButtonClick = () => {
+  if (!dropboxManager) {
+    updateSyncStatus('Dropbox integration unavailable.', 'error');
+    return;
+  }
+  if (dropboxManager.isConnected) {
+    dropboxManager.disconnect();
+    updateSyncStatus('Disconnected from Dropbox.', null);
+    refreshDropboxButton();
+    return;
+  }
+  updateSyncStatus('Redirecting to Dropbox...', 'pending');
+  try {
+    dropboxManager.connect();
+  } catch (error) {
+    updateSyncStatus(`Dropbox connect failed: ${error.message}`, 'error');
+  }
+};
+
+const handleSyncToDropbox = async () => {
+  if (!dropboxManager) {
+    updateSyncStatus('Dropbox integration unavailable.', 'error');
+    return;
+  }
+
+  const payload = buildPlanSyncPayload();
+  if (!payload.plans.length) {
+    updateSyncStatus('Add exercises and a schedule before syncing to Dropbox.', 'error');
+    return;
+  }
+
+  await initializeDropbox();
+  if (!dropboxManager.isConnected) {
+    handleDropboxButtonClick();
+    return;
+  }
+
+  try {
+    setSyncButtonDisabled(true);
+    updateSyncStatus(`Syncing ${payload.plans.length} plan${payload.plans.length === 1 ? '' : 's'}...`, 'pending');
+    await dropboxManager.initializeFolderStructure();
+    let successCount = 0;
+    for (const plan of payload.plans) {
+      await dropboxManager.savePlan(plan.name, plan.items);
+      successCount += 1;
+    }
+    updateSyncStatus(`Synced ${successCount} plan${successCount === 1 ? '' : 's'} to Dropbox.`, 'success');
+  } catch (error) {
+    updateSyncStatus(`Dropbox sync failed: ${error.message}`, 'error');
+  } finally {
+    setSyncButtonDisabled(false);
+    refreshDropboxButton();
+  }
+};
+
+async function init() {
   const params = new URLSearchParams(window.location.search);
   const deepLink = params.get('exercise');
   const workoutParam = params.get('workout');
   if (deepLink) state.highlightId = deepLink;
+
+  await initializeDropbox();
 
   fetch('exercise_dump.json')
     .then((res) => res.json())
@@ -216,6 +401,7 @@ function init() {
       buildFilters();
       refreshFilterButtons();
       bindGlobalEvents();
+      setupSchedulePickers();
       syncSortControls();
       updateUnitToggle();
       updateBuilderFilterControl();
@@ -233,4 +419,6 @@ function init() {
     });
 }
 
+setSyncButtonDisabled(false);
+refreshDropboxButton();
 init();

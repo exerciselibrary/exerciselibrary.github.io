@@ -1,0 +1,1789 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Vitruvian Workout Control</title>
+        <!-- uPlot charting library -->
+        <link
+            rel="stylesheet"
+            href="https://leeoniya.github.io/uPlot/dist/uPlot.min.css"
+        />
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+            }
+
+            /* Layout */
+            .app-container {
+                display: flex;
+                height: 100vh;
+                overflow: hidden;
+            }
+
+            /* Sidebar */
+            .sidebar {
+                width: 400px;
+                background: white;
+                overflow-y: auto;
+                box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+                transition:
+                    transform 0.3s ease,
+                    width 0.3s ease,
+                    box-shadow 0.3s ease;
+                z-index: 1000;
+                flex-shrink: 0;
+            }
+
+            .sidebar-header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+                transition: opacity 0.2s ease;
+            }
+
+            .sidebar-header h1 {
+                font-size: 1.5em;
+                margin-bottom: 5px;
+            }
+
+            .sidebar-header p {
+                opacity: 0.9;
+                font-size: 0.9em;
+            }
+
+            .sidebar-content {
+                padding: 20px;
+                transition: opacity 0.2s ease;
+            }
+
+            .section {
+                margin-bottom: 25px;
+                padding-bottom: 25px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+
+            .section:last-child {
+                border-bottom: none;
+            }
+
+            .section h2 {
+                color: #667eea;
+                margin-bottom: 15px;
+                font-size: 1.2em;
+            }
+
+            /* Main content area */
+            .main-content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 20px;
+                transition: padding-left 0.3s ease;
+            }
+
+            .live-view-container {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+
+            .live-card {
+                background: white;
+                border-radius: 12px;
+                padding: 25px;
+                margin-bottom: 20px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            }
+
+            .live-card h2 {
+                color: #667eea;
+                margin-bottom: 20px;
+                font-size: 1.4em;
+                text-align: center;
+            }
+
+            .pr-banner {
+                display: none;
+                margin-bottom: 12px;
+                padding: 10px 14px;
+                border-radius: 10px;
+                background: #e9ecef;
+                color: #343a40;
+                font-weight: 600;
+                text-align: center;
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            }
+
+            .pr-banner:not(.hidden) {
+                display: block;
+            }
+
+            .pr-banner--new {
+                background: #d3f9d8;
+                color: #2b8a3e;
+            }
+
+            .pr-banner--tie {
+                background: #ffe8a1;
+                color: #704214;
+            }
+
+            .personal-best-wrapper {
+                text-align: center;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .personal-best-label {
+                font-size: 0.85em;
+                color: #6c757d;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+                text-transform: uppercase;
+            }
+
+            .personal-best-value {
+                font-size: 1.6em;
+                font-weight: 700;
+                color: #343a40;
+                transition: color 0.3s ease;
+            }
+
+            .personal-best-value.highlight {
+                color: #2b8a3e;
+            }
+
+            .confetti-container {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                overflow: hidden;
+                z-index: 2000;
+            }
+
+            .confetti-piece {
+                position: absolute;
+                width: 10px;
+                height: 16px;
+                border-radius: 2px;
+                opacity: 0;
+                transform: translateY(-120%) rotateZ(0deg);
+                animation: confetti-fall var(--confetti-duration, 3s) linear
+                    forwards;
+            }
+
+            @keyframes confetti-fall {
+                0% {
+                    opacity: 1;
+                    transform: translateY(-120%)
+                        rotateZ(var(--rotate-start, 0deg));
+                }
+                100% {
+                    opacity: 0;
+                    transform: translateY(110vh)
+                        rotateZ(var(--rotate-end, 720deg));
+                }
+            }
+
+            /* Sidebar toggle button */
+            .hamburger {
+                display: block;
+                position: fixed;
+                top: 20px;
+                left: 20px;
+                z-index: 1001;
+                background: white;
+                border: none;
+                padding: 12px;
+                border-radius: 8px;
+                cursor: pointer;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                width: 50px;
+                transition: left 0.3s ease, box-shadow 0.2s ease;
+            }
+
+            .hamburger span {
+                display: block;
+                width: 25px;
+                height: 3px;
+                background: #667eea;
+                margin: 5px 0;
+                border-radius: 2px;
+                transition: 0.3s;
+            }
+
+            .hamburger.is-collapsed span:nth-child(1) {
+                transform: translate(5px, 6px) rotate(45deg);
+            }
+
+            .hamburger.is-collapsed span:nth-child(2) {
+                opacity: 0;
+            }
+
+            .hamburger.is-collapsed span:nth-child(3) {
+                transform: translate(5px, -6px) rotate(-45deg);
+            }
+
+            /* Form elements */
+            .form-group {
+                margin-bottom: 15px;
+            }
+
+            label {
+                display: block;
+                margin-bottom: 5px;
+                color: #333;
+                font-weight: 500;
+                font-size: 0.9em;
+            }
+
+            select,
+            input {
+                width: 100%;
+                padding: 10px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                font-size: 14px;
+                transition: border-color 0.2s;
+            }
+
+            select:focus,
+            input:focus {
+                outline: none;
+                border-color: #667eea;
+            }
+
+            button {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 600;
+                transition:
+                    transform 0.2s,
+                    box-shadow 0.2s;
+                width: 100%;
+                margin-top: 5px;
+            }
+
+            button:hover:not(:disabled) {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            }
+
+            button:active:not(:disabled) {
+                transform: translateY(0);
+            }
+
+            button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            button.secondary {
+                background: #6c757d;
+            }
+
+            .unit-toggle-button {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                padding: 10px 18px;
+                background: white;
+                border: 2px solid #667eea;
+                color: #667eea;
+                border-radius: 999px;
+                font-weight: 600;
+                cursor: pointer;
+                transition:
+                    transform 0.2s,
+                    border-color 0.2s,
+                    box-shadow 0.2s;
+                width: auto;
+                min-width: 220px;
+            }
+
+            .unit-toggle-button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
+            }
+
+            .unit-toggle-button:active {
+                transform: translateY(0);
+            }
+
+            .unit-toggle-button .unit-option {
+                flex: 1;
+                text-align: center;
+                font-size: 0.95em;
+                position: relative;
+            }
+
+            .unit-toggle-button .unit-option::after {
+                content: "";
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: -6px;
+                height: 3px;
+                border-radius: 999px;
+                background: transparent;
+                transition: background 0.2s ease;
+            }
+
+            .unit-toggle-button[data-active-unit="kg"] .unit-option[data-unit="kg"]::after,
+            .unit-toggle-button[data-active-unit="lb"] .unit-option[data-unit="lb"]::after {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+
+            .unit-toggle-button .unit-separator {
+                font-size: 0.85em;
+                color: #ced4da;
+            }
+
+            .unit-toggle-hint {
+                font-size: 0.75em;
+                color: #6c757d;
+                margin-top: 6px;
+            }
+
+            .live-weight-control {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .live-weight-label {
+                font-size: 0.85em;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: #495057;
+                font-weight: 700;
+            }
+
+            .live-weight-display {
+                display: flex;
+                align-items: baseline;
+                gap: 6px;
+                font-size: 1.8em;
+                font-weight: 700;
+                color: #343a40;
+            }
+
+            .live-weight-display .stat-unit {
+                font-size: 0.4em;
+                color: #6c757d;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+
+            .weight-adjuster-circle {
+                position: relative;
+                width: 120px;
+                height: 120px;
+                border-radius: 50%;
+                background: white;
+                border: 3px solid rgba(102, 126, 234, 0.35);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow:
+                    0 8px 20px rgba(102, 126, 234, 0.15),
+                    inset 0 4px 12px rgba(102, 126, 234, 0.1);
+                overflow: hidden;
+            }
+
+            .weight-adjuster-center {
+                position: absolute;
+                width: 70px;
+                height: 70px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.8em;
+                font-weight: 600;
+                z-index: 1;
+                pointer-events: none;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                box-shadow: 0 5px 15px rgba(102, 126, 234, 0.35);
+            }
+
+            .weight-adjuster-segment {
+                position: absolute;
+                left: 0;
+                width: 100%;
+                height: 50%;
+                border: none;
+                cursor: pointer;
+                background: transparent;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.5em;
+                font-weight: 700;
+                color: #667eea;
+                z-index: 2;
+                transition: background 0.2s ease;
+            }
+
+            .weight-adjuster-segment:hover {
+                background: rgba(102, 126, 234, 0.12);
+            }
+
+            .weight-adjuster-segment:active {
+                background: rgba(102, 126, 234, 0.2);
+            }
+
+            .weight-adjuster-segment.increase {
+                top: 0;
+                border-radius: 60px 60px 0 0;
+            }
+
+            .weight-adjuster-segment.decrease {
+                bottom: 0;
+                border-radius: 0 0 60px 60px;
+            }
+
+            .status {
+                display: inline-block;
+                padding: 8px 20px;
+                border-radius: 20px;
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: 15px;
+            }
+
+            .status.disconnected {
+                background: #ffe0e0;
+                color: #c92a2a;
+            }
+
+            .status.connected {
+                background: #d3f9d8;
+                color: #2b8a3e;
+            }
+
+            /* Position bars */
+            .position-bars {
+                display: flex;
+                justify-content: space-around;
+                align-items: flex-end;
+                height: 300px;
+                padding: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                margin-top: 40px;
+            }
+
+            .bar-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                width: 100px;
+            }
+
+            .bar-label {
+                font-weight: 600;
+                margin-bottom: 10px;
+                margin-top: 15px;
+                color: #495057;
+            }
+
+            .bar-wrapper {
+                position: relative;
+                width: 60px;
+                height: 250px;
+                background: #e9ecef;
+                border-radius: 8px;
+                overflow: hidden;
+                border: 2px solid #dee2e6;
+            }
+
+            .bar {
+                position: absolute;
+                bottom: 0;
+                width: 100%;
+                background: linear-gradient(180deg, #ff6b6b 0%, #228be6 100%);
+                transition:
+                    height 0.1s linear,
+                    background 0.3s ease,
+                    box-shadow 0.3s ease;
+                border-radius: 6px 6px 0 0;
+            }
+
+            .range-line {
+                position: absolute;
+                left: -5px;
+                right: -5px;
+                height: 2px;
+                border-top: 2px dashed #ff6b6b;
+                opacity: 0;
+                transition: opacity 0.3s;
+                pointer-events: none;
+            }
+
+            .range-line.visible {
+                opacity: 0.8;
+            }
+
+            .range-line.min {
+                border-color: #ff6b6b;
+            }
+
+            .range-line.max {
+                border-color: #51cf66;
+            }
+
+            .range-band {
+                position: absolute;
+                left: 0;
+                right: 0;
+                opacity: 0;
+                transition: opacity 0.3s;
+                pointer-events: none;
+            }
+
+            .range-band.visible {
+                opacity: 0.15;
+            }
+
+            .range-band.min {
+                background-color: #ff6b6b;
+            }
+
+            .range-band.max {
+                background-color: #51cf66;
+            }
+
+            .bar-value {
+                margin-top: 10px;
+                font-size: 0.9em;
+                color: #495057;
+            }
+
+            /* Load graph */
+            #loadGraphContainer {
+                background: #f8f9fa;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                padding: 15px;
+            }
+
+            /* uPlot customization */
+            .uplot {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    sans-serif;
+            }
+
+            .u-legend {
+                font-size: 13px;
+            }
+
+            .u-series:hover {
+                cursor: pointer;
+            }
+
+            /* Time range selector */
+            .time-range-selector {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 15px;
+                flex-wrap: wrap;
+                align-items: center;
+            }
+
+            .time-range-selector button {
+                width: auto;
+                padding: 8px 16px;
+                font-size: 13px;
+                margin: 0;
+                flex: 0 0 auto;
+            }
+
+            .time-range-selector button.active {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+            }
+
+            .time-range-selector button:not(.active) {
+                background: white;
+                color: #667eea;
+                border: 2px solid #667eea;
+            }
+
+            .time-range-selector .export-btn {
+                margin-left: auto;
+                background: #2b8a3e;
+            }
+
+            .time-range-selector .export-btn.export-selected {
+                background: linear-gradient(135deg, #2b8a3e 0%, #1f7a3b 100%);
+                box-shadow: 0 4px 14px rgba(43, 138, 62, 0.35);
+            }
+
+            .time-range-selector .export-btn:hover {
+                box-shadow: 0 5px 20px rgba(43, 138, 62, 0.4);
+            }
+
+            .data-retention-note {
+                font-size: 0.75em;
+                color: #6c757d;
+                margin-top: -10px;
+                margin-bottom: 10px;
+                font-style: italic;
+            }
+
+            /* Stats grid */
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+
+            .stat-card {
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                border-left: 4px solid #667eea;
+            }
+
+            .stat-label {
+                font-size: 0.85em;
+                color: #6c757d;
+                margin-bottom: 5px;
+            }
+
+            .stat-value {
+                font-size: 1.8em;
+                font-weight: 700;
+                color: #212529;
+            }
+
+            .stat-unit {
+                font-size: 0.6em;
+                color: #6c757d;
+                font-weight: 400;
+            }
+
+            /* Log */
+            #log {
+                background: #1e1e1e;
+                color: #00ff00;
+                padding: 15px;
+                border-radius: 8px;
+                font-family: "Courier New", monospace;
+                font-size: 12px;
+                max-height: 300px;
+                overflow-y: auto;
+            }
+
+            .log-line {
+                margin: 2px 0;
+            }
+
+            .log-error {
+                color: #ff6b6b;
+            }
+
+            .log-success {
+                color: #51cf66;
+            }
+
+            .log-info {
+                color: #74c0fc;
+            }
+
+            .hidden {
+                display: none;
+            }
+
+            /* Workout history */
+            .history-item {
+                background: white;
+                padding: 12px 15px;
+                border-radius: 6px;
+                border-left: 4px solid #667eea;
+                font-size: 0.9em;
+                transition: box-shadow 0.2s ease, border-color 0.2s ease,
+                    background-color 0.2s ease;
+            }
+
+            .history-item.selected {
+                border-left-color: #2b8a3e;
+                box-shadow: 0 4px 12px rgba(43, 138, 62, 0.18);
+                background: #f3fff5;
+            }
+
+            .history-item-title {
+                font-weight: 600;
+                color: #212529;
+                margin-bottom: 3px;
+            }
+
+            .history-item-details {
+                color: #6c757d;
+                font-size: 0.95em;
+                margin-bottom: 8px;
+            }
+
+            .view-graph-btn {
+                background: linear-gradient(135deg, #51cf66 0%, #37b24d 100%);
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 0.85em;
+                font-weight: 600;
+                transition: transform 0.2s, box-shadow 0.2s;
+                width: 100%;
+                margin-top: 8px;
+            }
+
+            .view-graph-btn.active {
+                background: linear-gradient(135deg, #2b8a3e 0%, #1f7a3b 100%);
+                cursor: default;
+                box-shadow: none;
+            }
+
+            .view-graph-btn.active:hover {
+                transform: none;
+                box-shadow: none;
+            }
+
+            .view-graph-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 3px 12px rgba(81, 207, 102, 0.4);
+            }
+
+            .view-graph-btn:active {
+                transform: translateY(0);
+            }
+
+            /* Desktop: side by side layout for graph and history (2/3 and 1/3) */
+            @media (min-width: 1280px) {
+                #graphHistoryContainer {
+                    grid-template-columns: 2fr 1fr !important;
+                }
+            }
+
+            /* Mobile styles */
+            @media (max-width: 768px) {
+                .sidebar {
+                    position: fixed;
+                    left: 0;
+                    top: 0;
+                    height: 100vh;
+                    transform: translateX(-100%);
+                }
+
+                .sidebar.open {
+                    transform: translateX(0);
+                }
+
+                .hamburger {
+                    display: block;
+                }
+
+                .main-content {
+                    width: 100%;
+                }
+
+                .position-bars {
+                    height: 200px;
+                }
+
+                .bar-wrapper {
+                    height: 150px;
+                    width: 40px;
+                }
+
+                .stats-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+
+            @media (min-width: 769px) {
+                .app-container.sidebar-collapsed .sidebar {
+                    width: 0;
+                    min-width: 0;
+                    transform: translateX(-100%);
+                    box-shadow: none;
+                    overflow: hidden;
+                }
+
+                .app-container.sidebar-collapsed .sidebar-header,
+                .app-container.sidebar-collapsed .sidebar-content {
+                    opacity: 0;
+                    pointer-events: none;
+                }
+
+                .app-container.sidebar-collapsed .main-content {
+                    padding-left: 20px;
+                }
+
+                .hamburger {
+                    left: 420px;
+                }
+
+                .app-container.sidebar-collapsed .hamburger {
+                    left: 20px;
+                }
+            }
+
+            /* Overlay for mobile */
+            .overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 999;
+            }
+
+            .overlay.show {
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Mobile hamburger menu -->
+        <button class="hamburger" id="hamburger" onclick="app.toggleSidebar()">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+
+        <!-- Overlay for mobile -->
+        <div class="overlay" id="overlay" onclick="app.closeSidebar()"></div>
+
+        <div class="app-container" id="appContainer">
+            <!-- Sidebar -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h1>Vitruvian Control</h1>
+                    <p>Web Bluetooth Interface</p>
+                </div>
+
+                <div class="sidebar-content">
+                    <!-- Connection Section -->
+                    <div class="section">
+                        <h2>Connection</h2>
+                        <div class="status disconnected" id="status">
+                            Disconnected
+                        </div>
+                        <div>
+                            <button id="connectBtn" onclick="app.connect()">
+                                Connect to Device
+                            </button>
+                            <button
+                                id="disconnectBtn"
+                                class="secondary"
+                                onclick="app.disconnect()"
+                                disabled
+                            >
+                                Disconnect
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Program Mode Section -->
+                    <div class="section hidden" id="programSection">
+                        <h2>Program Mode</h2>
+
+                        <div class="form-group">
+                            <label for="mode" id="modeLabel"
+                                >Workout Mode:</label
+                            >
+                            <select id="mode">
+                                <option value="0">Old School</option>
+                                <option value="1">Pump</option>
+                                <option value="2">TUT</option>
+                                <option value="3">TUT Beast</option>
+                                <option value="4">Eccentric Only</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="weight" id="weightLabel"
+                                >Weight per cable (kg):</label
+                            >
+                            <input
+                                type="number"
+                                id="weight"
+                                value="10"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="progression" id="progressionLabel"
+                                >Progression/Regression (kg per rep):</label
+                            >
+                            <input
+                                type="number"
+                                id="progression"
+                                value="0"
+                                min="-3"
+                                max="3"
+                                step="0.1"
+                            />
+                            <div
+                                id="progressionHint"
+                                style="
+                                    font-size: 0.75em;
+                                    color: #6c757d;
+                                    margin-top: 5px;
+                                "
+                            >
+                                +3 to -3 kg
+                            </div>
+                        </div>
+
+                        <div
+                            class="form-group"
+                            style="
+                                display: grid;
+                                grid-template-columns: 1fr 1fr;
+                                gap: 20px;
+                            "
+                        >
+                            <div>
+                                <label for="reps">Number of reps:</label>
+                                <input
+                                    type="number"
+                                    id="reps"
+                                    value="10"
+                                    min="1"
+                                    max="100"
+                                />
+                            </div>
+                            <div style="align-self: center">
+                                <label
+                                    style="
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 8px;
+                                        margin-bottom: 5px;
+                                    "
+                                >
+                                    <input
+                                        type="checkbox"
+                                        id="justLiftCheckbox"
+                                        onchange="app.toggleJustLiftMode()"
+                                        style="width: auto"
+                                    />
+                                    <span>Just Lift Mode</span>
+                                </label>
+                                <div
+                                    style="
+                                        font-size: 0.75em;
+                                        color: #6c757d;
+                                        margin-top: 0;
+                                        line-height: 1.3;
+                                    "
+                                >
+                                    Unlimited reps with auto-stop after 5s at
+                                    rest
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onclick="app.startProgram()">
+                            Start Program
+                        </button>
+                    </div>
+
+                    <!-- Echo Mode Section -->
+                    <div class="section hidden" id="echoSection">
+                        <h2>Echo Mode</h2>
+
+                        <div class="form-group">
+                            <label for="echoLevel">Echo Level:</label>
+                            <select id="echoLevel">
+                                <option value="1">Hard</option>
+                                <option value="2">Harder</option>
+                                <option value="3">Hardest</option>
+                                <option value="4">Epic</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="eccentric">Eccentric Percentage:</label>
+                            <input
+                                type="number"
+                                id="eccentric"
+                                value="100"
+                                min="0"
+                                max="150"
+                                step="5"
+                            />
+                            <div
+                                style="
+                                    font-size: 0.75em;
+                                    color: #6c757d;
+                                    margin-top: 5px;
+                                "
+                            >
+                                Maximum: 150%
+                            </div>
+                        </div>
+
+                        <div
+                            class="form-group"
+                            style="
+                                display: grid;
+                                grid-template-columns: 1fr 1fr;
+                                gap: 20px;
+                            "
+                        >
+                            <div>
+                                <label for="targetReps">Number of Reps:</label>
+                                <input
+                                    type="number"
+                                    id="targetReps"
+                                    value="2"
+                                    min="0"
+                                    max="30"
+                                />
+                            </div>
+                            <div style="align-self: center">
+                                <label
+                                    style="
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 8px;
+                                        margin-bottom: 5px;
+                                    "
+                                >
+                                    <input
+                                        type="checkbox"
+                                        id="echoJustLiftCheckbox"
+                                        onchange="app.toggleEchoJustLiftMode()"
+                                        style="width: auto"
+                                    />
+                                    <span>Just Lift Mode</span>
+                                </label>
+                                <div
+                                    style="
+                                        font-size: 0.75em;
+                                        color: #6c757d;
+                                        margin-top: 0;
+                                        line-height: 1.3;
+                                    "
+                                >
+                                    Unlimited reps with auto-stop after 5s at
+                                    rest
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onclick="app.startEcho()">Start Echo</button>
+                    </div>
+
+
+<!-- Workout Plan Section -->
+                    <div class="section" id="planSection">
+                        <h2>Workout Plan</h2>
+
+                        <!-- Plan header / save-load row -->
+                        <div class="form-group" style="display:grid; grid-template-columns: 1fr; gap:10px; margin-bottom:10px;">
+                            <div style="display:grid; grid-template-columns: 1fr auto; gap:10px;">
+                                <input id="planNameInput" type="text" placeholder="Plan name (e.g., Push Day A)" />
+                                <button id="savePlanBtn" onclick="app.saveCurrentPlan()">Save Plan</button>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr auto auto; gap:10px;">
+                                <select id="planSelect"></select>
+                                <button class="secondary" id="loadPlanBtn" onclick="app.loadSelectedPlan()">Load</button>
+                                <button class="secondary" id="deletePlanBtn" onclick="app.deleteSelectedPlan()">Delete</button>
+                            </div>
+                        </div>
+
+                        <!-- Add rows -->
+                        <div class="form-group" style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button onclick="app.addPlanExercise()">+ Add Exercise</button>
+                            <button onclick="app.addPlanEcho()">+ Add Echo Mode</button>
+                            <button class="secondary" onclick="app.resetPlanToDefaults()">Reset to Defaults</button>
+                        </div>
+
+                        <!-- List -->
+                        <div id="planItems" style="display:flex; flex-direction:column; gap:12px;"></div>
+
+                        <!-- Start -->
+                        <button id="startPlanBtn" style="margin-top:15px;" onclick="app.startPlan()">Start Plan</button>
+                        <span id="planRestInline" style="margin-left:10px; font-size:.9rem; color:#6c757d;"></span>
+
+                        <!-- Tiny note -->
+                        <div style="font-size:0.75em; color:#6c757d; margin-top:10px;">
+                            Tips: reorder with Move Up/Down. Weights follow your unit setting; device still receives kg.
+                        </div>
+                    </div>
+
+
+                    <!-- Configuration Section -->
+                    <div class="section" id="configSection">
+                        <h2>Configuration</h2>
+
+                        <div class="form-group">
+                            <label>Display Units:</label>
+                            <button
+                                type="button"
+                                id="unitToggleButton"
+                                class="unit-toggle-button"
+                                aria-label="Toggle between kilograms and pounds"
+                                aria-pressed="false"
+                                data-active-unit="kg"
+                            >
+                                <span class="unit-option" data-unit="kg">Kilograms</span>
+                                <span class="unit-separator">|</span>
+                                <span class="unit-option" data-unit="lb">Pounds</span>
+                            </button>
+                            <div class="unit-toggle-hint">
+                                Tap to switch how weights display. The device still receives kilograms.
+                            </div>
+                        </div>
+
+                        <div
+                            style="
+                                font-size: 0.8em;
+                                color: #6c757d;
+                                line-height: 1.4;
+                                margin-bottom: 20px;
+                            "
+                        >
+                            Choose how loads appear in the dashboard, charts,
+                            and exported CSV files. The device always receives
+                            kilogram values.
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input
+                                    type="checkbox"
+                                    id="stopAtTopCheckbox"
+                                    onchange="app.toggleStopAtTop()"
+                                    style="width: auto; cursor: pointer;"
+                                />
+                                <span>Stop at top of final rep</span>
+                            </label>
+                        </div>
+
+                        <div
+                            style="
+                                font-size: 0.8em;
+                                color: #6c757d;
+                                line-height: 1.4;
+                            "
+                        >
+                            When enabled, the workout will automatically stop when you reach the top position of your final rep. Useful for exercises like squats where you want to finish standing.
+                        </div>
+                    </div>
+
+                    <!-- Dropbox Cloud Backup Section -->
+                    <div class="section" id="dropboxSection">
+                        <h2>
+                            Cloud Backup
+                            <span id="dropboxStatusBadge" style="
+                                display: inline-block;
+                                padding: 3px 8px;
+                                border-radius: 12px;
+                                font-size: 0.65em;
+                                margin-left: 8px;
+                                background: #e0e0e0;
+                                color: #6c757d;
+                            ">Not Connected</span>
+                        </h2>
+
+                        <div id="dropboxNotConnected" style="display: block;">
+                            <div
+                                style="
+                                    font-size: 0.85em;
+                                    color: #6c757d;
+                                    line-height: 1.4;
+                                    margin-bottom: 15px;
+                                "
+                            >
+                                Connect your personal Dropbox account to automatically back up your workout history. Your data is stored in <strong>your</strong> Dropbox, and we have zero access to it.
+                            </div>
+
+                            <button onclick="app.connectDropbox()">
+                                Connect Dropbox
+                            </button>
+
+                            <div
+                                style="
+                                    font-size: 0.75em;
+                                    color: #6c757d;
+                                    margin-top: 10px;
+                                    line-height: 1.3;
+                                "
+                            >
+                                🔒 Privacy-first: Backups are saved to YOUR Dropbox account. We never have access to your data.
+                            </div>
+                        </div>
+
+                        <div id="dropboxConnected" style="display: none;">
+                            <div class="status connected" style="margin-bottom: 15px;">
+                                Connected to Dropbox
+                            </div>
+
+                            <div
+                                style="
+                                    font-size: 0.85em;
+                                    color: #6c757d;
+                                    line-height: 1.4;
+                                    margin-bottom: 10px;
+                                "
+                            >
+                                Your workouts are automatically saved to <code>/Apps/VitruvianWorkouts/workouts/</code> in your Dropbox.
+                            </div>
+
+                            <div id="dropboxLastBackup" style="
+                                font-size: 0.8em;
+                                color: #495057;
+                                margin-bottom: 15px;
+                                padding: 8px;
+                                background: #f8f9fa;
+                                border-radius: 4px;
+                            ">
+                                <!-- Last backup time will appear here -->
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <button onclick="app.syncFromDropbox()">
+                                    Sync from Dropbox
+                                </button>
+
+                                <button class="secondary" onclick="app.requestExportAllToDropboxCSV()">
+                                    Export All as CSV to Dropbox
+                                </button>
+
+                                <button class="secondary" onclick="app.disconnectDropbox()" style="background: #dc3545;">
+                                    Disconnect Dropbox
+                                </button>
+                            </div>
+
+                            <div id="dropboxSyncStatus" style="
+                                font-size: 0.8em;
+                                color: #6c757d;
+                                margin-top: 10px;
+                                font-style: italic;
+                            ">
+                                <!-- Sync status messages appear here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Color Scheme Section -->
+                    <div class="section hidden" id="colorSection">
+                        <h2>Color Scheme</h2>
+
+                        <div class="form-group">
+                            <label for="colorPreset">Preset:</label>
+                            <select
+                                id="colorPreset"
+                                onchange="app.loadColorPreset()"
+                            >
+                                <option value="">Custom...</option>
+                                <option value="blue">Blue</option>
+                                <option value="green">Green</option>
+                                <option value="teal">Teal</option>
+                                <option value="yellow">Yellow</option>
+                                <option value="pink">Pink</option>
+                                <option value="red">Red</option>
+                                <option value="purple">Purple</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="color1">Color 1:</label>
+                            <input type="color" id="color1" value="#0000ff" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="color2">Color 2:</label>
+                            <input type="color" id="color2" value="#4c00ff" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="color3">Color 3:</label>
+                            <input type="color" id="color3" value="#8c23ff" />
+                        </div>
+
+                        <button onclick="app.setColorScheme()">
+                            Update Colors
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main content -->
+            <main class="main-content">
+                <div class="live-view-container">
+                    <!-- Live stats card -->
+                    <div class="live-card" id="liveStatsCard">
+                        <h2>Live Workout Data</h2>
+<div id="currentSetName" style="margin-bottom:6px; font-weight:600; color:#444;">&nbsp;</div>
+                        <div id="prBanner" class="pr-banner hidden"></div>
+                        <!-- Rep Counters -->
+                        <div
+                            style="
+                                display: grid;
+                                grid-template-columns: 1fr 1fr;
+                                gap: 15px;
+                                margin-bottom: 20px;
+                            "
+                        >
+                            <div
+                                style="
+                                    background: #e7f5ff;
+                                    padding: 15px;
+                                    border-radius: 8px;
+                                    text-align: center;
+                                "
+                            >
+                                <div
+                                    style="
+                                        font-size: 0.9em;
+                                        color: #1971c2;
+                                        margin-bottom: 5px;
+                                        font-weight: 600;
+                                    "
+                                >
+                                    Warmup Reps
+                                </div>
+                                <div
+                                    style="
+                                        font-size: 2em;
+                                        font-weight: 700;
+                                        color: #1864ab;
+                                    "
+                                    id="warmupCounter"
+                                >
+                                    -/3
+                                </div>
+                            </div>
+                            <div
+                                style="
+                                    background: #d3f9d8;
+                                    padding: 15px;
+                                    border-radius: 8px;
+                                    text-align: center;
+                                "
+                            >
+                                <div
+                                    style="
+                                        font-size: 0.9em;
+                                        color: #2f9e44;
+                                        margin-bottom: 5px;
+                                        font-weight: 600;
+                                    "
+                                >
+                                    Working Reps
+                                </div>
+                                <div
+                                    style="
+                                        font-size: 2em;
+                                        font-weight: 700;
+                                        color: #2b8a3e;
+                                    "
+                                    id="workingCounter"
+                                >
+                                    -/-
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Position Visualizer -->
+                        <div class="position-bars">
+                            <div class="bar-container">
+                                <div class="bar-label">Left Cable</div>
+                                <div class="bar-wrapper" id="barWrapperB">
+                                    <div class="bar" id="barB"></div>
+                                    <div
+                                        class="range-band min"
+                                        id="rangeBandMinB"
+                                    ></div>
+                                    <div
+                                        class="range-line min"
+                                        id="rangeMinB"
+                                    ></div>
+                                    <div
+                                        class="range-band max"
+                                        id="rangeBandMaxB"
+                                    ></div>
+                                    <div
+                                        class="range-line max"
+                                        id="rangeMaxB"
+                                    ></div>
+                                </div>
+                                <div class="bar-value" id="posBValue">0</div>
+                            </div>
+                            <div
+                                style="
+                                    display: flex;
+                                    flex-direction: column;
+                                    align-items: center;
+                                    gap: 20px;
+                                "
+                            >
+                                <div class="live-weight-control" id="liveWeightControl">
+                                    <div class="live-weight-label">Weight Per Cable</div>
+                                    <div class="live-weight-display" id="liveWeightDisplay" aria-live="polite">
+                                        <span id="liveWeightValue">-</span>
+                                        <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                    </div>
+                                </div>
+                                <div class="weight-adjuster-circle">
+                                    <button
+                                        type="button"
+                                        class="weight-adjuster-segment increase"
+                                        id="weightAdjusterIncrease"
+                                        aria-label="Increase weight per cable"
+                                    >
+                                        +
+                                    </button>
+                                    <div class="weight-adjuster-center">Adjust</div>
+                                    <button
+                                        type="button"
+                                        class="weight-adjuster-segment decrease"
+                                        id="weightAdjusterDecrease"
+                                        aria-label="Decrease weight per cable"
+                                    >
+                                        &minus;
+                                    </button>
+                                </div>
+
+                                <div
+                                    class="personal-best-wrapper"
+                                    id="personalBestWrapper"
+                                >
+                                    <div class="personal-best-label">
+                                        Personal Best (Total)
+                                    </div>
+                                    <div
+                                        class="personal-best-value"
+                                        id="personalBestLoad"
+                                    >
+                                        - <span class="stat-unit">kg</span>
+                                    </div>
+                                </div>
+
+                                <!-- Auto-stop timer (Just Lift mode only) -->
+                                <div
+                                    id="autoStopTimer"
+                                    style="
+                                        display: none;
+                                        text-align: center;
+                                        height: 80px;
+                                    "
+                                >
+                                    <svg
+                                        width="80"
+                                        height="80"
+                                        style="
+                                            transform: rotate(-90deg);
+                                            filter: drop-shadow(
+                                                0 2px 4px rgba(0, 0, 0, 0.1)
+                                            );
+                                        "
+                                    >
+                                        <!-- Background circle -->
+                                        <circle
+                                            cx="40"
+                                            cy="40"
+                                            r="35"
+                                            fill="none"
+                                            stroke="#e9ecef"
+                                            stroke-width="6"
+                                        />
+                                        <!-- Progress circle -->
+                                        <circle
+                                            id="autoStopProgress"
+                                            cx="40"
+                                            cy="40"
+                                            r="35"
+                                            fill="none"
+                                            stroke="#ff6b6b"
+                                            stroke-width="6"
+                                            stroke-dasharray="220"
+                                            stroke-dashoffset="220"
+                                            style="
+                                                transition: stroke-dashoffset
+                                                    0.1s linear;
+                                            "
+                                        />
+                                    </svg>
+                                    <div
+                                        id="autoStopText"
+                                        style="
+                                            margin-top: -54px;
+                                            font-size: 0.75em;
+                                            color: #6c757d;
+                                            font-weight: 600;
+                                            pointer-events: none;
+                                        "
+                                    >
+                                        Auto-Stop
+                                    </div>
+                                </div>
+
+                                <button
+                                    id="stopBtn"
+                                    onclick="app.stopWorkout()"
+                                    style="
+                                        background: linear-gradient(
+                                            135deg,
+                                            #dc3545 0%,
+                                            #c82333 100%
+                                        );
+                                        padding: 15px 30px;
+                                        font-size: 16px;
+                                        width: auto;
+                                        margin: 0;
+                                    "
+                                >
+                                    STOP
+                                </button>
+                            </div>
+                            <div class="bar-container">
+                                <div class="bar-label">Right Cable</div>
+                                <div class="bar-wrapper" id="barWrapperA">
+                                    <div class="bar" id="barA"></div>
+                                    <div
+                                        class="range-band min"
+                                        id="rangeBandMinA"
+                                    ></div>
+                                    <div
+                                        class="range-line min"
+                                        id="rangeMinA"
+                                    ></div>
+                                    <div
+                                        class="range-band max"
+                                        id="rangeBandMaxA"
+                                    ></div>
+                                    <div
+                                        class="range-line max"
+                                        id="rangeMaxA"
+                                    ></div>
+                                </div>
+                                <div class="bar-value" id="posAValue">0</div>
+                            </div>
+                        </div>
+
+                        <!-- Stats Grid -->
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">Right Cable Load</div>
+                                <div class="stat-value" id="loadA">
+                                    0.0 <span class="stat-unit">kg</span>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Left Cable Load</div>
+                                <div class="stat-value" id="loadB">
+                                    0.0 <span class="stat-unit">kg</span>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Total Load</div>
+                                <div class="stat-value" id="totalLoad">
+                                    0.0 <span class="stat-unit">kg</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Load Graph and History Section -->
+                        <div
+                            style="
+                                display: grid;
+                                grid-template-columns: 1fr;
+                                gap: 20px;
+                                margin-bottom: 20px;
+                            "
+                            id="graphHistoryContainer"
+                        >
+                            <div>
+                                <h3 style="color: #667eea; margin-bottom: 10px">
+                                    Load History
+                                </h3>
+                                <div id="loadGraphContainer">
+                                    <div class="time-range-selector">
+                                        <button
+                                            onclick="app.setTimeRange(10)"
+                                            id="range10s"
+                                        >
+                                            10s
+                                        </button>
+                                        <button
+                                            onclick="app.setTimeRange(30)"
+                                            id="range30s"
+                                            class="active"
+                                        >
+                                            30s
+                                        </button>
+                                        <button
+                                            onclick="app.setTimeRange(60)"
+                                            id="range60s"
+                                        >
+                                            1m
+                                        </button>
+                                        <button
+                                            onclick="app.setTimeRange(120)"
+                                            id="range2m"
+                                        >
+                                            2m
+                                        </button>
+                                        <button
+                                            onclick="app.setTimeRange(null)"
+                                            id="rangeAll"
+                                        >
+                                            All
+                                        </button>
+                                        <button
+                                            onclick="app.exportData()"
+                                            class="export-btn"
+                                            id="exportChartButton"
+                                        >
+                                            Export CSV
+                                        </button>
+                                    </div>
+                                    <div class="data-retention-note">
+                                        📊 Retains up to 2 hours of data.
+                                    </div>
+                                    <div id="loadGraph"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 style="color: #667eea; margin-bottom: 10px">
+                                    Workout History
+                                </h3>
+                                <div
+                                    style="
+                                        background: #f8f9fa;
+                                        padding: 20px;
+                                        border-radius: 8px;
+                                    "
+                                >
+                                    <div
+                                        id="historyList"
+                                        style="
+                                            display: flex;
+                                            flex-direction: column;
+                                            gap: 10px;
+                                        "
+                                    >
+                                        <div
+                                            style="
+                                                color: #6c757d;
+                                                font-size: 0.9em;
+                                                text-align: center;
+                                                padding: 20px;
+                                            "
+                                        >
+                                            No workouts completed yet
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                   
+<!-- Rest Overlay -->
+<div id="restOverlay" class="rest-overlay hidden">
+  <div class="rest-card">
+    <div id="restLabel" class="rest-label">Next set starts</div>
+    <div id="restSetName" class="rest-setname"></div> 
+
+    <div class="rest-ring">
+      <svg width="140" height="140" viewBox="0 0 100 100">
+        <!-- track -->
+        <circle cx="50" cy="50" r="45" stroke="#e9ecef" stroke-width="8" fill="none"/>
+        <!-- progress -->
+        <circle id="restProgress" cx="50" cy="50" r="45"
+                stroke="#667eea" stroke-width="8" fill="none"
+                stroke-linecap="round"
+                stroke-dasharray="282.743" stroke-dashoffset="0"
+                transform="rotate(-90 50 50)"/>
+        <text id="restTimeText" x="50" y="55" text-anchor="middle" font-size="22" fill="#212529">0</text>
+      </svg>
+    </div>
+
+    <div id="restNext" class="rest-next"><!-- next block summary --></div>
+
+    <div class="rest-actions">
+      <button id="restAddBtn"  class="secondary">+30 sec</button>
+      <button id="restSkipBtn" class="primary">Skip</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .rest-overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.45); z-index:9999; }
+  .rest-overlay.hidden { display:none; }
+  .rest-card { width:min(560px,92vw); background:#fff; border-radius:14px; padding:18px 20px; box-shadow:0 12px 40px rgba(0,0,0,.2); }
+  .rest-label { font-weight:700; color:#212529; margin-bottom:8px; text-align:center; }
+  .rest-ring  { display:grid; place-items:center; margin:6px 0 12px; }
+  .rest-next  { color:#495057; font-size:.95rem; text-align:center; margin-bottom:12px; }
+  .rest-actions { display:flex; gap:10px; justify-content:center; }
+  .rest-actions .primary   { background:#667eea; color:#fff; border:0; padding:8px 14px; border-radius:8px; }
+  .rest-actions .secondary { background:#f1f3f5; color:#212529; border:0; padding:8px 14px; border-radius:8px; }
+  .rest-setname { text-align:center; font-weight:600; color:#343a40; margin-top:2px; margin-bottom:4px; }
+</style>
+
+	 <!-- Log card -->
+                    <div class="live-card">
+                        <h2>Console Log</h2>
+                        <div id="log"></div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Dropbox SDK -->
+        <script src="https://unpkg.com/dropbox@10.34.0/dist/Dropbox-sdk.min.js"></script>
+
+        <script src="https://leeoniya.github.io/uPlot/dist/uPlot.iife.js"></script>
+        <script src="modes.js"></script>
+        <script src="protocol.js"></script>
+        <script src="device.js"></script>
+        <script src="chart.js"></script>
+        <script src="dropbox.js"></script>
+        <script src="app.js"></script>
+    </body>
+</html>

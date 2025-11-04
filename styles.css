@@ -28,7 +28,6 @@ body {
 
 .builder-active .layout { grid-template-columns: 1fr; }
 .builder-active .sidebar { display: none; }
-
 /* Two-column layout: sticky filters on the left */
 .layout {
   display: grid;
@@ -306,6 +305,17 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
   color: #e8ffe8;
   box-shadow: inset 0 0 0 2px rgba(34, 197, 94, 0.25), 0 0 16px rgba(34, 197, 94, 0.12);
 }
+.btn.primary {
+  background: #1c2843;
+  border-color: #4c6ef5;
+  color: #e7efff;
+  box-shadow: 0 0 18px rgba(76, 110, 245, 0.28);
+}
+.btn.primary:hover {
+  background: #253257;
+  border-color: #7293ff;
+  color: #ffffff;
+}
 .btn.subtle { background: transparent; color: var(--muted); }
 .btn.subtle:hover { color: var(--text); }
 .btn.danger { background: #3b1111; border-color: #ef4444; color: #ffe0e0; }
@@ -334,12 +344,117 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
   min-width: 220px;
 }
 #builderMuscles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.muscle-summary-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.muscle-flag {
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+#builderMuscles .muscle-flag:not(:first-of-type)::before {
+  content: '•';
+  font-weight: 700;
+  color: var(--muted);
+  margin: 0 6px;
+}
+.muscle-flag.hit {
+  color: #2f9e44;
+}
+.muscle-flag.miss {
+  color: #c92a2a;
+}
+.muscle-summary-count {
+  font-size: 0.85em;
   color: var(--muted);
 }
 .builder-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .builder-actions .btn.small { min-width: 0; }
 .builder-actions .option { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .builder-actions .option input { accent-color: #22c55e; }
+.builder-bulk-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 6px 0 10px;
+}
+.builder-bulk-controls label {
+  font-size: 12px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.builder-bulk-controls select {
+  min-width: 90px;
+}
+.plan-controls {
+  display: grid;
+  gap: 16px;
+  background: #101523;
+  border: 1px solid #202a3d;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.plan-name-field { display: grid; gap: 8px; }
+.plan-name-field input { font-size: 14px; }
+.schedule-fields {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.schedule-field { display: grid; gap: 6px; }
+.schedule-field label { font-size: 12px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+.schedule-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.schedule-days button {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #2a3244;
+  background: #0f1524;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.schedule-days button:hover { color: var(--text); border-color: #3b4a6d; }
+.schedule-days button.active {
+  background: #1b2b4d;
+  border-color: #4c6ef5;
+  color: #e7efff;
+  box-shadow: 0 0 12px rgba(76, 110, 245, 0.3);
+}
+.schedule-repeat { display: flex; align-items: center; gap: 8px; }
+.schedule-repeat input { width: 70px; text-align: center; }
+.schedule-calendar {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.schedule-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #0f1524;
+  border: 1px solid #202a3d;
+  font-size: 13px;
+}
+.schedule-entry .date { font-weight: 600; color: #c6d4ff; }
+.schedule-entry .details { color: var(--muted); font-size: 12px; }
+.builder-sync-status { min-height: 18px; }
+.builder-sync-status.success { color: #4ade80; }
+.builder-sync-status.error { color: #f87171; }
+.builder-sync-status.pending { color: #93c5fd; }
 .builder-list { display: grid; gap: 16px; }
 .builder-list.grouped { gap: 20px; }
 .builder-group {

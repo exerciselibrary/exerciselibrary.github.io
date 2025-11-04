@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Exercise Library Explorer</title>
     <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+    />
   </head>
   <body>
     <header class="container">
@@ -75,6 +79,7 @@
           <div class="view-links">
             <button type="button" id="tabLibrary" class="view-link active" data-target="libraryPanel">Exercise Library</button>
             <button type="button" id="tabBuilder" class="view-link" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
+            <button type="button" id="tabWorkout" class="view-link" data-target="workoutPanel">Workout Time</button>
           </div>
         </div>
 
@@ -101,6 +106,8 @@
               <div id="builderMuscles" class="muted small"></div>
             </div>
             <div class="builder-actions">
+              <button id="connectDropbox" class="btn small" title="Manage Dropbox connection">Connect Dropbox</button>
+              <button id="syncToDropbox" class="btn small primary" title="Sync workout plan to Dropbox">Sync to Dropbox</button>
               <button id="exportWorkout" class="btn small" title="Download as Excel">Export to Excel</button>
               <button id="printWorkout" class="btn small" title="Print workout">Print</button>
               <button id="shareWorkout" class="btn small" title="Copy a shareable workout link">Share</button>
@@ -113,6 +120,44 @@
               <label class="option"><input type="checkbox" id="includeCheckboxes" /> Include checkboxes</label>
             </div>
           </div>
+          <div class="plan-controls">
+              <div class="plan-name-field">
+                <label for="planNameInput">Plan Name</label>
+                <input type="text" id="planNameInput" placeholder="e.g., Push / Pull Split" />
+              </div>
+              <div class="schedule-fields">
+                <div class="schedule-field">
+                  <label for="scheduleStart">Start Date</label>
+                  <input type="text" id="scheduleStart" placeholder="Select date" />
+                </div>
+                <div class="schedule-field">
+                  <label>Days of Week</label>
+                  <div id="scheduleDays" class="schedule-days" role="group" aria-label="Select training days">
+                    <button type="button" data-day="0">Sun</button>
+                    <button type="button" data-day="1">Mon</button>
+                    <button type="button" data-day="2">Tue</button>
+                    <button type="button" data-day="3">Wed</button>
+                    <button type="button" data-day="4">Thu</button>
+                    <button type="button" data-day="5">Fri</button>
+                    <button type="button" data-day="6">Sat</button>
+                  </div>
+                </div>
+                <div class="schedule-field">
+                  <label for="scheduleInterval">Repeat Every</label>
+                  <div class="schedule-repeat">
+                    <input type="number" id="scheduleInterval" min="1" value="1" />
+                    <span>week(s)</span>
+                  </div>
+                </div>
+                <div class="schedule-field">
+                  <label for="scheduleEnd">End Date</label>
+                  <input type="text" id="scheduleEnd" placeholder="Select date" />
+                </div>
+              </div>
+            </div>
+          <div id="scheduleCalendar" class="schedule-calendar" aria-live="polite"></div>
+          <div id="builderSyncStatus" class="builder-sync-status muted small" aria-live="polite"></div>
+
           <div id="builderList" class="builder-list"></div>
         </div>
       </section>
@@ -138,12 +183,9 @@
 
     <button id="scrollDown" class="scroll-btn down" title="Jump to bottom">&darr;</button>
 
+    <script src="https://unpkg.com/dropbox@10.34.0/dist/Dropbox-sdk.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="workout-time/dropbox.js"></script>
     <script type="module" src="js/main.js"></script>
   </body>
   </html>
-
-
-
-
-
-

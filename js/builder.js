@@ -7,7 +7,8 @@ import {
   ECHO_LEVELS,
   SHARE_ICON_HTML,
   SHARE_SUCCESS_HTML,
-  SHARE_ERROR_HTML
+  SHARE_ERROR_HTML,
+  KG_PER_LB
 } from './constants.js';
 import { state, els, setDragDidDrop, getDragDidDrop } from './context.js';
 import { niceName, formatWeight, convertWeightValue, createWorkbookXlsx } from './utils.js';
@@ -40,6 +41,123 @@ const triggerRender = () => {
   }
 };
 
+const propagateSetValue = (entry, startIndex, apply) => {
+  if (!entry || !Array.isArray(entry.sets)) return;
+  for (let i = startIndex + 1; i < entry.sets.length; i += 1) {
+    apply(entry.sets[i], i);
+  }
+};
+
+const MAX_SCHEDULE_OCCURRENCES = 12;
+const DEFAULT_PLAN_NAME = 'Workout Plan';
+const PROGRAM_MODE_MAP = {
+  OLD_SCHOOL: 0,
+  PUMP: 1,
+  TIME_UNDER_TENSION: 2,
+  ECCENTRIC: 4
+};
+const PROGRESSIVE_OVERLOAD_TOOLTIP =
+  'Increase the percent lifted per workout for this exercise. Only applies on new days where you do this exercise.';
+
+const OCCURRENCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric'
+});
+
+const formatISODate = (date) => {
+  if (!(date instanceof Date)) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseISODate = (value) => {
+  if (typeof value !== 'string' || !value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, yearStr, monthStr, dayStr] = match;
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10) - 1;
+  const day = Number.parseInt(dayStr, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  const date = new Date(year, month, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const clampPositiveInt = (value, fallback = 1) => {
+  const num = Number.parseInt(value, 10);
+  return Number.isFinite(num) && num > 0 ? num : fallback;
+};
+
+const computeScheduleOccurrences = (schedule) => {
+  const occurrences = [];
+  if (!schedule) return occurrences;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const start = parseISODate(schedule.startDate);
+  const base = start || today;
+  const end = parseISODate(schedule.endDate);
+  const interval = clampPositiveInt(schedule.repeatInterval, 1);
+
+  const defaultDayRef = start && start > today ? start : today;
+  const dayValues =
+    schedule.daysOfWeek && schedule.daysOfWeek.size
+      ? Array.from(schedule.daysOfWeek)
+          .map((day) => Number(day))
+          .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      : [defaultDayRef.getDay()];
+
+  const days = Array.from(new Set(dayValues)).sort((a, b) => a - b);
+
+  const cursor =
+    start && start > today ? new Date(start) : new Date(today);
+  let iterations = 0;
+
+  while (occurrences.length < MAX_SCHEDULE_OCCURRENCES && iterations < 1000) {
+    if (end && cursor > end) break;
+
+    const diffDays = Math.floor((cursor - base) / 86400000);
+    const weekIndex = Math.floor(diffDays / 7);
+
+    if (weekIndex % interval === 0 && days.includes(cursor.getDay())) {
+      occurrences.push(new Date(cursor));
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+    iterations += 1;
+  }
+
+  return occurrences;
+};
+
+const toPerCableKg = (value) => {
+  const num = Number.parseFloat(value);
+  if (!Number.isFinite(num)) return 0;
+  return state.weightUnit === 'LBS' ? num * KG_PER_LB : num;
+};
+
+const roundKg = (value) => Math.round(value * 1000) / 1000;
+
+const sanitizeNumber = (value, fallback = 0) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const parseReps = (value) => {
+  const num = Number.parseInt(value, 10);
+  return Number.isFinite(num) && num >= 0 ? num : 0;
+};
+
+const clamp = (value, min, max) => {
+  return Math.min(Math.max(value, min), max);
+};
+
 const convertAllWeights = (newUnit) => {
   const previous = state.weightUnit;
   if (previous === newUnit) return;
@@ -47,6 +165,9 @@ const convertAllWeights = (newUnit) => {
     entry.sets.forEach((set) => {
       if (set.weight) {
         set.weight = convertWeightValue(set.weight, previous, newUnit);
+      }
+      if (set.progression) {
+        set.progression = convertWeightValue(set.progression, previous, newUnit);
       }
     });
   });
@@ -70,6 +191,43 @@ export const toggleWeightUnit = () => {
 
 const getWeightLabel = () => (state.weightUnit === 'LBS' ? 'lbs' : 'kg');
 
+export const setPlanName = (value) => {
+  state.plan.name = typeof value === 'string' ? value : '';
+  persistState();
+  triggerRender();
+};
+
+export const setScheduleStart = (value) => {
+  state.plan.schedule.startDate = value || '';
+  persistState();
+  triggerRender();
+};
+
+export const setScheduleEnd = (value) => {
+  state.plan.schedule.endDate = value || '';
+  persistState();
+  triggerRender();
+};
+
+export const setScheduleInterval = (value) => {
+  state.plan.schedule.repeatInterval = clampPositiveInt(value, 1);
+  persistState();
+  triggerRender();
+};
+
+export const toggleScheduleDay = (day) => {
+  const numeric = Number(day);
+  if (!Number.isInteger(numeric) || numeric < 0 || numeric > 6) return;
+  const days = state.plan.schedule.daysOfWeek;
+  if (days.has(numeric)) {
+    days.delete(numeric);
+  } else {
+    days.add(numeric);
+  }
+  persistState();
+  triggerRender();
+};
+
 const getModeLabel = (set) => {
   if (!set) return '';
   if (set.mode === 'ECHO') {
@@ -79,9 +237,182 @@ const getModeLabel = (set) => {
   return MODE_LABELS[set.mode] || MODE_LABELS.OLD_SCHOOL;
 };
 
+const buildPlanItems = () => {
+  const items = [];
+
+  state.builder.order.forEach((exerciseId) => {
+    const entry = state.builder.items.get(exerciseId);
+    if (!entry) return;
+
+    const exerciseName = entry.exercise?.name || 'Exercise';
+    const sets = Array.isArray(entry.sets) ? entry.sets : [];
+    if (!sets.length) return;
+
+    sets.forEach((set) => {
+      const mode = set.mode || 'OLD_SCHOOL';
+      const displayName = exerciseName;
+
+      if (mode === 'ECHO') {
+        const levelIndex = (() => {
+          const idx = ECHO_LEVELS.findIndex((opt) => opt.value === set.echoLevel);
+          return idx >= 0 ? idx : 0;
+        })();
+
+        let eccentric = Number.parseInt(set.eccentricPct, 10);
+        if (!Number.isFinite(eccentric)) {
+          eccentric = 100;
+        }
+        eccentric = clamp(eccentric, 100, 130);
+        eccentric = 100 + Math.round((eccentric - 100) / 5) * 5;
+
+        items.push({
+          type: 'echo',
+          name: displayName,
+          level: levelIndex,
+          eccentricPct: eccentric,
+          targetReps: 0,
+          sets: 1,
+          restSec: 60,
+          justLift: true,
+          stopAtTop: false
+        });
+      } else {
+        const perCableKg = roundKg(Math.max(0, toPerCableKg(set.weight)));
+        const modeCode = PROGRAM_MODE_MAP[mode] ?? PROGRAM_MODE_MAP.OLD_SCHOOL;
+        const progressionDisplay = set.progression || '';
+        let progressionKg = 0;
+        const progressionNumber = Number.parseFloat(progressionDisplay);
+        if (Number.isFinite(progressionNumber)) {
+          progressionKg = clamp(roundKg(toPerCableKg(progressionNumber)), -3, 3);
+        }
+        const parsedPercent = Number.parseFloat(set.progressionPercent);
+        const progressionPercent = Number.isFinite(parsedPercent) ? clamp(parsedPercent, -100, 400) : null;
+
+        items.push({
+          type: 'exercise',
+          name: displayName,
+          mode: modeCode,
+          perCableKg,
+          reps: parseReps(set.reps),
+          sets: 1,
+          restSec: 60,
+          progressionKg,
+          progressionDisplay: progressionDisplay || '',
+          progressionUnit: state.weightUnit,
+          progressionPercent,
+          justLift: false,
+          stopAtTop: false,
+          cables: 2
+        });
+      }
+    });
+  });
+
+  return items;
+};
+
+const updateScheduleCalendar = () => {
+  if (!els.scheduleCalendar) return;
+
+  const container = els.scheduleCalendar;
+  const planItems = buildPlanItems();
+
+  if (!planItems.length) {
+    container.innerHTML = '<div class="schedule-entry muted small">Add exercises to preview your training calendar.</div>';
+    return;
+  }
+
+  const occurrences = computeScheduleOccurrences(state.plan.schedule);
+  if (!occurrences.length) {
+    container.innerHTML = '<div class="schedule-entry muted small">Select a start date or training days to generate a schedule.</div>';
+    return;
+  }
+
+  const baseName = state.plan.name.trim() || DEFAULT_PLAN_NAME;
+  const setCount = planItems.length;
+  container.innerHTML = occurrences
+    .map((date) => {
+      const label = OCCURRENCE_FORMATTER.format(date);
+      const details = `${baseName} • ${setCount} set${setCount === 1 ? '' : 's'}`;
+      return `<div class="schedule-entry"><span class="date">${label}</span><span class="details">${details}</span></div>`;
+    })
+    .join('');
+};
+
+export const syncPlanControls = () => {
+  if (els.planNameInput && els.planNameInput.value !== state.plan.name) {
+    els.planNameInput.value = state.plan.name;
+  }
+
+  if (els.scheduleStart) {
+    const start = state.plan.schedule.startDate || '';
+    const picker = els.scheduleStart._flatpickr;
+    if (picker) {
+      if (start) {
+        if (picker.input.value !== start) {
+          picker.setDate(start, false);
+        }
+      } else if (picker.input.value !== '') {
+        picker.clear();
+      }
+    } else if (els.scheduleStart.value !== start) {
+      els.scheduleStart.value = start;
+    }
+  }
+
+  if (els.scheduleEnd) {
+    const end = state.plan.schedule.endDate || '';
+    const picker = els.scheduleEnd._flatpickr;
+    if (picker) {
+      if (end) {
+        if (picker.input.value !== end) {
+          picker.setDate(end, false);
+        }
+      } else if (picker.input.value !== '') {
+        picker.clear();
+      }
+    } else if (els.scheduleEnd.value !== end) {
+      els.scheduleEnd.value = end;
+    }
+  }
+
+  if (els.scheduleInterval) {
+    const intervalValue = String(state.plan.schedule.repeatInterval || 1);
+    if (els.scheduleInterval.value !== intervalValue) {
+      els.scheduleInterval.value = intervalValue;
+    }
+  }
+
+  if (els.scheduleDays) {
+    const days = state.plan.schedule.daysOfWeek;
+    els.scheduleDays
+      .querySelectorAll('button[data-day]')
+      .forEach((button) => {
+        const day = Number(button.dataset.day);
+        const active = days.has(day);
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+  }
+};
+
+export const renderSchedulePreview = () => {
+  updateScheduleCalendar();
+};
+
 export const renderSetRow = (exerciseId, set, index) => {
   const entry = state.builder.items.get(exerciseId);
   const tr = document.createElement('tr');
+
+  if (!Number.isFinite(Number.parseInt(set.eccentricPct, 10))) {
+    set.eccentricPct = 100;
+  }
+  if (set.progression === undefined || set.progression === null) {
+    set.progression = '';
+  }
+  if (set.progressionPercent === undefined || set.progressionPercent === null) {
+    set.progressionPercent = '';
+  }
 
   const setCell = document.createElement('td');
   setCell.textContent = index + 1;
@@ -126,9 +457,46 @@ export const renderSetRow = (exerciseId, set, index) => {
   repsInput.value = set.reps;
   repsInput.addEventListener('input', () => {
     set.reps = repsInput.value;
+  });
+  repsInput.addEventListener('change', () => {
+    const newValue = repsInput.value;
+    set.reps = newValue;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.reps !== newValue) {
+        target.reps = newValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  const repsWrapper = document.createElement('div');
+  repsWrapper.appendChild(repsInput);
+  repsCell.appendChild(repsWrapper);
+
+  const eccentricWrapper = document.createElement('div');
+  eccentricWrapper.className = 'eccentric-select';
+  eccentricWrapper.style.display = 'none';
+  const eccentricSelect = document.createElement('select');
+  for (let pct = 100; pct <= 130; pct += 5) {
+    const option = document.createElement('option');
+    option.value = String(pct);
+    option.textContent = `${pct}%`;
+    if (Number.parseInt(set.eccentricPct, 10) === pct) {
+      option.selected = true;
+    }
+    eccentricSelect.appendChild(option);
+  }
+  eccentricSelect.addEventListener('change', () => {
+    const value = Number.parseInt(eccentricSelect.value, 10);
+    set.eccentricPct = Number.isFinite(value) ? value : 100;
     persistState();
   });
-  repsCell.appendChild(repsInput);
+  eccentricWrapper.appendChild(eccentricSelect);
+  repsCell.appendChild(eccentricWrapper);
 
   const weightCell = document.createElement('td');
   const weightInput = document.createElement('input');
@@ -138,7 +506,7 @@ export const renderSetRow = (exerciseId, set, index) => {
   weightInput.step = state.weightUnit === 'KG' ? '0.1' : '0.5';
   weightInput.placeholder = getWeightLabel();
   weightInput.value = set.weight;
-  weightInput.addEventListener('input', () => {
+  const applyWeightValue = () => {
     const max = state.weightUnit === 'LBS' ? MAX_CABLE_WEIGHT : MAX_CABLE_WEIGHT_KG;
     const value = Number(weightInput.value || 0);
     if (value > max) {
@@ -147,7 +515,24 @@ export const renderSetRow = (exerciseId, set, index) => {
     } else {
       set.weight = weightInput.value;
     }
+    return set.weight;
+  };
+  weightInput.addEventListener('input', () => {
+    applyWeightValue();
+  });
+  weightInput.addEventListener('change', () => {
+    const finalValue = applyWeightValue();
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.weight !== finalValue) {
+        target.weight = finalValue;
+        updated = true;
+      }
+    });
     persistState();
+    if (updated) {
+      triggerRender();
+    }
   });
   const weightWrapper = document.createElement('div');
   weightWrapper.appendChild(weightInput);
@@ -156,27 +541,104 @@ export const renderSetRow = (exerciseId, set, index) => {
   echoNote.className = 'muted';
   echoNote.textContent = 'Not used for Echo Mode';
 
+  const progressionCell = document.createElement('td');
+  const progressionInput = document.createElement('input');
+  progressionInput.type = 'number';
+  progressionInput.step = weightInput.step;
+  progressionInput.min = '-100';
+  progressionInput.max = weightInput.max;
+  progressionInput.placeholder = `Δ ${getWeightLabel()}`;
+  progressionInput.value = set.progression;
+  progressionInput.addEventListener('input', () => {
+    set.progression = progressionInput.value;
+  });
+  progressionInput.addEventListener('change', () => {
+    const finalValue = progressionInput.value;
+    set.progression = finalValue;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.progression !== finalValue) {
+        target.progression = finalValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  const progressionWrapper = document.createElement('div');
+  progressionWrapper.appendChild(progressionInput);
+  progressionCell.appendChild(progressionWrapper);
+
+  const progressionPercentCell = document.createElement('td');
+  const progressionPercentInput = document.createElement('input');
+  progressionPercentInput.type = 'number';
+  progressionPercentInput.step = '0.5';
+  progressionPercentInput.min = '-100';
+  progressionPercentInput.max = '400';
+  progressionPercentInput.placeholder = '%';
+  progressionPercentInput.value = set.progressionPercent;
+  progressionPercentInput.title = PROGRESSIVE_OVERLOAD_TOOLTIP;
+  progressionPercentInput.addEventListener('input', () => {
+    set.progressionPercent = progressionPercentInput.value;
+  });
+  progressionPercentInput.addEventListener('change', () => {
+    const finalValue = progressionPercentInput.value;
+    set.progressionPercent = finalValue;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.progressionPercent !== finalValue) {
+        target.progressionPercent = finalValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  const progressionPercentWrapper = document.createElement('div');
+  progressionPercentWrapper.appendChild(progressionPercentInput);
+  progressionPercentCell.appendChild(progressionPercentWrapper);
+
   const updateWeightVisibility = () => {
     const isEcho = set.mode === 'ECHO';
     if (isEcho) {
       weightWrapper.style.display = 'none';
+      progressionWrapper.style.display = 'none';
+      progressionPercentWrapper.style.display = 'none';
       if (!modeCell.contains(echoWrapper)) modeCell.appendChild(echoWrapper);
       if (!echoNote.parentElement) weightCell.appendChild(echoNote);
     } else {
       weightWrapper.style.display = '';
+      progressionWrapper.style.display = '';
+      progressionPercentWrapper.style.display = '';
       if (echoWrapper.parentElement === modeCell) echoWrapper.remove();
       if (echoNote.parentElement === weightCell) echoNote.remove();
       weightInput.value = set.weight || '';
+      progressionInput.value = set.progression || '';
+      progressionPercentInput.value = set.progressionPercent || '';
     }
+  };
+
+  const updateRepEditor = () => {
+    const isEcho = set.mode === 'ECHO';
+    repsWrapper.style.display = isEcho ? 'none' : '';
+    eccentricWrapper.style.display = isEcho ? '' : 'none';
   };
 
   modeSelect.addEventListener('change', () => {
     set.mode = modeSelect.value;
+    if (set.mode === 'ECHO' && !Number.isFinite(Number.parseInt(set.eccentricPct, 10))) {
+      set.eccentricPct = 100;
+    }
     persistState();
     triggerRender();
   });
 
   updateWeightVisibility();
+  updateRepEditor();
 
   const actionsCell = document.createElement('td');
   actionsCell.className = 'set-actions';
@@ -191,7 +653,7 @@ export const renderSetRow = (exerciseId, set, index) => {
   });
   actionsCell.appendChild(removeBtn);
 
-  tr.append(setCell, modeCell, repsCell, weightCell, actionsCell);
+  tr.append(setCell, modeCell, repsCell, weightCell, progressionCell, progressionPercentCell, actionsCell);
   return tr;
 };
 
@@ -254,17 +716,22 @@ export const removeExerciseFromBuilder = (id) => {
 
 export const updateBuilderBadge = () => {
   const count = state.builder.order.length;
-  els.builderCount.textContent = count;
+  if (els.builderCount) els.builderCount.textContent = count;
+
   const isBuilder = state.activeTab === 'builder';
-  els.tabBuilder.classList.toggle('active', isBuilder);
-  els.tabLibrary.classList.toggle('active', !isBuilder);
-  els.builderPanel.classList.toggle('active', isBuilder);
-  els.libraryPanel.classList.toggle('active', !isBuilder);
+  const isLibrary = !isBuilder;
+
+  if (els.tabBuilder) els.tabBuilder.classList.toggle('active', isBuilder);
+  if (els.tabLibrary) els.tabLibrary.classList.toggle('active', isLibrary);
+
+  if (els.builderPanel) els.builderPanel.classList.toggle('active', isBuilder);
+  if (els.libraryPanel) els.libraryPanel.classList.toggle('active', isLibrary);
+
   document.body.classList.toggle('builder-active', isBuilder);
 };
 
 export const switchTab = (tab) => {
-  state.activeTab = tab;
+  state.activeTab = tab === 'builder' ? 'builder' : 'library';
   updateBuilderBadge();
   persistState();
   triggerRender();
@@ -296,6 +763,72 @@ export const toggleGrouping = (type) => {
   updateGroupingButtons();
   persistState();
   triggerRender();
+};
+
+export const buildPlanSyncPayload = () => {
+  const planItems = buildPlanItems();
+  const baseName = state.plan.name.trim() || DEFAULT_PLAN_NAME;
+
+  if (!planItems.length) {
+    return {
+      plans: [],
+      baseName,
+      occurrences: [],
+      displayOccurrences: [],
+      itemCount: 0
+    };
+  }
+
+  const occurrences = computeScheduleOccurrences(state.plan.schedule);
+
+  if (!occurrences.length) {
+    return {
+      plans: [
+        {
+          name: baseName,
+          items: planItems.map((item) => ({ ...item }))
+        }
+      ],
+      baseName,
+      occurrences: [],
+      displayOccurrences: [],
+      itemCount: planItems.length
+    };
+  }
+
+  const plans = occurrences.map((date, occurrenceIndex) => {
+    const iso = formatISODate(date);
+    const items = planItems.map((item) => {
+      if (item.type !== 'exercise') {
+        return { ...item };
+      }
+
+      const copy = { ...item };
+      const percent = Number.parseFloat(item.progressionPercent);
+      const hasProgressiveOverload = Number.isFinite(percent) && percent !== 0;
+
+      if (hasProgressiveOverload && occurrenceIndex > 0) {
+        const factor = Math.pow(1 + percent / 100, occurrenceIndex);
+        copy.perCableKg = roundKg(item.perCableKg * factor);
+      }
+
+      return copy;
+    });
+
+    return {
+      name: `${iso} ${baseName}`,
+      date: iso,
+      items
+    };
+  });
+
+  return {
+    plans,
+    baseName,
+    occurrences: plans.map((plan) => plan.date),
+    displayOccurrences: occurrences.map((date) => OCCURRENCE_FORMATTER.format(date)),
+    itemCount: planItems.length
+  };
 };
 
 const copyToClipboard = async (text) => {
@@ -452,7 +985,17 @@ export const exportWorkout = () => {
   }
 
   const rows = [
-    ['Exercise', 'Set', 'Mode', 'Reps', `Weight (${getWeightLabel()})`, 'Muscle Groups', 'Equipment']
+    [
+      'Exercise',
+      'Set',
+      'Mode',
+      'Reps / Ecc%',
+      `Weight (${getWeightLabel()})`,
+      `Progression (${getWeightLabel()})`,
+      'Progressive Overload %',
+      'Muscle Groups',
+      'Equipment'
+    ]
   ];
 
   state.builder.order.forEach((id) => {
@@ -460,12 +1003,20 @@ export const exportWorkout = () => {
     if (!entry) return;
     entry.sets.forEach((set, idx) => {
       const weightValue = set.mode === 'ECHO' ? '' : (set.weight || '');
+      const eccentricValue = Number.isFinite(Number.parseInt(set.eccentricPct, 10))
+        ? Number.parseInt(set.eccentricPct, 10)
+        : 100;
+      const repsDisplay = set.mode === 'ECHO' ? `${eccentricValue}% ecc` : (set.reps || '');
+      const progressionValue = set.mode === 'ECHO' ? '' : (set.progression || '');
+      const progressionPercentValue = set.mode === 'ECHO' ? '' : (set.progressionPercent || '');
       rows.push([
         entry.exercise.name,
         (idx + 1).toString(),
         getModeLabel(set),
-        set.reps || '',
+        repsDisplay,
         weightValue,
+        progressionValue,
+        progressionPercentValue,
         (entry.exercise.muscleGroups || []).map(niceName).join(', '),
         (entry.exercise.equipment || []).map(niceName).join(', ')
       ]);
@@ -508,7 +1059,13 @@ export const printWorkout = () => {
       .map((set, idx) => {
         const checkboxCell = state.includeCheckboxes ? '<td>&#9744;</td>' : '';
         const weightValue = set.mode === 'ECHO' ? '' : (set.weight || '');
-        return `<tr><td>${idx + 1}</td><td>${getModeLabel(set)}</td><td>${set.reps || ''}</td><td>${weightValue}</td>${checkboxCell}</tr>`;
+        const eccentricValue = Number.isFinite(Number.parseInt(set.eccentricPct, 10))
+          ? Number.parseInt(set.eccentricPct, 10)
+          : 100;
+        const repsDisplay = set.mode === 'ECHO' ? `${eccentricValue}% ecc` : (set.reps || '');
+        const progressionValue = set.mode === 'ECHO' ? '' : (set.progression || '');
+        const progressionPercentValue = set.mode === 'ECHO' ? '' : (set.progressionPercent || '');
+        return `<tr><td>${idx + 1}</td><td>${getModeLabel(set)}</td><td>${repsDisplay}</td><td>${weightValue}</td><td>${progressionValue}</td><td>${progressionPercentValue}</td>${checkboxCell}</tr>`;
       })
       .join('');
     const metaParts = [];
@@ -524,7 +1081,7 @@ export const printWorkout = () => {
         <h2>${entry.exercise.name}</h2>
         ${metaHtml}
         <table>
-          <thead><tr><th>Set</th><th>Mode</th><th>Reps</th><th>Weight (${weightLabel})</th>${checkboxHeader}</tr></thead>
+          <thead><tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${weightLabel})</th><th>Progression (${weightLabel})</th><th>Progressive Overload %</th>${checkboxHeader}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </section>`;
@@ -606,33 +1163,29 @@ export const computeMuscleSummary = () => {
     });
   });
 
-  const labels = MUSCLE_COVERAGE
-    .filter((group) => hits.has(group.key))
-    .map((group) => group.label)
-    .sort((a, b) => a.localeCompare(b));
-
   return {
     hitCount: hits.size,
     total: MUSCLE_COVERAGE.length,
-    labels
+    hits,
+    muscles: MUSCLE_COVERAGE.map((group) => ({
+      key: group.key,
+      label: group.label,
+      active: hits.has(group.key)
+    }))
   };
 };
 
 export const renderMuscleSummary = () => {
   if (!els.builderMuscles) return;
-  if (!state.builder.order.length) {
-    els.builderMuscles.textContent = `Muscles hit: 0/${MUSCLE_COVERAGE.length}.`;
-    return;
-  }
 
   const summary = computeMuscleSummary();
-  if (!summary.hitCount) {
-    els.builderMuscles.textContent = `Muscles hit: 0/${summary.total}.`;
-    return;
-  }
+  const pieces = summary.muscles.map((muscle) => {
+    const cls = muscle.active ? 'muscle-flag hit' : 'muscle-flag miss';
+    return `<span class="${cls}"><strong>${muscle.label}</strong></span>`;
+  });
+  const listHtml = pieces.join('');
 
-  const listText = summary.labels.join(', ');
-  els.builderMuscles.textContent = `Muscles hit: ${summary.hitCount}/${summary.total} | ${listText}`;
+  els.builderMuscles.innerHTML = `<span class="muscle-summary-label">Muscles:</span>${listHtml}<span class="muscle-summary-count">(${summary.hitCount}/${summary.total})</span>`;
 };
 
 export const attachGroupDragEvents = (groupEl, handle, type) => {
@@ -921,7 +1474,17 @@ export const renderBuilder = () => {
 
   const exerciseWord = order.length === 1 ? 'exercise' : 'exercises';
   const setWord = setTotal === 1 ? 'set' : 'sets';
-  els.builderSummary.textContent = `${order.length} ${exerciseWord} | ${setTotal} ${setWord}${summaryExtra}`;
+  const baseSummary = `${order.length} ${exerciseWord} | ${setTotal} ${setWord}${summaryExtra}`;
+  const planName = state.plan.name.trim();
+  const occurrences = computeScheduleOccurrences(state.plan.schedule);
+  const nextOccurrence = occurrences.length ? OCCURRENCE_FORMATTER.format(occurrences[0]) : null;
+
+  const summaryParts = [];
+  if (planName) summaryParts.push(planName);
+  summaryParts.push(baseSummary);
+  if (nextOccurrence) summaryParts.push(`Next: ${nextOccurrence}`);
+
+  els.builderSummary.textContent = summaryParts.join(' | ');
 
   renderMuscleSummary();
 };
@@ -1008,6 +1571,38 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   controls.append(header, removeBtn);
   card.appendChild(controls);
 
+  const bulkControls = document.createElement('div');
+  bulkControls.className = 'builder-bulk-controls';
+  const percentLabel = document.createElement('label');
+  percentLabel.textContent = 'Progressive Overload %';
+  percentLabel.title = PROGRESSIVE_OVERLOAD_TOOLTIP;
+  const percentSelect = document.createElement('select');
+  const percentOptions = ['', '0', '2.5', '5', '7.5', '10', '12.5', '15', '20', '25', '30', '35', '40'];
+  percentOptions.forEach((value) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value ? `${value}%` : 'Custom';
+    percentSelect.appendChild(option);
+  });
+  const sharedPercent = entry.sets.length
+    ? entry.sets.every((set) => (set.progressionPercent || '') === (entry.sets[0].progressionPercent || ''))
+      ? (entry.sets[0].progressionPercent || '')
+      : ''
+    : '';
+  percentSelect.value = sharedPercent ?? '';
+  percentSelect.title = PROGRESSIVE_OVERLOAD_TOOLTIP;
+  percentSelect.addEventListener('change', () => {
+    const chosen = percentSelect.value;
+    entry.sets.forEach((set) => {
+      set.progressionPercent = chosen;
+    });
+    persistState();
+    triggerRender();
+  });
+  percentLabel.appendChild(percentSelect);
+  bulkControls.appendChild(percentLabel);
+  card.appendChild(bulkControls);
+
   card.draggable = true;
   card.addEventListener('dragstart', (evt) => {
     setDragDidDrop(false);
@@ -1024,7 +1619,7 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const table = document.createElement('table');
   table.className = 'sets-table';
   const thead = document.createElement('thead');
-  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps</th><th>Weight (${getWeightLabel()})</th><th></th></tr>`;
+  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload %</th><th></th></tr>`;
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
@@ -1039,7 +1634,18 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   addSetBtn.className = 'btn small add-set';
   addSetBtn.textContent = 'Add Set';
   addSetBtn.addEventListener('click', () => {
-    entry.sets.push(createSet());
+    const newSet = createSet();
+    const lastSet = entry.sets[entry.sets.length - 1];
+    if (lastSet) {
+      newSet.mode = lastSet.mode;
+      newSet.echoLevel = lastSet.echoLevel;
+      newSet.eccentricPct = lastSet.eccentricPct;
+      newSet.reps = lastSet.reps;
+      newSet.weight = lastSet.weight;
+      newSet.progression = lastSet.progression;
+      newSet.progressionPercent = lastSet.progressionPercent;
+    }
+    entry.sets.push(newSet);
     triggerRender();
     persistState();
   });
