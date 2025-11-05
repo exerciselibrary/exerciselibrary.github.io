@@ -2779,9 +2779,9 @@ class VitruvianApp {
             "Echo auto-stop triggered → advancing to the next set",
             "success",
           );
-          // Prevent additional auto-stop checks while we hand control back to the plan runner
+          // Prevent additional auto-stop checks while the stop command is in flight
           this.isJustLiftMode = false;
-          this.completeWorkout({ reason: autoStopReason });
+          this.stopWorkout({ reason: autoStopReason });
         } else {
           this.addLogEntry(
             "Auto-stop triggered! Finishing workout...",
