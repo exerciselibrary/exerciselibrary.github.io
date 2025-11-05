@@ -25,6 +25,7 @@ class VitruvianApp {
     this._lastRepTopBeep = 0; // Timestamp of last rep top cue
     this._weightAdjustSoundThrottle = 0;
     this._countdownBeepThrottle = 0;
+    this._lastRestChime = 0;
     this.stopAtTop = false; // Stop at top of final rep instead of bottom
     this.warmupReps = 0;
     this.workingReps = 0;
@@ -3370,8 +3371,23 @@ class VitruvianApp {
     } else {
       autoStopText.textContent = "Auto-Stop";
       autoStopText.style.color = "#6c757d";
-    autoStopText.style.fontSize = "0.75em";
+      autoStopText.style.fontSize = "0.75em";
     }
+  }
+
+  updateAutoStopTimerVisibility(isJustLift) {
+    const autoStopTimer = document.getElementById("autoStopTimer");
+    if (!autoStopTimer) {
+      return;
+    }
+
+    const modeLabel = this.currentWorkout?.mode || "";
+    const isEchoWorkout =
+      this.currentWorkout?.itemType === "echo" ||
+      (typeof modeLabel === "string" && modeLabel.toLowerCase().includes("echo"));
+
+    const shouldShow = !!isJustLift && !isEchoWorkout;
+    autoStopTimer.style.display = shouldShow ? "block" : "none";
   }
 
   setupAudioUnlockSupport() {
@@ -3609,6 +3625,50 @@ class VitruvianApp {
 
     oscillator.start(now);
     oscillator.stop(now + 0.24);
+  }
+
+  playRestStartChime() {
+    try {
+      const context = this.getAudioContext();
+      if (!context) {
+        return;
+      }
+
+      const now = context.currentTime || 0;
+      if (now - this._lastRestChime < 0.4) {
+        return;
+      }
+      this._lastRestChime = now;
+
+      const baseOsc = context.createOscillator();
+      const baseGain = context.createGain();
+      baseOsc.type = "sine";
+      baseOsc.frequency.setValueAtTime(480, now);
+      baseOsc.frequency.linearRampToValueAtTime(640, now + 0.18);
+      baseGain.gain.setValueAtTime(0.0001, now);
+      baseGain.gain.exponentialRampToValueAtTime(0.26, now + 0.02);
+      baseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+      baseOsc.connect(baseGain);
+      baseGain.connect(context.destination);
+      baseOsc.start(now);
+      baseOsc.stop(now + 0.38);
+
+      const accentOsc = context.createOscillator();
+      const accentGain = context.createGain();
+      accentOsc.type = "triangle";
+      accentOsc.frequency.setValueAtTime(960, now + 0.22);
+      accentOsc.frequency.linearRampToValueAtTime(1160, now + 0.46);
+      accentGain.gain.setValueAtTime(0.0001, now);
+      accentGain.gain.setValueAtTime(0.0001, now + 0.2);
+      accentGain.gain.exponentialRampToValueAtTime(0.22, now + 0.26);
+      accentGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.58);
+      accentOsc.connect(accentGain);
+      accentGain.connect(context.destination);
+      accentOsc.start(now + 0.22);
+      accentOsc.stop(now + 0.6);
+    } catch (error) {
+      // Ignore audio failures so rest flow continues without interruption
+    }
   }
 
   playRepTopSound() {
@@ -3967,11 +4027,8 @@ class VitruvianApp {
       this.updateLiveWeightDisplay();
       this.updateCurrentSetLabel();
 
-      // Show auto-stop timer if Just Lift mode
-      const autoStopTimer = document.getElementById("autoStopTimer");
-      if (autoStopTimer) {
-        autoStopTimer.style.display = isJustLift ? "block" : "none";
-      }
+      // Show auto-stop timer if Just Lift mode (suppressed for Echo workouts)
+      this.updateAutoStopTimerVisibility(isJustLift);
 
       await this.device.startProgram(params);
 
@@ -4079,11 +4136,8 @@ class VitruvianApp {
       this.updateLiveWeightDisplay();
       this.updateCurrentSetLabel();
 
-      // Show auto-stop timer if Just Lift mode
-      const autoStopTimer = document.getElementById("autoStopTimer");
-      if (autoStopTimer) {
-        autoStopTimer.style.display = isJustLift ? "block" : "none";
-      }
+      // Show auto-stop timer if Just Lift mode (suppressed for Echo workouts)
+      this.updateAutoStopTimerVisibility(isJustLift);
 
       await this.device.startEcho(params);
 
@@ -4600,6 +4654,10 @@ class VitruvianApp {
 
 // Show a ring countdown, update “up next”, wire Skip/+30s, then call onDone()
   _beginRest(totalSec, onDone, labelText = "Next set", nextHtml = "", nextItemOrName = null) {
+    if (Number(totalSec) > 0) {
+      this.playRestStartChime();
+    }
+
     return window.PlanRunnerPrototype._beginRest.call(
       this,
       totalSec,
