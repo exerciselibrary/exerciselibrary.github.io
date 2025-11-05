@@ -725,7 +725,8 @@
 
             .weight-adjuster-circle {
                 position: relative;
-                width: clamp(160px, 25vw, 220px);
+                width: 100%;
+                max-width: clamp(160px, 25vw, 220px);
                 aspect-ratio: 1;
                 border-radius: 50%;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -845,9 +846,17 @@
 
             .plan-inline-center {
                 display: flex;
-                flex-direction: column;
                 align-items: center;
-                gap: 12px;
+                justify-content: center;
+                flex: 0 0 auto;
+            }
+
+            .weight-adjuster-stack {
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: clamp(160px, 25vw, 220px);
             }
 
             .plan-pause-btn {
@@ -874,6 +883,13 @@
             .plan-pause-btn.is-paused {
                 color: var(--success-color);
                 border-color: color-mix(in oklab, var(--success-color), transparent 50%);
+            }
+
+            .weight-adjuster-stack .plan-pause-btn {
+                position: absolute;
+                top: 0;
+                transform: translateY(-125%);
+                z-index: 2;
             }
 
             .plan-pause-btn [aria-hidden="true"] {
@@ -1859,40 +1875,42 @@
                                         <span class="sr-only">Previous set</span>
                                     </button>
                                     <div class="plan-inline-center">
-                                        <button
-                                            type="button"
-                                            class="plan-pause-btn"
-                                            id="planPauseBtn"
-                                            onclick="app.togglePlanPause()"
-                                            aria-pressed="false"
-                                            aria-label="Pause plan"
-                                        >
-                                            <i class="bi bi-pause-fill" aria-hidden="true"></i>
-                                            <span class="sr-only">Pause plan</span>
-                                        </button>
-                                        <div class="weight-adjuster-circle" aria-live="polite">
+                                        <div class="weight-adjuster-stack">
                                             <button
                                                 type="button"
-                                                class="weight-adjuster-segment increase"
-                                                id="weightAdjusterIncrease"
-                                                aria-label="Increase weight per cable"
+                                                class="plan-pause-btn"
+                                                id="planPauseBtn"
+                                                onclick="app.togglePlanPause()"
+                                                aria-pressed="false"
+                                                aria-label="Pause plan"
                                             >
-                                                +
+                                                <i class="bi bi-pause-fill" aria-hidden="true"></i>
+                                                <span class="sr-only">Pause plan</span>
                                             </button>
-                                            <div class="weight-adjuster-center">
-                                                <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
-                                                    <span id="liveWeightValue">-</span>
-                                                    <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                            <div class="weight-adjuster-circle" aria-live="polite">
+                                                <button
+                                                    type="button"
+                                                    class="weight-adjuster-segment increase"
+                                                    id="weightAdjusterIncrease"
+                                                    aria-label="Increase weight per cable"
+                                                >
+                                                    +
+                                                </button>
+                                                <div class="weight-adjuster-center">
+                                                    <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
+                                                        <span id="liveWeightValue">-</span>
+                                                        <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                                    </div>
                                                 </div>
+                                                <button
+                                                    type="button"
+                                                    class="weight-adjuster-segment decrease"
+                                                    id="weightAdjusterDecrease"
+                                                    aria-label="Decrease weight per cable"
+                                                >
+                                                    &minus;
+                                                </button>
                                             </div>
-                                            <button
-                                                type="button"
-                                                class="weight-adjuster-segment decrease"
-                                                id="weightAdjusterDecrease"
-                                                aria-label="Decrease weight per cable"
-                                            >
-                                                &minus;
-                                            </button>
                                         </div>
                                     </div>
                                     <button
