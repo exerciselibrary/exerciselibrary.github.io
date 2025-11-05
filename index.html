@@ -107,7 +107,6 @@
             </div>
             <div class="builder-actions">
               <button id="connectDropbox" class="btn small" title="Manage Dropbox connection">Connect Dropbox</button>
-              <button id="syncToDropbox" class="btn small primary" title="Sync workout plan to Dropbox">Sync to Dropbox</button>
               <button id="exportWorkout" class="btn small" title="Download as Excel">Export to Excel</button>
               <button id="printWorkout" class="btn small" title="Print workout">Print</button>
               <button id="shareWorkout" class="btn small" title="Copy a shareable workout link">Share</button>
@@ -121,40 +120,53 @@
             </div>
           </div>
           <div class="plan-controls">
-              <div class="plan-name-field">
+            <div class="plan-name-field">
+              <div class="plan-name-header">
                 <label for="planNameInput">Plan Name</label>
-                <input type="text" id="planNameInput" placeholder="e.g., Push / Pull Split" />
+                <button id="syncToDropbox" class="btn small primary" title="Sync workout plan to Dropbox">Sync to Dropbox</button>
               </div>
-              <div class="schedule-fields">
-                <div class="schedule-field">
-                  <label for="scheduleStart">Start Date</label>
-                  <input type="text" id="scheduleStart" placeholder="Select date" />
+              <div class="plan-name-input-row">
+                <input id="planNameInput" type="text" placeholder="Plan name (e.g., Push Day A)" />
+                <button type="button" id="planSaveButton" class="btn small primary" title="Save this plan locally">Save Plan</button>
+                <button type="button" id="planRenameButton" class="btn small" title="Rename the selected plan">Rename Selected</button>
+              </div>
+              <div class="plan-name-input-row">
+                <select id="planNameSelect" title="Select a saved plan" aria-label="Saved plans"></select>
+                <button type="button" id="refreshPlanNames" class="btn small" title="Refresh available plans">Refresh</button>
+                <button type="button" id="deletePlanFromBuilder" class="btn small danger" title="Delete selected plan from Dropbox">Delete</button>
+              </div>
+              <div class="plan-name-hint">Selecting a plan loads its exercises into the builder.</div>
+            </div>
+            <div class="schedule-fields">
+              <div class="schedule-field">
+                <label for="scheduleStart">Start Date</label>
+                <input type="text" id="scheduleStart" placeholder="Select date" />
+              </div>
+              <div class="schedule-field">
+                <label>Days of Week</label>
+                <div id="scheduleDays" class="schedule-days" role="group" aria-label="Select training days">
+                  <button type="button" data-day="0">Sun</button>
+                  <button type="button" data-day="1">Mon</button>
+                  <button type="button" data-day="2">Tue</button>
+                  <button type="button" data-day="3">Wed</button>
+                  <button type="button" data-day="4">Thu</button>
+                  <button type="button" data-day="5">Fri</button>
+                  <button type="button" data-day="6">Sat</button>
                 </div>
-                <div class="schedule-field">
-                  <label>Days of Week</label>
-                  <div id="scheduleDays" class="schedule-days" role="group" aria-label="Select training days">
-                    <button type="button" data-day="0">Sun</button>
-                    <button type="button" data-day="1">Mon</button>
-                    <button type="button" data-day="2">Tue</button>
-                    <button type="button" data-day="3">Wed</button>
-                    <button type="button" data-day="4">Thu</button>
-                    <button type="button" data-day="5">Fri</button>
-                    <button type="button" data-day="6">Sat</button>
-                  </div>
+              </div>
+              <div class="schedule-field">
+                <label for="scheduleInterval">Repeat Every</label>
+                <div class="schedule-repeat">
+                  <input type="number" id="scheduleInterval" min="1" value="1" />
+                  <span>week(s)</span>
                 </div>
-                <div class="schedule-field">
-                  <label for="scheduleInterval">Repeat Every</label>
-                  <div class="schedule-repeat">
-                    <input type="number" id="scheduleInterval" min="1" value="1" />
-                    <span>week(s)</span>
-                  </div>
-                </div>
-                <div class="schedule-field">
-                  <label for="scheduleEnd">End Date</label>
-                  <input type="text" id="scheduleEnd" placeholder="Select date" />
-                </div>
+              </div>
+              <div class="schedule-field">
+                <label for="scheduleEnd">End Date</label>
+                <input type="text" id="scheduleEnd" placeholder="Select date" />
               </div>
             </div>
+          </div>
           <div id="scheduleCalendar" class="schedule-calendar" aria-live="polite"></div>
           <div id="builderSyncStatus" class="builder-sync-status muted small" aria-live="polite"></div>
 

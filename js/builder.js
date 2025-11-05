@@ -8,7 +8,8 @@ import {
   SHARE_ICON_HTML,
   SHARE_SUCCESS_HTML,
   SHARE_ERROR_HTML,
-  KG_PER_LB
+  KG_PER_LB,
+  LB_PER_KG
 } from './constants.js';
 import { state, els, setDragDidDrop, getDragDidDrop } from './context.js';
 import { niceName, formatWeight, convertWeightValue, createWorkbookXlsx } from './utils.js';
@@ -30,6 +31,8 @@ import {
 } from './storage.js';
 
 let renderCallback = null;
+let planNameDebounceId = null;
+const PLAN_NAME_DEBOUNCE_MS = 200;
 
 export const registerRenderHandler = (fn) => {
   renderCallback = fn;
@@ -56,6 +59,10 @@ const PROGRAM_MODE_MAP = {
   TIME_UNDER_TENSION: 2,
   ECCENTRIC: 4
 };
+const PROGRAM_MODE_REVERSE_MAP = Object.entries(PROGRAM_MODE_MAP).reduce((acc, [key, value]) => {
+  acc[value] = key;
+  return acc;
+}, {});
 const PROGRESSIVE_OVERLOAD_TOOLTIP =
   'Increase the percent lifted per workout for this exercise. Only applies on new days where you do this exercise.';
 
@@ -71,6 +78,20 @@ const formatISODate = (date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const sanitizePlanNameForSync = (name) => {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (!trimmed) {
+    return DEFAULT_PLAN_NAME;
+  }
+
+  const withoutLeadingDates = trimmed.replace(/^(?:\d{4}-\d{2}-\d{2}\s+)+/, '').trim();
+  if (withoutLeadingDates) {
+    return withoutLeadingDates;
+  }
+
+  return DEFAULT_PLAN_NAME;
 };
 
 const parseISODate = (value) => {
@@ -191,10 +212,42 @@ export const toggleWeightUnit = () => {
 
 const getWeightLabel = () => (state.weightUnit === 'LBS' ? 'lbs' : 'kg');
 
-export const setPlanName = (value) => {
-  state.plan.name = typeof value === 'string' ? value : '';
-  persistState();
-  triggerRender();
+export const setPlanName = (value, options = {}) => {
+  const name = typeof value === 'string' ? value : '';
+  state.plan.name = name;
+  if (options.fromSelection) {
+    state.plan.selectedName = name;
+  }
+
+  if (els.planNameSelect) {
+    const available = state.availablePlans || [];
+    const target = state.plan.name && available.includes(state.plan.name) ? state.plan.name : '';
+    if (els.planNameSelect.value !== target) {
+      els.planNameSelect.value = target;
+    }
+  }
+
+  if (els.planNameInput && els.planNameInput.value !== name) {
+    els.planNameInput.value = name;
+  }
+
+  if (planNameDebounceId) {
+    clearTimeout(planNameDebounceId);
+  }
+  planNameDebounceId = setTimeout(() => {
+    persistState();
+    triggerRender();
+    planNameDebounceId = null;
+  }, PLAN_NAME_DEBOUNCE_MS);
+};
+
+export const flushPlanNameDebounce = () => {
+  if (planNameDebounceId) {
+    clearTimeout(planNameDebounceId);
+    planNameDebounceId = null;
+    persistState();
+    triggerRender();
+  }
 };
 
 export const setScheduleStart = (value) => {
@@ -237,10 +290,10 @@ const getModeLabel = (set) => {
   return MODE_LABELS[set.mode] || MODE_LABELS.OLD_SCHOOL;
 };
 
-const buildPlanItems = () => {
+export const buildPlanItems = () => {
   const items = [];
 
-  state.builder.order.forEach((exerciseId) => {
+  state.builder.order.forEach((exerciseId, orderIndex) => {
     const entry = state.builder.items.get(exerciseId);
     if (!entry) return;
 
@@ -248,9 +301,36 @@ const buildPlanItems = () => {
     const sets = Array.isArray(entry.sets) ? entry.sets : [];
     if (!sets.length) return;
 
-    sets.forEach((set) => {
+    const videos = Array.isArray(entry.exercise?.videos) ? entry.exercise.videos : [];
+    const baseMeta = {
+      exerciseId,
+      exerciseName,
+      videos,
+      order: orderIndex,
+      totalSets: sets.length
+    };
+
+    sets.forEach((set, setIndex) => {
       const mode = set.mode || 'OLD_SCHOOL';
       const displayName = exerciseName;
+      const setData = {
+        reps: set.reps ?? '',
+        weight: set.weight ?? '',
+        mode,
+        echoLevel: set.echoLevel || ECHO_LEVELS[0].value,
+        eccentricPct: String(
+          Number.isFinite(Number.parseInt(set.eccentricPct, 10))
+            ? Number.parseInt(set.eccentricPct, 10)
+            : 100
+        ),
+        progression: set.progression ?? '',
+        progressionPercent: set.progressionPercent ?? ''
+      };
+      const builderMeta = {
+        ...baseMeta,
+        setIndex,
+        setData
+      };
 
       if (mode === 'ECHO') {
         const levelIndex = (() => {
@@ -274,7 +354,9 @@ const buildPlanItems = () => {
           sets: 1,
           restSec: 60,
           justLift: true,
-          stopAtTop: false
+          stopAtTop: false,
+          videos,
+          builderMeta
         });
       } else {
         const perCableKg = roundKg(Math.max(0, toPerCableKg(set.weight)));
@@ -302,13 +384,295 @@ const buildPlanItems = () => {
           progressionPercent,
           justLift: false,
           stopAtTop: false,
-          cables: 2
+          cables: 2,
+          videos,
+          builderMeta
         });
       }
     });
   });
 
   return items;
+};
+
+const formatWeightForUnit = (kgValue) => {
+  const numeric = Number(kgValue);
+  if (!Number.isFinite(numeric)) return '';
+  const targetUnit = state.weightUnit === 'LBS' ? 'LBS' : 'KG';
+  let convertedValue;
+  if (targetUnit === 'LBS') {
+    convertedValue = numeric * LB_PER_KG;
+  } else {
+    convertedValue = numeric;
+  }
+  if (!Number.isFinite(convertedValue)) return '';
+  const decimals = targetUnit === 'LBS' ? 1 : 1;
+  return convertedValue.toFixed(decimals);
+};
+
+const createEntryFromPlanItem = (item, index) => {
+  const entryId = `plan-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
+  const fallbackName = item && typeof item.name === 'string' && item.name.trim()
+    ? item.name.trim()
+    : `Plan Item ${index + 1}`;
+  const meta = item && typeof item.builderMeta === 'object' ? item.builderMeta : null;
+  const exerciseName = meta?.exerciseName && typeof meta.exerciseName === 'string'
+    ? meta.exerciseName.trim() || fallbackName
+    : fallbackName;
+  const sourceVideos = Array.isArray(item?.videos)
+    ? item.videos
+    : Array.isArray(meta?.videos)
+      ? meta.videos
+      : [];
+  const exerciseId =
+    meta && typeof meta.exerciseId === 'string' && meta.exerciseId.trim()
+      ? meta.exerciseId.trim()
+      : entryId;
+
+  const baseExercise = {
+    id: exerciseId,
+    name: exerciseName,
+    muscleGroups: [],
+    muscles: [],
+    equipment: [],
+    videos: sourceVideos
+  };
+
+  const modeValue = Number.isFinite(Number(item?.mode)) ? Number(item.mode) : null;
+
+  const buildSet = () => {
+    const set = createSet();
+    const setData = meta && meta.setData ? meta.setData : {};
+
+    if (item?.type === 'echo') {
+      set.mode = 'ECHO';
+      const levelOption =
+        typeof setData.echoLevel === 'string' && ECHO_LEVELS.some((opt) => opt.value === setData.echoLevel)
+          ? setData.echoLevel
+          : Number.isInteger(item.level) && ECHO_LEVELS[item.level]
+            ? ECHO_LEVELS[item.level].value
+            : ECHO_LEVELS[0].value;
+      set.echoLevel = levelOption;
+      const eccentric =
+        typeof setData.eccentricPct === 'string'
+          ? setData.eccentricPct
+          : String(Number.isFinite(Number(item.eccentricPct)) ? Number(item.eccentricPct) : 100);
+      set.eccentricPct = eccentric;
+      const repsValue =
+        typeof setData.reps === 'string'
+          ? setData.reps
+          : String(Number.isFinite(Number(item?.targetReps)) ? Number(item.targetReps) : '');
+      set.reps = item?.justLift ? '' : repsValue;
+      set.weight = typeof setData.weight === 'string' ? setData.weight : '';
+      set.progression = typeof setData.progression === 'string' ? setData.progression : '';
+      set.progressionPercent =
+        typeof setData.progressionPercent === 'string' ? setData.progressionPercent : '';
+    } else {
+      const metaMode = typeof setData.mode === 'string' ? setData.mode : null;
+      const builderMode =
+        metaMode ||
+        (modeValue != null && Object.prototype.hasOwnProperty.call(PROGRAM_MODE_REVERSE_MAP, modeValue)
+          ? PROGRAM_MODE_REVERSE_MAP[modeValue]
+          : 'OLD_SCHOOL');
+      set.mode = builderMode;
+      const repsValue =
+        typeof setData.reps === 'string'
+          ? setData.reps
+          : Number.isFinite(Number(item?.reps))
+            ? String(Number(item.reps))
+            : '';
+      set.reps = item?.justLift ? '' : repsValue;
+      set.weight =
+        typeof setData.weight === 'string'
+          ? setData.weight
+          : formatWeightForUnit(item?.perCableKg);
+      set.progression =
+        typeof setData.progression === 'string'
+          ? setData.progression
+          : (() => {
+              const progressionKg = Number.isFinite(Number(item?.progressionKg))
+                ? Number(item.progressionKg)
+                : null;
+              return progressionKg == null ? '' : formatWeightForUnit(progressionKg);
+            })();
+      set.progressionPercent =
+        typeof setData.progressionPercent === 'string'
+          ? setData.progressionPercent
+          : Number.isFinite(Number(item?.progressionPercent))
+            ? String(Number(item.progressionPercent))
+            : '';
+    }
+    return set;
+  };
+
+  const totalSets = Number.isFinite(Number(item?.sets)) ? Math.max(1, Number(item.sets)) : 1;
+  const sets = [];
+  for (let i = 0; i < totalSets; i += 1) {
+    sets.push(buildSet());
+  }
+
+  return {
+    id: entryId,
+    exercise: baseExercise,
+    sets
+  };
+};
+
+export const setAvailablePlanNames = (names = []) => {
+  const unique = Array.from(new Set(names.filter((n) => typeof n === 'string' && n.trim()))).sort((a, b) => a.localeCompare(b));
+  state.availablePlans = unique;
+
+  if (els.planNameSelect) {
+    const currentValue = els.planNameSelect.value;
+    const fragment = document.createDocumentFragment();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = unique.length ? 'Select a plan…' : 'No saved plans';
+    fragment.appendChild(placeholder);
+    unique.forEach((name) => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      fragment.appendChild(option);
+    });
+    els.planNameSelect.innerHTML = '';
+    els.planNameSelect.appendChild(fragment);
+
+    const desired = state.plan.name && unique.includes(state.plan.name) ? state.plan.name : '';
+    els.planNameSelect.value = desired || (currentValue && unique.includes(currentValue) ? currentValue : '');
+  }
+};
+
+export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
+  if (!Array.isArray(planItems)) {
+    return;
+  }
+
+  state.builder.order = [];
+  state.builder.items.clear();
+
+  const grouped = new Map();
+  const legacyItems = [];
+
+  planItems.forEach((item, index) => {
+    if (!item) return;
+    const meta = item && typeof item.builderMeta === 'object' ? item.builderMeta : null;
+    if (meta && typeof meta.exerciseId === 'string' && meta.exerciseId.trim()) {
+      const exerciseId = meta.exerciseId.trim();
+      if (!grouped.has(exerciseId)) {
+        grouped.set(exerciseId, {
+          meta,
+          items: []
+        });
+      }
+      grouped.get(exerciseId).items.push({ item, index, meta });
+    } else {
+      legacyItems.push({ item, index });
+    }
+  });
+
+  const combinedEntries = [];
+
+  grouped.forEach((group, exerciseId) => {
+    const order = Number.isFinite(Number(group.meta?.order))
+      ? Number(group.meta.order)
+      : group.items[0]?.index ?? 0;
+    combinedEntries.push({ type: 'group', order, exerciseId, group });
+  });
+
+  legacyItems.forEach(({ item, index }) => {
+    combinedEntries.push({ type: 'legacy', order: index, item, index });
+  });
+
+  combinedEntries
+    .sort((a, b) => a.order - b.order)
+    .forEach((entry) => {
+      if (entry.type === 'group') {
+        const { group, exerciseId } = entry;
+        const primaryItem = group.items[0];
+        const videos = Array.isArray(group.meta?.videos)
+          ? group.meta.videos
+          : Array.isArray(primaryItem.item?.videos)
+            ? primaryItem.item.videos
+            : [];
+        const exerciseName = group.meta?.exerciseName || primaryItem.item?.name || `Exercise`;
+        const catalogue = state.data?.find ? state.data.find((ex) => ex.id === exerciseId) : null;
+        const resolvedExercise = catalogue
+          ? {
+              ...catalogue,
+              videos: videos.length ? videos : Array.isArray(catalogue.videos) ? catalogue.videos : []
+            }
+          : {
+              id: exerciseId,
+              name: exerciseName,
+              muscleGroups: [],
+              muscles: [],
+              equipment: [],
+              videos
+            };
+
+        const sortedSets = group.items
+          .slice()
+          .sort((a, b) => {
+            const idxA = Number.isFinite(Number(a.meta?.setIndex)) ? Number(a.meta.setIndex) : a.index;
+            const idxB = Number.isFinite(Number(b.meta?.setIndex)) ? Number(b.meta.setIndex) : b.index;
+            return idxA - idxB;
+          })
+          .map(({ meta: itemMeta, item }) => {
+            const set = createSet();
+            const setData = itemMeta.setData || {};
+            const type = item?.type === 'echo' || setData.mode === 'ECHO' ? 'ECHO' : 'PROGRAM';
+
+            if (type === 'ECHO') {
+              set.mode = 'ECHO';
+              const levelValue =
+                typeof setData.echoLevel === 'string' && ECHO_LEVELS.some((opt) => opt.value === setData.echoLevel)
+                  ? setData.echoLevel
+                  : set.echoLevel;
+              set.echoLevel = levelValue;
+              set.eccentricPct = typeof setData.eccentricPct === 'string' ? setData.eccentricPct : set.eccentricPct;
+            } else {
+              set.mode = typeof setData.mode === 'string' ? setData.mode : set.mode;
+            }
+
+            set.reps = typeof setData.reps === 'string' ? setData.reps : set.reps;
+            set.weight = typeof setData.weight === 'string' ? setData.weight : set.weight;
+            set.progression = typeof setData.progression === 'string' ? setData.progression : set.progression;
+            set.progressionPercent =
+              typeof setData.progressionPercent === 'string'
+                ? setData.progressionPercent
+                : set.progressionPercent;
+
+            return set;
+          });
+
+        const sets = sortedSets.length ? sortedSets : [createSet()];
+
+        state.builder.order.push(resolvedExercise.id);
+        state.builder.items.set(resolvedExercise.id, {
+          exercise: {
+            id: resolvedExercise.id,
+            name: resolvedExercise.name,
+            muscleGroups: resolvedExercise.muscleGroups || [],
+            muscles: Array.isArray(resolvedExercise.muscles) ? resolvedExercise.muscles : [],
+            equipment: Array.isArray(resolvedExercise.equipment) ? resolvedExercise.equipment : [],
+            videos: resolvedExercise.videos || []
+          },
+          sets
+        });
+      } else {
+        const { item, index } = entry;
+        const legacyEntry = createEntryFromPlanItem(item, index);
+        state.builder.order.push(legacyEntry.exercise.id);
+        state.builder.items.set(legacyEntry.exercise.id, {
+          exercise: legacyEntry.exercise,
+          sets: legacyEntry.sets
+        });
+      }
+    });
+
+  triggerRender();
+  persistState();
 };
 
 const updateScheduleCalendar = () => {
@@ -340,8 +704,20 @@ const updateScheduleCalendar = () => {
 };
 
 export const syncPlanControls = () => {
+  if (els.planNameSelect) {
+    const desired = state.plan.name || '';
+    if (els.planNameSelect.value !== desired) {
+      const available = state.availablePlans || [];
+      if (desired && !available.includes(desired)) {
+        els.planNameSelect.value = '';
+      } else {
+        els.planNameSelect.value = desired;
+      }
+    }
+  }
+
   if (els.planNameInput && els.planNameInput.value !== state.plan.name) {
-    els.planNameInput.value = state.plan.name;
+    els.planNameInput.value = state.plan.name || '';
   }
 
   if (els.scheduleStart) {
@@ -768,6 +1144,7 @@ export const toggleGrouping = (type) => {
 export const buildPlanSyncPayload = () => {
   const planItems = buildPlanItems();
   const baseName = state.plan.name.trim() || DEFAULT_PLAN_NAME;
+  const syncBaseName = sanitizePlanNameForSync(baseName);
 
   if (!planItems.length) {
     return {
@@ -785,7 +1162,7 @@ export const buildPlanSyncPayload = () => {
     return {
       plans: [
         {
-          name: baseName,
+          name: syncBaseName,
           items: planItems.map((item) => ({ ...item }))
         }
       ],
@@ -815,8 +1192,9 @@ export const buildPlanSyncPayload = () => {
       return copy;
     });
 
+    const finalBaseName = syncBaseName || baseName;
     return {
-      name: `${iso} ${baseName}`,
+      name: `${iso} ${finalBaseName}`,
       date: iso,
       items
     };
@@ -1400,6 +1778,23 @@ export const handleBuilderDrop = (evt) => {
   setDragDidDrop(true);
 };
 
+const moveBuilderEntry = (exerciseId, offset) => {
+  if (!exerciseId || !Number.isInteger(offset)) return false;
+  const order = state.builder.order;
+  const currentIndex = order.indexOf(exerciseId);
+  if (currentIndex < 0) return false;
+  const targetIndex = currentIndex + offset;
+  if (targetIndex < 0 || targetIndex >= order.length) return false;
+
+  const nextOrder = order.slice();
+  const [removed] = nextOrder.splice(currentIndex, 1);
+  nextOrder.splice(targetIndex, 0, removed);
+  state.builder.order = nextOrder;
+  persistState();
+  triggerRender();
+  return true;
+};
+
 export const renderBuilder = () => {
   const { order, items } = state.builder;
   if (!order.length) {
@@ -1414,6 +1809,8 @@ export const renderBuilder = () => {
   let summaryExtra = '';
   let displayIndex = 0;
   const grouping = getActiveGrouping();
+  const orderIndexMap = new Map(order.map((id, idx) => [id, idx]));
+  const totalCount = order.length;
 
   if (grouping) {
     const groups = getGroupingClusters(order, items, grouping);
@@ -1446,7 +1843,12 @@ export const renderBuilder = () => {
         const entry = items.get(id);
         if (!entry) return;
         displayIndex += 1;
-        const { card, setCount } = buildBuilderCard(entry, displayIndex, { groupColor: group.color, groupKey: group.key });
+        const { card, setCount } = buildBuilderCard(entry, displayIndex, {
+          groupColor: group.color,
+          groupKey: group.key,
+          orderIndex: orderIndexMap.get(id) ?? displayIndex - 1,
+          totalCount
+        });
         setTotal += setCount;
         body.appendChild(card);
       });
@@ -1466,7 +1868,10 @@ export const renderBuilder = () => {
     order.forEach((id, idx) => {
       const entry = items.get(id);
       if (!entry) return;
-      const { card, setCount } = buildBuilderCard(entry, idx + 1);
+      const { card, setCount } = buildBuilderCard(entry, idx + 1, {
+        orderIndex: idx,
+        totalCount
+      });
       setTotal += setCount;
       els.builderList.appendChild(card);
     });
@@ -1490,7 +1895,12 @@ export const renderBuilder = () => {
 };
 
 const buildBuilderCard = (entry, displayIndex, options = {}) => {
-  const { groupColor = null, groupKey = null } = options;
+  const {
+    groupColor = null,
+    groupKey = null,
+    orderIndex = 0,
+    totalCount = state.builder.order.length
+  } = options;
   const id = entry.exercise.id;
   const card = document.createElement('div');
   card.className = 'builder-card';
@@ -1562,13 +1972,54 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'btn danger small';
   removeBtn.textContent = 'Remove';
+  removeBtn.type = 'button';
   removeBtn.addEventListener('click', (evt) => {
     evt.stopPropagation();
     removeExerciseFromBuilder(id);
     triggerRender();
   });
 
-  controls.append(header, removeBtn);
+  const moveWrapper = document.createElement('div');
+  moveWrapper.className = 'builder-move-buttons';
+
+  const isFirst = orderIndex <= 0;
+  const isLast = orderIndex >= totalCount - 1;
+
+  const buildMoveHandler = (direction) => (evt) => {
+    evt.preventDefault();
+    evt.stopPropagation();
+    moveBuilderEntry(id, direction);
+  };
+
+  const moveUpBtn = document.createElement('button');
+  moveUpBtn.className = 'btn icon small builder-move-up';
+  moveUpBtn.type = 'button';
+  moveUpBtn.innerHTML = '<span aria-hidden="true">↑</span>';
+  moveUpBtn.setAttribute('aria-label', 'Move exercise up');
+  moveUpBtn.title = isFirst ? 'Already at top' : 'Move up';
+  moveUpBtn.disabled = isFirst;
+  if (!isFirst) {
+    moveUpBtn.addEventListener('click', buildMoveHandler(-1));
+  }
+
+  const moveDownBtn = document.createElement('button');
+  moveDownBtn.className = 'btn icon small builder-move-down';
+  moveDownBtn.type = 'button';
+  moveDownBtn.innerHTML = '<span aria-hidden="true">↓</span>';
+  moveDownBtn.setAttribute('aria-label', 'Move exercise down');
+  moveDownBtn.title = isLast ? 'Already at bottom' : 'Move down';
+  moveDownBtn.disabled = isLast;
+  if (!isLast) {
+    moveDownBtn.addEventListener('click', buildMoveHandler(1));
+  }
+
+  moveWrapper.append(moveUpBtn, moveDownBtn);
+
+  const actions = document.createElement('div');
+  actions.className = 'builder-control-actions';
+  actions.append(moveWrapper, removeBtn);
+
+  controls.append(header, actions);
   card.appendChild(controls);
 
   const bulkControls = document.createElement('div');

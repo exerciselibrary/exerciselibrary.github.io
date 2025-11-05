@@ -27,6 +27,8 @@ export const state = {
   shuffleMode: false,
   randomOrderMap: null,
   builder: { order: [], items: new Map() },
+  dropboxPlanNames: [],
+  availablePlans: [],
   highlightId: null,
   highlightHandled: false,
   activeTab: 'library',
@@ -38,9 +40,10 @@ export const state = {
   weightUnit: 'LBS',
   plan: {
     name: '',
+    selectedName: '',
     schedule: {
       startDate: todayISO,
-      endDate: null,
+      endDate: todayISO,
       repeatInterval: 1,
       daysOfWeek: new Set()
     }
@@ -91,7 +94,12 @@ export const els = {
   groupMuscleGroups: document.getElementById('groupMuscleGroups'),
   clearWorkout: document.getElementById('clearWorkout'),
   includeCheckboxes: document.getElementById('includeCheckboxes'),
+  planNameSelect: document.getElementById('planNameSelect'),
   planNameInput: document.getElementById('planNameInput'),
+  planSaveButton: document.getElementById('planSaveButton'),
+  planRenameButton: document.getElementById('planRenameButton'),
+  refreshPlanNames: document.getElementById('refreshPlanNames'),
+  deletePlanFromBuilder: document.getElementById('deletePlanFromBuilder'),
   scheduleStart: document.getElementById('scheduleStart'),
   scheduleEnd: document.getElementById('scheduleEnd'),
   scheduleInterval: document.getElementById('scheduleInterval'),

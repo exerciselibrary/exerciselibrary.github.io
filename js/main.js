@@ -20,6 +20,10 @@ import {
   syncPlanControls,
   renderSchedulePreview,
   setPlanName,
+  setAvailablePlanNames,
+  loadPlanIntoBuilder,
+  flushPlanNameDebounce,
+  buildPlanItems,
   setScheduleStart,
   setScheduleEnd,
   setScheduleInterval,
@@ -48,6 +52,377 @@ import { getActiveGrouping, applyGrouping } from './grouping.js';
 
 const dropboxManager = typeof DropboxManager !== 'undefined' ? new DropboxManager() : null;
 let dropboxInitialized = false;
+
+const planCache = new Map(); // name -> { source, items }
+const PLAN_INDEX_KEY = 'vitruvian.plans.index';
+const PLAN_STORAGE_PREFIX = 'vitruvian.plan.';
+
+const collectPlanNames = () => Array.from(new Set(planCache.keys())).sort((a, b) => a.localeCompare(b));
+
+const normalizePlanName = (name) => (typeof name === 'string' ? name.trim() : '');
+
+const readLocalPlanIndex = () => {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(PLAN_INDEX_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((entry) => normalizePlanName(entry))
+      .filter(Boolean);
+  } catch (error) {
+    console.warn('Failed to read plan index from local storage', error);
+    return [];
+  }
+};
+
+const writeLocalPlanIndex = (names) => {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  const unique = Array.from(new Set(names.map(normalizePlanName).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' })
+  );
+  try {
+    window.localStorage.setItem(PLAN_INDEX_KEY, JSON.stringify(unique));
+  } catch (error) {
+    console.warn('Failed to write plan index to local storage', error);
+    throw new Error('Unable to update plan index in local storage.');
+  }
+  return unique;
+};
+
+const savePlanToLocal = (name, items) => {
+  const trimmed = normalizePlanName(name);
+  if (!trimmed) {
+    throw new Error('Enter a plan name before saving.');
+  }
+  if (typeof window === 'undefined' || !window.localStorage) {
+    throw new Error('Local storage is unavailable in this environment.');
+  }
+  try {
+    window.localStorage.setItem(`${PLAN_STORAGE_PREFIX}${trimmed}`, JSON.stringify(items));
+  } catch (error) {
+    console.warn('Failed to store plan locally', error);
+    throw new Error('Unable to store plan in local storage.');
+  }
+  const updated = writeLocalPlanIndex([...readLocalPlanIndex(), trimmed]);
+  planCache.set(trimmed, { source: 'local', items: Array.isArray(items) ? items : [] });
+  return updated;
+};
+
+const deleteLocalPlan = (name) => {
+  const trimmed = normalizePlanName(name);
+  if (!trimmed || typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(`${PLAN_STORAGE_PREFIX}${trimmed}`);
+  } catch (error) {
+    console.warn('Failed to remove local plan', error);
+  }
+  const filtered = readLocalPlanIndex().filter((entry) => entry !== trimmed);
+  writeLocalPlanIndex(filtered);
+  if (planCache.has(trimmed) && planCache.get(trimmed).source === 'local') {
+    planCache.delete(trimmed);
+  }
+};
+
+const clonePlanItems = (items) => JSON.parse(JSON.stringify(Array.isArray(items) ? items : []));
+
+const resolvePlanNameInput = () => {
+  const directValue = normalizePlanName(els.planNameInput ? els.planNameInput.value : '');
+  if (directValue) return directValue;
+  return normalizePlanName(state.plan.name);
+};
+
+const refreshPlanNameOptions = () => {
+  setAvailablePlanNames(collectPlanNames());
+  syncPlanControls();
+};
+
+const removeDropboxPlansFromCache = () => {
+  for (const [name, entry] of planCache.entries()) {
+    if (entry && entry.source === 'dropbox') {
+      planCache.delete(name);
+    }
+  }
+};
+
+const loadLocalPlansIntoCache = () => {
+  for (const [name, entry] of planCache.entries()) {
+    if (entry && entry.source === 'local') {
+      planCache.delete(name);
+    }
+  }
+  const names = [];
+  try {
+    const raw = window.localStorage.getItem(PLAN_INDEX_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    list.forEach((name) => {
+      if (typeof name !== 'string') return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      names.push(trimmed);
+      try {
+        const planRaw = window.localStorage.getItem(`${PLAN_STORAGE_PREFIX}${trimmed}`);
+        if (planRaw) {
+          const items = JSON.parse(planRaw);
+          planCache.set(trimmed, { source: 'local', items: Array.isArray(items) ? items : [] });
+        }
+      } catch (error) {
+        console.warn('Failed to parse local plan', error);
+      }
+    });
+  } catch (error) {
+    console.warn('Failed to read local plans index', error);
+  }
+
+  if (!names.length && typeof window !== 'undefined' && window.localStorage) {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key || !key.startsWith(PLAN_STORAGE_PREFIX)) continue;
+      const planName = key.slice(PLAN_STORAGE_PREFIX.length).trim();
+      if (!planName || names.includes(planName)) continue;
+      names.push(planName);
+      try {
+        const planRaw = window.localStorage.getItem(key);
+        if (planRaw) {
+          const items = JSON.parse(planRaw);
+          planCache.set(planName, { source: 'local', items: Array.isArray(items) ? items : [] });
+        }
+      } catch (error) {
+        console.warn('Failed to parse local plan fallback', error);
+      }
+    }
+  }
+
+  return names;
+};
+
+async function fetchDropboxPlans(options = {}) {
+  if (!dropboxManager || !dropboxManager.isConnected) {
+    state.dropboxPlanNames = [];
+    refreshPlanNameOptions();
+    if (!options.silent) {
+      updateSyncStatus('Connect Dropbox to load plan names.', 'error');
+    }
+    return;
+  }
+
+  try {
+    const index = await dropboxManager.loadPlansIndex();
+    const plans = index.plans || {};
+    const names = Object.keys(plans).sort((a, b) => a.localeCompare(b));
+    state.dropboxPlanNames = names;
+    names.forEach((name) => {
+      const trimmed = typeof name === 'string' ? name.trim() : '';
+      if (!trimmed) return;
+      const items = Array.isArray(plans[name]) ? plans[name] : [];
+      planCache.set(trimmed, { source: 'dropbox', items });
+    });
+    refreshPlanNameOptions();
+    if (!options.silent) {
+      updateSyncStatus(`Loaded ${names.length} plan${names.length === 1 ? '' : 's'} from Dropbox.`, 'success');
+    }
+  } catch (error) {
+    if (!options.silent) {
+      updateSyncStatus(`Failed to load plan names: ${error.message}`, 'error');
+    }
+  }
+}
+
+const loadPlanByName = async (name) => {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (!trimmed) {
+    setPlanName('', { fromSelection: true });
+    loadPlanIntoBuilder([], { silent: true });
+    renderSchedulePreview();
+    return;
+  }
+
+  let entry = planCache.get(trimmed);
+  if (!entry && dropboxManager && dropboxManager.isConnected) {
+    await fetchDropboxPlans({ silent: true });
+    entry = planCache.get(trimmed);
+  }
+
+  if (!entry) {
+    updateSyncStatus(`Plan "${trimmed}" not found.`, 'error');
+    return;
+  }
+
+  setPlanName(trimmed, { fromSelection: true });
+  flushPlanNameDebounce();
+  loadPlanIntoBuilder(Array.isArray(entry.items) ? entry.items : []);
+  renderSchedulePreview();
+  updateSyncStatus(`Loaded plan "${trimmed}" into Workout Builder.`, 'success');
+};
+
+const refreshPlanNameSources = (options = {}) => {
+  loadLocalPlansIntoCache();
+  refreshPlanNameOptions();
+  if (dropboxManager && dropboxManager.isConnected) {
+    return fetchDropboxPlans(options);
+  }
+  return Promise.resolve();
+};
+
+async function handleDeletePlanFromBuilder() {
+  if (!dropboxManager || !dropboxManager.isConnected) {
+    updateSyncStatus('Connect Dropbox before deleting plans.', 'error');
+    return;
+  }
+
+  const select = els.planNameSelect;
+  const name = (select && select.value ? select.value : '').trim();
+  if (!name) {
+    updateSyncStatus('Select a plan to delete.', 'error');
+    return;
+  }
+
+  if (!state.dropboxPlanNames.includes(name)) {
+    updateSyncStatus(`Plan "${name}" not found on Dropbox.`, 'error');
+    return;
+  }
+
+  if (typeof window !== 'undefined' && !window.confirm(`Delete plan "${name}" from Dropbox? This cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    await dropboxManager.deletePlan(name);
+    state.dropboxPlanNames = state.dropboxPlanNames.filter((planName) => planName !== name);
+    if (planCache.has(name) && planCache.get(name).source === 'dropbox') {
+      planCache.delete(name);
+    }
+    refreshPlanNameOptions();
+    updateSyncStatus(`Deleted plan "${name}" from Dropbox.`, 'success');
+    if (state.plan.name === name) {
+      setPlanName('', { fromSelection: true });
+      loadPlanIntoBuilder([], { silent: true });
+      renderSchedulePreview();
+    }
+  } catch (error) {
+    updateSyncStatus(`Failed to delete plan "${name}": ${error.message}`, 'error');
+  }
+}
+
+const handleSavePlanLocally = () => {
+  const desiredName = resolvePlanNameInput();
+  if (!desiredName) {
+    updateSyncStatus('Enter a plan name before saving.', 'error');
+    return;
+  }
+
+  const items = buildPlanItems();
+  if (!items.length) {
+    updateSyncStatus('Add at least one exercise before saving a plan.', 'error');
+    return;
+  }
+
+  const planItems = clonePlanItems(items);
+  try {
+    savePlanToLocal(desiredName, planItems);
+  } catch (error) {
+    updateSyncStatus(error.message || 'Failed to save plan.', 'error');
+    return;
+  }
+
+  state.plan.selectedName = desiredName;
+  setPlanName(desiredName, { fromSelection: true });
+  refreshPlanNameOptions();
+  renderSchedulePreview();
+  flushPlanNameDebounce();
+  updateSyncStatus(`Saved plan "${desiredName}" locally.`, 'success');
+};
+
+const handleRenamePlan = async () => {
+  const previousName = normalizePlanName(state.plan.selectedName);
+  if (!previousName) {
+    handleSavePlanLocally();
+    return;
+  }
+
+  const desiredName = resolvePlanNameInput();
+  if (!desiredName) {
+    updateSyncStatus('Enter a new plan name to rename.', 'error');
+    return;
+  }
+
+  if (desiredName === previousName) {
+    updateSyncStatus('Plan name is unchanged.', 'pending');
+    return;
+  }
+
+  const items = buildPlanItems();
+  if (!items.length) {
+    updateSyncStatus('Add at least one exercise before renaming the plan.', 'error');
+    return;
+  }
+
+  const planItems = clonePlanItems(items);
+  const existingEntry = planCache.get(previousName);
+  const existingSnapshot = existingEntry
+    ? {
+        source: existingEntry.source,
+        items: clonePlanItems(existingEntry.items || [])
+      }
+    : null;
+  const wasDropbox = existingEntry?.source === 'dropbox';
+
+  try {
+    savePlanToLocal(desiredName, planItems);
+  } catch (error) {
+    updateSyncStatus(error.message || 'Failed to create renamed plan.', 'error');
+    return;
+  }
+
+  deleteLocalPlan(previousName);
+  if (!wasDropbox && planCache.has(previousName)) {
+    planCache.delete(previousName);
+  }
+
+  planCache.set(desiredName, { source: 'local', items: planItems });
+  state.plan.selectedName = desiredName;
+  setPlanName(desiredName, { fromSelection: true });
+  renderSchedulePreview();
+  flushPlanNameDebounce();
+
+  let dropboxMessage = null;
+  let dropboxRenamed = false;
+
+  if (wasDropbox) {
+    if (dropboxManager && dropboxManager.isConnected) {
+      try {
+        await dropboxManager.savePlan(desiredName, planItems);
+        await dropboxManager.deletePlan(previousName);
+        state.dropboxPlanNames = state.dropboxPlanNames
+          .filter((name) => name !== previousName)
+          .concat(desiredName)
+          .sort((a, b) => a.localeCompare(b));
+        dropboxRenamed = true;
+      } catch (error) {
+        dropboxMessage = `Dropbox rename failed: ${error.message}`;
+      }
+    } else {
+      dropboxMessage = 'Connect Dropbox and refresh plan names to update the cloud copy.';
+    }
+  }
+
+  if (wasDropbox) {
+    if (dropboxRenamed) {
+      planCache.delete(previousName);
+      planCache.set(desiredName, { source: 'dropbox', items: planItems });
+    } else if (existingSnapshot) {
+      planCache.set(previousName, existingSnapshot);
+    }
+  }
+
+  refreshPlanNameOptions();
+
+  if (dropboxMessage) {
+    updateSyncStatus(`Renamed locally to "${desiredName}", but ${dropboxMessage}`, 'error');
+  } else {
+    updateSyncStatus(`Renamed plan to "${desiredName}".`, 'success');
+  }
+};
 
 function setupSchedulePickers() {
   if (typeof flatpickr === 'undefined') {
@@ -143,14 +518,18 @@ function bindGlobalEvents() {
     persistState();
   });
 
-  els.randomizeLibrary?.addEventListener('click', () => {
-    shuffleLibraryExercises();
-    syncSortControls();
-    render();
-    persistState();
-  });
+  if (els.randomizeLibrary) {
+    els.randomizeLibrary.addEventListener('click', () => {
+      shuffleLibraryExercises();
+      syncSortControls();
+      render();
+      persistState();
+    });
+  }
 
-  els.unitToggle?.addEventListener('click', toggleWeightUnit);
+  if (els.unitToggle) {
+    els.unitToggle.addEventListener('click', toggleWeightUnit);
+  }
 
   els.toggleBuilderFilter.addEventListener('click', () => {
     state.showWorkoutOnly = !state.showWorkoutOnly;
@@ -161,22 +540,32 @@ function bindGlobalEvents() {
 
   els.tabLibrary.addEventListener('click', () => switchTab('library'));
   els.tabBuilder.addEventListener('click', () => switchTab('builder'));
-  els.tabWorkout?.addEventListener('click', () => {
-    window.location.href = 'workout-time/index.html';
-  });
+  if (els.tabWorkout) {
+    els.tabWorkout.addEventListener('click', () => {
+      window.location.href = 'workout-time/index.html';
+    });
+  }
 
   els.exportWorkout.addEventListener('click', exportWorkout);
   els.printWorkout.addEventListener('click', printWorkout);
   els.shareWorkout.addEventListener('click', shareWorkout);
-  els.shuffleBuilder?.addEventListener('click', () => {
-    if (shuffleBuilderOrder()) {
-      persistState();
-      render();
-    }
-  });
-  els.groupEquipment?.addEventListener('click', () => toggleGrouping('equipment'));
-  els.groupMuscles?.addEventListener('click', () => toggleGrouping('muscles'));
-  els.groupMuscleGroups?.addEventListener('click', () => toggleGrouping('muscleGroups'));
+  if (els.shuffleBuilder) {
+    els.shuffleBuilder.addEventListener('click', () => {
+      if (shuffleBuilderOrder()) {
+        persistState();
+        render();
+      }
+    });
+  }
+  if (els.groupEquipment) {
+    els.groupEquipment.addEventListener('click', () => toggleGrouping('equipment'));
+  }
+  if (els.groupMuscles) {
+    els.groupMuscles.addEventListener('click', () => toggleGrouping('muscles'));
+  }
+  if (els.groupMuscleGroups) {
+    els.groupMuscleGroups.addEventListener('click', () => toggleGrouping('muscleGroups'));
+  }
   els.clearWorkout.addEventListener('click', () => {
     state.builder.order = [];
     state.builder.items.clear();
@@ -189,18 +578,57 @@ function bindGlobalEvents() {
     render();
   });
 
-  els.planNameInput?.addEventListener('input', () => setPlanName(els.planNameInput.value));
-  els.scheduleStart?.addEventListener('change', (event) => setScheduleStart(event.target.value));
-  els.scheduleEnd?.addEventListener('change', (event) => setScheduleEnd(event.target.value));
-  els.scheduleInterval?.addEventListener('change', (event) => setScheduleInterval(event.target.value));
+  if (els.planNameSelect) {
+    els.planNameSelect.addEventListener('change', (event) => {
+      const selected = event.target && event.target.value ? event.target.value : '';
+      loadPlanByName(selected);
+    });
+  }
+  if (els.planNameInput) {
+    els.planNameInput.addEventListener('input', (event) => {
+      setPlanName(event.target.value);
+    });
+    els.planNameInput.addEventListener('blur', () => {
+      flushPlanNameDebounce();
+    });
+  }
+  if (els.planSaveButton) {
+    els.planSaveButton.addEventListener('click', handleSavePlanLocally);
+  }
+  if (els.planRenameButton) {
+    els.planRenameButton.addEventListener('click', () => {
+      handleRenamePlan();
+    });
+  }
+  if (els.refreshPlanNames) {
+    els.refreshPlanNames.addEventListener('click', () => {
+      refreshPlanNameSources();
+    });
+  }
+  if (els.deletePlanFromBuilder) {
+    els.deletePlanFromBuilder.addEventListener('click', handleDeletePlanFromBuilder);
+  }
+  if (els.scheduleStart) {
+    els.scheduleStart.addEventListener('change', (event) => setScheduleStart(event.target.value));
+  }
+  if (els.scheduleEnd) {
+    els.scheduleEnd.addEventListener('change', (event) => setScheduleEnd(event.target.value));
+  }
+  if (els.scheduleInterval) {
+    els.scheduleInterval.addEventListener('change', (event) => setScheduleInterval(event.target.value));
+  }
   if (els.scheduleDays) {
     els.scheduleDays.querySelectorAll('button[data-day]').forEach((button) => {
       button.addEventListener('click', () => toggleScheduleDay(button.dataset.day));
     });
   }
 
-  els.connectDropbox?.addEventListener('click', handleDropboxButtonClick);
-  els.syncToDropbox?.addEventListener('click', handleSyncToDropbox);
+  if (els.connectDropbox) {
+    els.connectDropbox.addEventListener('click', handleDropboxButtonClick);
+  }
+  if (els.syncToDropbox) {
+    els.syncToDropbox.addEventListener('click', handleSyncToDropbox);
+  }
 
   if (els.builderList) {
     els.builderList.addEventListener('dragover', handleBuilderDragOver);
@@ -219,7 +647,8 @@ function bindGlobalEvents() {
   els.scrollDown.addEventListener('click', () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }));
 
   window.addEventListener('keydown', (evt) => {
-    const activeTag = evt.target?.tagName?.toLowerCase();
+    const target = evt.target;
+    const activeTag = target && target.tagName ? target.tagName.toLowerCase() : null;
     const typing = activeTag === 'input' || activeTag === 'textarea' || evt.isComposing;
     if (evt.key === '/' && !typing) {
       evt.preventDefault();
@@ -245,6 +674,22 @@ function bindGlobalEvents() {
     } else if ((evt.key === 'b' || evt.key === 'B') && !typing) {
       evt.preventDefault();
       switchTab('builder');
+    }
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (!event || !event.key) return;
+    if (event.key === PLAN_INDEX_KEY || event.key.startsWith(PLAN_STORAGE_PREFIX)) {
+      loadLocalPlansIntoCache();
+      refreshPlanNameOptions();
+      if (state.plan.name && !planCache.has(state.plan.name)) {
+        setPlanName('', { fromSelection: true });
+        flushPlanNameDebounce();
+        loadPlanIntoBuilder([], { silent: true });
+        renderSchedulePreview();
+      }
     }
   });
 }
@@ -293,9 +738,13 @@ const initializeDropbox = async () => {
     if (!dropboxManager.isConnected) {
       setSyncButtonDisabled(false);
       updateSyncStatus('Disconnected from Dropbox.', null);
+      state.dropboxPlanNames = [];
+      removeDropboxPlansFromCache();
+      refreshPlanNameOptions();
     } else {
       const name = dropboxManager.account?.name?.display_name || 'Dropbox';
       updateSyncStatus(`Connected to Dropbox as ${name}.`, 'success');
+      fetchDropboxPlans({ silent: true });
     }
   };
   dropboxManager.onLog = (message, type) => {
@@ -309,6 +758,7 @@ const initializeDropbox = async () => {
     dropboxInitialized = true;
     if (dropboxManager.isConnected) {
       await dropboxManager.initializeFolderStructure();
+      await fetchDropboxPlans({ silent: true });
     }
   } catch (error) {
     console.error('Dropbox initialization failed:', error);
@@ -344,6 +794,8 @@ const handleSyncToDropbox = async () => {
     return;
   }
 
+  flushPlanNameDebounce();
+
   const payload = buildPlanSyncPayload();
   if (!payload.plans.length) {
     updateSyncStatus('Add exercises and a schedule before syncing to Dropbox.', 'error');
@@ -366,6 +818,7 @@ const handleSyncToDropbox = async () => {
       successCount += 1;
     }
     updateSyncStatus(`Synced ${successCount} plan${successCount === 1 ? '' : 's'} to Dropbox.`, 'success');
+    await fetchDropboxPlans({ silent: true });
   } catch (error) {
     updateSyncStatus(`Dropbox sync failed: ${error.message}`, 'error');
   } finally {
@@ -380,8 +833,12 @@ async function init() {
   const workoutParam = params.get('workout');
   if (deepLink) state.highlightId = deepLink;
 
+  loadLocalPlansIntoCache();
+  refreshPlanNameOptions();
   await initializeDropbox();
-
+  if (dropboxManager && dropboxManager.isConnected) {
+    await fetchDropboxPlans({ silent: true });
+  }
   fetch('exercise_dump.json')
     .then((res) => res.json())
     .then((json) => {
