@@ -859,6 +859,18 @@
                 width: clamp(160px, 25vw, 220px);
             }
 
+            .weight-adjuster-actions {
+                position: absolute;
+                top: 0;
+                left: 50%;
+                transform: translate(-50%, -125%);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                z-index: 2;
+            }
+
             .plan-pause-btn {
                 background: var(--card-bg);
                 border: 1px solid var(--section-border);
@@ -885,14 +897,40 @@
                 border-color: color-mix(in oklab, var(--success-color), transparent 50%);
             }
 
-            .weight-adjuster-stack .plan-pause-btn {
-                position: absolute;
-                top: 0;
-                transform: translateY(-125%);
-                z-index: 2;
+            .plan-pause-btn [aria-hidden="true"] {
+                font-size: 1.4rem;
+                line-height: 1;
             }
 
-            .plan-pause-btn [aria-hidden="true"] {
+            .plan-stop-btn {
+                background: linear-gradient(
+                    135deg,
+                    var(--danger-color) 0%,
+                    var(--danger-color-hover) 100%
+                );
+                border: 1px solid
+                    color-mix(in oklab, var(--danger-color), transparent 40%);
+                width: 48px;
+                height: 48px;
+                border-radius: 999px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #ffffff;
+                box-shadow: 0 10px 26px rgba(220, 53, 69, 0.35);
+                transition: transform 0.2s ease, box-shadow 0.2s ease,
+                    filter 0.2s ease;
+            }
+
+            .plan-stop-btn:hover,
+            .plan-stop-btn:focus-visible {
+                transform: translateY(-2px);
+                box-shadow: 0 16px 32px rgba(220, 53, 69, 0.4);
+                filter: brightness(1.02);
+                outline: none;
+            }
+
+            .plan-stop-btn [aria-hidden="true"] {
                 font-size: 1.4rem;
                 line-height: 1;
             }
@@ -1876,17 +1914,33 @@
                                     </button>
                                     <div class="plan-inline-center">
                                         <div class="weight-adjuster-stack">
-                                            <button
-                                                type="button"
-                                                class="plan-pause-btn"
-                                                id="planPauseBtn"
-                                                onclick="app.togglePlanPause()"
-                                                aria-pressed="false"
-                                                aria-label="Pause plan"
+                                            <div
+                                                class="weight-adjuster-actions"
+                                                role="group"
+                                                aria-label="Workout controls"
                                             >
-                                                <i class="bi bi-pause-fill" aria-hidden="true"></i>
-                                                <span class="sr-only">Pause plan</span>
-                                            </button>
+                                                <button
+                                                    type="button"
+                                                    class="plan-pause-btn"
+                                                    id="planPauseBtn"
+                                                    onclick="app.togglePlanPause()"
+                                                    aria-pressed="false"
+                                                    aria-label="Pause plan"
+                                                >
+                                                    <i class="bi bi-pause-fill" aria-hidden="true"></i>
+                                                    <span class="sr-only">Pause plan</span>
+                                                </button>
+                                                <button
+                                                    id="stopBtn"
+                                                    type="button"
+                                                    class="plan-stop-btn"
+                                                    onclick="app.stopWorkout()"
+                                                    aria-label="Stop workout"
+                                                >
+                                                    <i class="bi bi-stop-fill" aria-hidden="true"></i>
+                                                    <span class="sr-only">Stop workout</span>
+                                                </button>
+                                            </div>
                                             <div class="weight-adjuster-circle" aria-live="polite">
                                                 <button
                                                     type="button"
@@ -2007,24 +2061,6 @@
                                             role="timer"
                                             aria-live="off"
                                         ></div>
-                                        <button
-                                            id="stopBtn"
-                                            type="button"
-                                            onclick="app.stopWorkout()"
-                                            style="
-                                                background: linear-gradient(
-                                                    135deg,
-                                                    #dc3545 0%,
-                                                    #c82333 100%
-                                                );
-                                                padding: 15px 30px;
-                                                font-size: 16px;
-                                                width: auto;
-                                                margin: 0;
-                                            "
-                                        >
-                                            STOP
-                                        </button>
                                     </div>
                                 </div>
                             </div>
