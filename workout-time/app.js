@@ -729,114 +729,113 @@ class VitruvianApp {
     if (this._planSummaryListEl) {
       this._planSummaryListEl.innerHTML = "";
 
-      const aggregates = new Map();
-
-      for (const entry of data.sets) {
-        if (!entry) continue;
-        const key = `${entry.name || "Exercise"}|${entry.itemType || "exercise"}`;
-        if (!aggregates.has(key)) {
-          aggregates.set(key, {
-            name: entry.name || (entry.itemType === "echo" ? "Echo Mode" : "Exercise"),
-            itemType: entry.itemType || "exercise",
-            completedSets: 0,
-            totalSets: entry.totalSets || null,
-            totalReps: 0,
-            unlimited: !!entry.isUnlimited,
-            totalVolumeKg: 0,
-            pr: !!entry.pr,
-            prDetails: entry.prDetails || null,
-          });
-        }
-
-        const aggregate = aggregates.get(key);
-        aggregate.completedSets += 1;
-        if (entry.totalSets) {
-          aggregate.totalSets = entry.totalSets;
-        }
-        if (entry.isUnlimited) {
-          aggregate.unlimited = true;
-        } else if (Number.isFinite(entry.reps)) {
-          aggregate.totalReps += Math.max(0, entry.reps);
-        }
-        if (Number.isFinite(entry.volumeKg) && entry.volumeKg > 0) {
-          aggregate.totalVolumeKg += entry.volumeKg;
-        }
-        if (entry.pr) {
-          aggregate.pr = true;
-          if (entry.prDetails) {
-            const currentBest = Number.isFinite(aggregate.prDetails?.currentKg)
-              ? aggregate.prDetails.currentKg
-              : -Infinity;
-            const candidateBest = Number.isFinite(entry.prDetails.currentKg)
-              ? entry.prDetails.currentKg
-              : currentBest;
-            if (!aggregate.prDetails || candidateBest >= currentBest) {
-              aggregate.prDetails = { ...entry.prDetails };
-            }
-          }
-        }
-      }
-
       let overallKg = 0;
-      aggregates.forEach((aggregate) => {
+
+      data.sets.forEach((entry, index) => {
+        if (!entry) return;
+
         const itemEl = document.createElement("div");
         itemEl.className = "plan-summary-item";
+
+        const entryType = entry.itemType || "exercise";
+        const entryName = entry.name || (entryType === "echo" ? "Echo Mode" : `Set ${index + 1}`);
 
         const header = document.createElement("div");
         header.className = "plan-summary-item__header";
 
         const nameEl = document.createElement("div");
         nameEl.className = "plan-summary-item__name";
-        nameEl.textContent = aggregate.name;
+        nameEl.textContent = entryName;
         header.appendChild(nameEl);
 
-        if (aggregate.pr) {
+        if (entry.pr) {
           const prEl = document.createElement("div");
           prEl.className = "plan-summary-item__pr";
           prEl.innerHTML = `<i class="bi bi-star-fill" aria-hidden="true"></i><span>PR</span>`;
+          if (entry.prDetails?.label) {
+            prEl.title = entry.prDetails.label;
+          }
           header.appendChild(prEl);
         }
 
         itemEl.appendChild(header);
 
-        const meta = document.createElement("div");
-        meta.className = "plan-summary-item__meta";
+        const metaParts = [];
+        const setNumber = Number(entry.setNumber);
+        const totalSets = Number(entry.totalSets);
+        const hasSetNumber = Number.isFinite(setNumber) && setNumber > 0;
+        const hasTotalSets = Number.isFinite(totalSets) && totalSets > 0;
 
-        if (aggregate.totalSets) {
-          const setsSpan = document.createElement("span");
-          setsSpan.textContent = `Sets: ${aggregate.completedSets}/${aggregate.totalSets}`;
-          meta.appendChild(setsSpan);
-        } else {
-          const setsSpan = document.createElement("span");
-          setsSpan.textContent = `Sets completed: ${aggregate.completedSets}`;
-          meta.appendChild(setsSpan);
+        if (hasSetNumber && hasTotalSets) {
+          metaParts.push(`Set ${setNumber}/${totalSets}`);
+        } else if (hasSetNumber) {
+          metaParts.push(`Set ${setNumber}`);
         }
 
-        const repsSpan = document.createElement("span");
-        if (aggregate.unlimited) {
-          repsSpan.textContent = "Reps: Unlimited reps";
-        } else {
-          repsSpan.textContent = `Reps: ${aggregate.totalReps}`;
+        if (entry.isUnlimited) {
+          metaParts.push("Reps: Unlimited");
+        } else if (Number.isFinite(Number(entry.reps))) {
+          const repsValue = Math.max(0, Number(entry.reps));
+          metaParts.push(`Reps: ${repsValue}`);
         }
-        meta.appendChild(repsSpan);
 
-        itemEl.appendChild(meta);
+        if (metaParts.length) {
+          const meta = document.createElement("div");
+          meta.className = "plan-summary-item__meta";
+          metaParts.forEach((part) => {
+            const span = document.createElement("span");
+            span.textContent = part;
+            meta.appendChild(span);
+          });
+          itemEl.appendChild(meta);
+        }
 
-        if (aggregate.pr && aggregate.prDetails) {
+        const detailsParts = [];
+        const weightKg = Number(entry.weightKg);
+        const hasWeight = Number.isFinite(weightKg) && weightKg > 0;
+        if (hasWeight) {
+          detailsParts.push(`Weight: ${this.formatWeightWithUnit(weightKg)} per cable`);
+        } else if (Number.isFinite(weightKg) && weightKg === 0) {
+          detailsParts.push("Weight: Adaptive");
+        }
+
+        const cables = Number(entry.cables);
+        if (Number.isFinite(cables) && cables > 0) {
+          detailsParts.push(`Cables: ${cables}`);
+        }
+
+        const totalLoadKg =
+          hasWeight && Number.isFinite(cables) && cables > 0 ? weightKg * cables : null;
+        if (totalLoadKg !== null) {
+          detailsParts.push(`Total load: ${this.formatWeightWithUnit(totalLoadKg)}`);
+        }
+
+        if (detailsParts.length) {
+          const details = document.createElement("div");
+          details.className = "plan-summary-item__details";
+          detailsParts.forEach((part) => {
+            const span = document.createElement("span");
+            span.textContent = part;
+            details.appendChild(span);
+          });
+          itemEl.appendChild(details);
+        }
+
+        if (entry.pr && entry.prDetails) {
           const prDetailsEl = document.createElement("div");
           prDetailsEl.className = "plan-summary-item__pr-details";
 
-          const previousBestKg = Number.isFinite(aggregate.prDetails.previousBestKg)
-            ? aggregate.prDetails.previousBestKg
+          const previousBestKg = Number.isFinite(entry.prDetails.previousBestKg)
+            ? entry.prDetails.previousBestKg
             : null;
-          const currentBestKg = Number.isFinite(aggregate.prDetails.currentKg)
-            ? aggregate.prDetails.currentKg
+          const currentBestKg = Number.isFinite(entry.prDetails.currentKg)
+            ? entry.prDetails.currentKg
             : null;
-          const deltaKg = Number.isFinite(aggregate.prDetails.deltaKg)
-            ? aggregate.prDetails.deltaKg
+          const deltaKg = Number.isFinite(entry.prDetails.deltaKg)
+            ? entry.prDetails.deltaKg
             : null;
-          const deltaPct = Number.isFinite(aggregate.prDetails.deltaPct)
-            ? aggregate.prDetails.deltaPct
+          const deltaPct = Number.isFinite(entry.prDetails.deltaPct)
+            ? entry.prDetails.deltaPct
             : null;
 
           const previousDisplay =
@@ -871,22 +870,23 @@ class VitruvianApp {
 
         const loadEl = document.createElement("div");
         loadEl.className = "plan-summary-item__load";
-        if (aggregate.totalVolumeKg > 0) {
-          loadEl.textContent = `Total load lifted: ${this.formatWeightWithUnit(aggregate.totalVolumeKg)}`;
+        const volumeKg = Number(entry.volumeKg);
+        if (!entry.isUnlimited && Number.isFinite(volumeKg) && volumeKg > 0) {
+          loadEl.textContent = `Total volume lifted: ${this.formatWeightWithUnit(volumeKg)}`;
+          overallKg += volumeKg;
         } else {
-          loadEl.textContent = "Total load lifted: —";
+          loadEl.textContent = "Total volume lifted: —";
         }
         itemEl.appendChild(loadEl);
 
         this._planSummaryListEl.appendChild(itemEl);
-        overallKg += aggregate.totalVolumeKg;
       });
 
       if (this._planSummaryTotalEl) {
         if (overallKg > 0) {
-          this._planSummaryTotalEl.textContent = `Total load across exercises: ${this.formatWeightWithUnit(overallKg)}`;
+          this._planSummaryTotalEl.textContent = `Total volume across sets: ${this.formatWeightWithUnit(overallKg)}`;
         } else {
-          this._planSummaryTotalEl.textContent = "Total load across exercises: —";
+          this._planSummaryTotalEl.textContent = "Total volume across sets: —";
         }
       }
     }
