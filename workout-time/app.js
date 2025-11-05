@@ -484,11 +484,37 @@ class VitruvianApp {
     return this.defaultPerCableKg;
   }
 
-  updateLiveWeightDisplay() {
+  updateLiveWeightDisplay(sample = this.currentSample) {
     const valueEl = document.getElementById("liveWeightValue");
     const unitEl = document.getElementById("liveWeightUnit");
     const weightInput = document.getElementById("weight");
     if (!valueEl || !unitEl) {
+      return;
+    }
+
+    const isEchoWorkout =
+      this.currentWorkout &&
+      (this.currentWorkout.itemType === "echo" ||
+        (typeof this.currentWorkout.mode === "string" &&
+          this.currentWorkout.mode.toLowerCase().includes("echo")));
+
+    if (isEchoWorkout) {
+      const loadA = Number(sample?.loadA);
+      const loadB = Number(sample?.loadB);
+      const hasLoadSample = Number.isFinite(loadA) || Number.isFinite(loadB);
+      const totalKg =
+        (Number.isFinite(loadA) ? loadA : 0) +
+        (Number.isFinite(loadB) ? loadB : 0);
+
+      if (hasLoadSample) {
+        valueEl.textContent = this.convertKgToDisplay(totalKg).toFixed(
+          this.getLoadDisplayDecimals(),
+        );
+      } else {
+        valueEl.textContent = "-";
+      }
+
+      unitEl.textContent = this.getUnitLabel();
       return;
     }
 
@@ -1492,6 +1518,7 @@ class VitruvianApp {
 
     // Update numeric displays
     this.renderLoadDisplays(sample);
+    this.updateLiveWeightDisplay(sample);
 
     // Update position values
     document.getElementById("posAValue").textContent = sample.posA;
