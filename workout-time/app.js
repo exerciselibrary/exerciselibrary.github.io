@@ -2454,13 +2454,22 @@ class VitruvianApp {
     exportBtn.classList.toggle("export-selected", hasSelection);
   }
 
- completeWorkout() {
+  completeWorkout(options = {}) {
+    const {
+      reason = "complete",
+      skipPlanAdvance = false,
+    } = options;
 
-const setLabel = document.getElementById("currentSetName");
-if (setLabel) setLabel.textContent = "";
-  this._planSetInProgress = false;
+    const completedPlanEntry =
+      this.planActive && this._activePlanEntry
+        ? { ...this._activePlanEntry }
+        : null;
 
-  if (this.currentWorkout) {
+    const setLabel = document.getElementById("currentSetName");
+    if (setLabel) setLabel.textContent = "";
+    this._planSetInProgress = false;
+
+    if (this.currentWorkout) {
     // stop polling to avoid queue buildup
     this.device.stopPropertyPolling();
     this.device.stopMonitorPolling();
@@ -2527,20 +2536,43 @@ if (setLabel) setLabel.textContent = "";
         });
     }
 
-    this.resetRepCountersToEmpty();
-    this.addLogEntry("Workout completed and saved to history", "success");
-  }
+      this.resetRepCountersToEmpty();
 
-  // 👉 hand control back to the plan runner so it can show the rest overlay
-  try {
-    if (this.planActive && typeof this.planOnWorkoutComplete === "function") {
-      this.addLogEntry("Plan: completeWorkout() fired", "info");
-      this.planOnWorkoutComplete();
+      const summaryMessages = {
+        "auto-stop": "Workout auto-stopped and saved to history",
+        "echo-auto-stop": "Echo Just Lift auto-stop saved to history",
+        "stop-at-top": "Workout stopped at top and saved to history",
+        "target-reps": "Workout completed at target reps and saved to history",
+        user: "Workout completed and saved to history",
+        complete: "Workout completed and saved to history",
+      };
+      const summaryMessage = summaryMessages[reason] || summaryMessages.complete;
+      const summaryLevel =
+        reason === "auto-stop" || reason === "echo-auto-stop" ? "info" : "success";
+      this.addLogEntry(summaryMessage, summaryLevel);
     }
-  } catch (e) {
-    /* no-op */
+
+    // 👉 hand control back to the plan runner so it can show the rest overlay
+    try {
+      if (
+        !skipPlanAdvance &&
+        this.planActive &&
+        typeof this.planOnWorkoutComplete === "function"
+      ) {
+        const planMessage =
+          reason && reason !== "complete"
+            ? `Plan: workout block completed (${reason})`
+            : "Plan: workout block completed";
+        this.addLogEntry(planMessage, "info");
+        this.planOnWorkoutComplete({
+          reason,
+          completedEntry: completedPlanEntry,
+        });
+      }
+    } catch (e) {
+      /* no-op */
+    }
   }
-}
 
   // Extract movement data for a specific time range from chart history
   extractWorkoutMovementData(startTime, endTime) {
@@ -2735,7 +2767,11 @@ if (setLabel) setLabel.textContent = "";
           "Auto-stop triggered! Finishing workout...",
           "success",
         );
-        this.stopWorkout();
+        const autoStopReason =
+          this.isJustLiftMode && this.currentWorkout?.itemType === "echo"
+            ? "echo-auto-stop"
+            : "auto-stop";
+        this.stopWorkout({ reason: autoStopReason });
       }
     } else {
       // Reset timer if we left the danger zone
@@ -2982,8 +3018,8 @@ if (setLabel) setLabel.textContent = "";
             "Reached top of final rep! Auto-completing workout...",
             "success",
           );
-          this.stopWorkout(); // Must be explicitly stopped as the machine thinks the set isn't finished until the bottom of the final rep.
-          this.completeWorkout();
+          this.stopWorkout({ reason: "stop-at-top", complete: false }); // Must be explicitly stopped as the machine thinks the set isn't finished until the bottom of the final rep.
+          this.completeWorkout({ reason: "stop-at-top" });
         }
       }
     }
@@ -3057,7 +3093,7 @@ if (setLabel) setLabel.textContent = "";
             "Target reps reached! Auto-completing workout...",
             "success",
           );
-          this.completeWorkout();
+          this.completeWorkout({ reason: "target-reps" });
         }
       }
 
@@ -3099,13 +3135,25 @@ if (setLabel) setLabel.textContent = "";
     }
   }
 
-  async stopWorkout() {
+  async stopWorkout(options = {}) {
+    const { reason = "user", complete = true } = options;
+
     try {
       await this.device.sendStopCommand();
-      this.addLogEntry("Workout stopped by user", "info");
 
-      // Complete the workout and save to history
-      this.completeWorkout();
+      let stopMessage = "Workout stopped by user";
+      if (reason === "auto-stop") {
+        stopMessage = "Workout auto-stopped (Just Lift safety)";
+      } else if (reason === "echo-auto-stop") {
+        stopMessage = "Echo Just Lift auto-stop triggered";
+      } else if (reason === "stop-at-top") {
+        stopMessage = "Workout stopped at top of final rep";
+      }
+      this.addLogEntry(stopMessage, "info");
+
+      if (complete) {
+        this.completeWorkout({ reason });
+      }
     } catch (error) {
       console.error("Stop workout error:", error);
       this.addLogEntry(`Failed to stop workout: ${error.message}`, "error");
@@ -3770,8 +3818,8 @@ if (setLabel) {
 
 // Decide next step after a block finishes: next set of same item, or next item.
 // Schedules rest and then calls _runCurrentPlanBlock() again.
-  _planAdvance() {
-    return window.PlanRunnerPrototype._planAdvance.call(this);
+  _planAdvance(completion) {
+    return window.PlanRunnerPrototype._planAdvance.call(this, completion);
   }
 
 
