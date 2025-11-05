@@ -66,6 +66,7 @@
                 --pr-new-text: #2b8a3e;
                 --pr-tie-bg: #ffe8a1;
                 --pr-tie-text: #704214;
+                --stat-value-color: #212529;
             }
 
             body.dark-theme {
@@ -109,6 +110,7 @@
                 --pr-new-text: #7dd3a7;
                 --pr-tie-bg: rgba(255, 196, 77, 0.2);
                 --pr-tie-text: #ffe08a;
+                --stat-value-color: #ffffff;
             }
 
             * {
@@ -499,7 +501,7 @@
                 width: 50px;
                 height: 50px;
                 color: var(--accent-color);
-                transition: left 0.3s ease, box-shadow 0.2s ease, color 0.2s ease;
+                transition: box-shadow 0.2s ease, color 0.2s ease;
             }
 
             .hamburger .bi {
@@ -1043,6 +1045,9 @@
             }
 
             .plan-elapsed-timer {
+                position: absolute;
+                bottom: 20px;
+                right: 20px;
                 min-width: 76px;
                 padding: 6px 12px;
                 border-radius: 10px;
@@ -1050,8 +1055,7 @@
                 color: var(--text-primary);
                 font-weight: 600;
                 font-variant-numeric: tabular-nums;
-                align-self: flex-end;
-                margin-left: auto;
+                text-align: right;
             }
 
             .plan-elapsed-timer.is-paused {
@@ -1084,6 +1088,7 @@
 
             /* Position bars */
             .position-bars {
+                position: relative;
                 display: flex;
                 justify-content: space-around;
                 align-items: stretch;
@@ -1288,7 +1293,7 @@
             .stat-value {
                 font-size: 1.8em;
                 font-weight: 700;
-                color: #212529;
+                color: var(--stat-value-color);
             }
 
             .stat-unit {
@@ -1455,13 +1460,13 @@
                 }
 
                 .hamburger {
-                    left: 420px;
+                    left: 20px;
                 }
 
-            .app-container.sidebar-collapsed .hamburger {
-                left: 20px;
+                .app-container.sidebar-collapsed .hamburger {
+                    left: 20px;
+                }
             }
-        }
 
             .scroll-btn {
                 position: fixed;
