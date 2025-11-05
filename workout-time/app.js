@@ -1002,6 +1002,7 @@ class VitruvianApp {
     }
 
     const previousUnit = options.previousUnit || this.weightUnit;
+    const skipSave = Boolean(options.skipSave);
 
     if (unit === this.weightUnit && !options.force) {
       return;
@@ -1037,7 +1038,9 @@ class VitruvianApp {
     }
 
     this.onUnitChanged();
-    this.saveWeightUnitPreference();
+    if (!skipSave) {
+      this.saveWeightUnitPreference();
+    }
   }
 
   onUnitChanged() {
@@ -3472,6 +3475,82 @@ if (setLabel) {
 }
 
 
+  inferPlanWeightUnit(items) {
+    if (!Array.isArray(items)) {
+      return null;
+    }
+
+    for (const item of items) {
+      const inferred = this._inferUnitFromPlanItem(item);
+      if (inferred) {
+        return inferred;
+      }
+    }
+
+    return null;
+  }
+
+  _inferUnitFromPlanItem(item) {
+    if (!item || typeof item !== "object") {
+      return null;
+    }
+
+    const progressionUnit = typeof item.progressionUnit === "string"
+      ? item.progressionUnit.trim().toUpperCase()
+      : null;
+
+    if (progressionUnit === "LBS") {
+      return "lb";
+    }
+
+    if (progressionUnit === "KG") {
+      return "kg";
+    }
+
+    const rawWeight = item?.builderMeta?.setData?.weight;
+    const parsedWeight =
+      typeof rawWeight === "string"
+        ? parseFloat(rawWeight)
+        : Number(rawWeight);
+    const perCableKg = Number(item?.perCableKg);
+
+    if (Number.isFinite(parsedWeight) && Number.isFinite(perCableKg)) {
+      const kgDisplay = Number(perCableKg.toFixed(1));
+      const lbDisplay = Number((perCableKg * LB_PER_KG).toFixed(1));
+      const tolerance = 0.11;
+      const kgDelta = Math.abs(parsedWeight - kgDisplay);
+      const lbDelta = Math.abs(parsedWeight - lbDisplay);
+
+      if (kgDelta <= tolerance && kgDelta <= lbDelta) {
+        return "kg";
+      }
+
+      if (lbDelta <= tolerance && lbDelta < kgDelta) {
+        return "lb";
+      }
+    }
+
+    return null;
+  }
+
+  applyPlanUnitOverride(items) {
+    const inferred = this.inferPlanWeightUnit(items);
+    if (!inferred || inferred === this.weightUnit) {
+      return;
+    }
+
+    const previous = this.weightUnit;
+    this.setWeightUnit(inferred, {
+      previousUnit: previous,
+      force: true,
+      skipSave: true,
+    });
+
+    const friendly = inferred === "lb" ? "pounds" : "kilograms";
+    this.addLogEntry(`Display units updated to match plan (${friendly}).`, "info");
+  }
+
+
   /* =========================
      PLAN — UI RENDER
      ========================= */
@@ -3949,6 +4028,7 @@ if (setLabel) {
 
       if (!raw) { alert("Saved plan not found."); return; }
       this.planItems = JSON.parse(raw) || [];
+      this.applyPlanUnitOverride(this.planItems);
       this.renderPlanUI();
       this.addLogEntry(`Loaded plan "${sel.value}"`, "success");
     } catch (e) {

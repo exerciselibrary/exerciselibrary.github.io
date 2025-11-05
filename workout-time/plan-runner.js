@@ -181,15 +181,14 @@
     },
 
     _beginRest: function _beginRest(totalSec, onDone, labelText = "Next set", nextHtml = "", nextItemOrName = null) {
-      const overlay = document.getElementById("restOverlay");
-      const progress = document.getElementById("restProgress");
-      const timeText = document.getElementById("restTimeText");
-      const nextDiv = document.getElementById("restNext");
-      const addBtn = document.getElementById("restAddBtn");
-      const skipBtn = document.getElementById("restSkipBtn");
+      const circle = document.getElementById("weightAdjusterCircle");
+      const progress = document.getElementById("restCountdownProgress");
+      const timeText = document.getElementById("restCountdownTime");
+      const labelEl = document.getElementById("restCountdownLabel");
+      const hintEl = document.getElementById("restCountdownHint");
+      const restButton = document.getElementById("restCountdownButton");
+      const summaryEl = document.getElementById("restCountdownSummary");
       const inlineHud = document.getElementById("planRestInline");
-      const setNameEl = document.getElementById("restSetName");
-      const labelEl = document.getElementById("restLabel");
 
       const finishLater = () => {
         if (typeof onDone !== "function") {
@@ -202,9 +201,9 @@
         }
       };
 
-      if (!overlay || !progress || !timeText) {
+      if (!circle || !progress || !timeText || !restButton) {
         const ms = Math.max(0, (totalSec | 0) * 1000);
-        this.addLogEntry(`(No overlay found) Rest ${totalSec}s…`, "info");
+        this.addLogEntry(`(No rest countdown available) Rest ${totalSec}s…`, "info");
         window.setTimeout(() => finishLater(), ms);
         return;
       }
@@ -217,6 +216,24 @@
           ? nextItemOrName
           : nextItemOrName?.name || "";
 
+      const adjustButtons = [
+        document.getElementById("weightAdjusterIncrease"),
+        document.getElementById("weightAdjusterDecrease"),
+      ].filter(Boolean);
+
+      const disabledButtons = adjustButtons.map((btn) => ({
+        el: btn,
+        disabled: btn.disabled,
+        tabIndex: btn.getAttribute("tabindex"),
+        ariaHidden: btn.getAttribute("aria-hidden"),
+      }));
+
+      disabledButtons.forEach(({ el }) => {
+        el.disabled = true;
+        el.setAttribute("aria-hidden", "true");
+        el.setAttribute("tabindex", "-1");
+      });
+
       const state = {
         totalSec: restTotal,
         remainingSec: restTotal,
@@ -224,18 +241,20 @@
         labelText,
         nextHtml: nextHtml || "",
         nextName,
-        overlay,
+        circle,
         progress,
         timeText,
-        nextDiv,
-        addBtn,
-        skipBtn,
-        inlineHud,
-        setNameEl,
         labelEl,
+        hintEl,
+        restButton,
+        summaryEl,
+        inlineHud,
         timerId: null,
         targetTimestamp: null,
         lastAnnounce: null,
+        addHandler: null,
+        previousAriaLabel: restButton.getAttribute("aria-label"),
+        disabledButtons,
       };
 
       this._restState = state;
@@ -243,24 +262,27 @@
         this._clearRestState({ signalDone: false });
       };
 
-      if (addBtn) {
-        addBtn.onclick = () => {
-          state.totalSec += 30;
-          state.remainingSec += 30;
-          if (state.targetTimestamp) {
-            state.targetTimestamp += 30_000;
-          }
-          this.addLogEntry("+30s added to rest", "info");
-          this._updateRestUI(state, { force: true });
-        };
-      }
+      circle.classList.add("rest-active");
+      circle.classList.remove("rest-paused");
+      restButton.disabled = false;
+      restButton.tabIndex = 0;
 
-      if (skipBtn) {
-        skipBtn.onclick = () => {
-          this.addLogEntry("Rest skipped", "info");
-          this._clearRestState({ signalDone: true, reason: "skip" });
-        };
-      }
+      const addTime = (event) => {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        state.totalSec += 30;
+        state.remainingSec += 30;
+        if (state.targetTimestamp) {
+          state.targetTimestamp += 30_000;
+        }
+        this.addLogEntry("+30s added to rest", "info");
+        this._updateRestUI(state, { force: true });
+      };
+
+      restButton.addEventListener("click", addTime);
+      state.addHandler = addTime;
 
       this._updateRestUI(state, { force: true });
 
@@ -273,7 +295,7 @@
         if (inlineHud) {
           inlineHud.textContent = `Rest paused (${state.remainingSec}s remaining)`;
         }
-        overlay.classList.add("paused");
+        circle.classList.add("rest-paused");
       } else {
         this._startRestTimer(state);
       }
@@ -336,24 +358,36 @@
 
     _updateRestUI: function _updateRestUI(state, options = {}) {
       if (!state) return;
-      const { overlay, progress, timeText, nextDiv, inlineHud, setNameEl, labelEl } = state;
-      if (overlay) {
-        overlay.classList.remove("hidden");
-        overlay.classList.toggle("paused", this.planPaused);
+      const { circle, progress, timeText, inlineHud, restButton, hintEl, labelEl, summaryEl } = state;
+
+      if (circle) {
+        circle.classList.add("rest-active");
+        circle.classList.toggle("rest-paused", this.planPaused);
       }
+
       if (labelEl) {
-        const base = state.labelText || "Next set";
-        labelEl.textContent = this.planPaused ? `${base} (Paused)` : base;
+        labelEl.textContent = this.planPaused ? "Rest paused" : "Rest";
       }
-      if (setNameEl) {
-        setNameEl.textContent = state.nextName || "";
-      }
-      if (nextDiv) {
-        nextDiv.innerHTML = state.nextHtml || "";
-      }
+
       if (timeText) {
         timeText.textContent = String(Math.max(0, state.remainingSec));
       }
+
+      if (hintEl) {
+        hintEl.textContent = this.planPaused ? "Plan paused" : "Tap circle to add +30s";
+      }
+
+      if (restButton) {
+        restButton.classList.toggle("rest-paused", this.planPaused);
+        const remaining = Math.max(0, state.remainingSec);
+        const baseLabel = this.planPaused ? "Rest paused" : "Rest";
+        const action = this.planPaused ? "Resume the plan to continue." : "Tap to add 30 seconds.";
+        restButton.setAttribute(
+          "aria-label",
+          `${baseLabel}. ${remaining}s remaining. ${action}`,
+        );
+      }
+
       if (inlineHud) {
         if (this.planPaused) {
           inlineHud.textContent = `Rest paused (${state.remainingSec}s remaining)`;
@@ -363,19 +397,26 @@
           inlineHud.textContent = "";
         }
       }
+
+      if (summaryEl) {
+        if (state.nextHtml) {
+          const heading = state.labelText || "Next set";
+          summaryEl.innerHTML = `<strong>${heading}</strong><div class="rest-countdown-summary-details">${state.nextHtml}</div>`;
+        } else if (state.labelText) {
+          summaryEl.innerHTML = `<strong>${state.labelText}</strong>`;
+        } else {
+          summaryEl.textContent = "";
+        }
+      }
+
       if (progress) {
-        const circumference = 2 * Math.PI * 45;
+        const radius = Number(progress.getAttribute("r") || 54);
+        const circumference = 2 * Math.PI * radius;
         const total = Math.max(1, state.totalSec);
-        const ratio = Math.min(
-          1,
-          Math.max(0, (total - state.remainingSec) / total),
-        );
-        const dash = ratio * circumference;
+        const ratio = Math.min(1, Math.max(0, (total - state.remainingSec) / total));
+        const dashOffset = circumference * (1 - ratio);
         progress.setAttribute("stroke-dasharray", circumference.toFixed(3));
-        progress.setAttribute(
-          "stroke-dashoffset",
-          String((circumference - dash).toFixed(3)),
-        );
+        progress.setAttribute("stroke-dashoffset", dashOffset.toFixed(3));
       }
     },
 
@@ -391,14 +432,26 @@
         state.remainingSec = Math.max(0, Math.ceil(msLeft / 1000));
         state.targetTimestamp = null;
       }
-      if (state.overlay) {
-        state.overlay.classList.add("paused");
+      if (state.circle) {
+        state.circle.classList.add("rest-paused");
+      }
+      if (state.restButton) {
+        state.restButton.classList.add("rest-paused");
+      }
+      if (state.hintEl) {
+        state.hintEl.textContent = "Plan paused";
       }
       if (state.inlineHud) {
         state.inlineHud.textContent = `Rest paused (${state.remainingSec}s remaining)`;
       }
       if (state.timeText) {
         state.timeText.textContent = String(Math.max(0, state.remainingSec));
+      }
+      if (state.restButton) {
+        state.restButton.setAttribute(
+          "aria-label",
+          `Rest paused. ${state.remainingSec}s remaining. Resume the plan to continue.`,
+        );
       }
     },
 
@@ -408,8 +461,11 @@
         return;
       }
 
-      if (state.overlay) {
-        state.overlay.classList.remove("paused");
+      if (state.circle) {
+        state.circle.classList.remove("rest-paused");
+      }
+      if (state.restButton) {
+        state.restButton.classList.remove("rest-paused");
       }
       if (state.remainingSec <= 0) {
         this._clearRestState({ signalDone: true });
@@ -428,38 +484,75 @@
 
       this._stopRestTimer(state);
 
-      if (state.overlay) {
-        state.overlay.classList.add("hidden");
-        state.overlay.classList.remove("paused");
+      if (state.circle) {
+        state.circle.classList.remove("rest-active", "rest-paused");
+      }
+      if (state.restButton) {
+        state.restButton.classList.remove("rest-paused");
+        if (typeof state.addHandler === "function") {
+          state.restButton.removeEventListener("click", state.addHandler);
+        }
+        state.restButton.disabled = false;
+        state.restButton.tabIndex = -1;
+        if (state.previousAriaLabel === null || state.previousAriaLabel === undefined) {
+          state.restButton.removeAttribute("aria-label");
+        } else {
+          state.restButton.setAttribute("aria-label", state.previousAriaLabel);
+        }
+      }
+      if (Array.isArray(state.disabledButtons)) {
+        state.disabledButtons.forEach((meta) => {
+          const btn = meta?.el;
+          if (!btn) return;
+          btn.disabled = !!meta.disabled;
+          if (meta.ariaHidden == null) {
+            btn.removeAttribute("aria-hidden");
+          } else {
+            btn.setAttribute("aria-hidden", meta.ariaHidden);
+          }
+          if (meta.tabIndex == null) {
+            btn.removeAttribute("tabindex");
+          } else {
+            btn.setAttribute("tabindex", meta.tabIndex);
+          }
+        });
       }
       if (state.inlineHud) {
         state.inlineHud.textContent = "";
       }
-      if (state.setNameEl) {
-        state.setNameEl.textContent = "";
+      if (state.summaryEl) {
+        state.summaryEl.innerHTML = "";
       }
-      if (state.nextDiv) {
-        state.nextDiv.innerHTML = "";
+      if (state.hintEl) {
+        state.hintEl.textContent = "Tap circle to add +30s";
+      }
+      if (state.timeText) {
+        state.timeText.textContent = "0";
       }
       if (state.labelEl) {
-        state.labelEl.textContent = state.labelText || "Next set";
+        state.labelEl.textContent = "Rest";
       }
-      if (state.addBtn) {
-        state.addBtn.onclick = null;
-      }
-      if (state.skipBtn) {
-        state.skipBtn.onclick = null;
+      if (state.progress) {
+        const radius = Number(state.progress.getAttribute("r") || 54);
+        const circumference = 2 * Math.PI * radius;
+        state.progress.setAttribute("stroke-dasharray", circumference.toFixed(3));
+        state.progress.setAttribute("stroke-dashoffset", circumference.toFixed(3));
       }
 
       this._restState = null;
       this._cancelRest = null;
 
       if (signalDone && typeof state.onDone === "function") {
-        if (reason === "complete") {
+        if (reason === "complete" || reason === "skipped") {
+          const baseMessage =
+            reason === "skipped"
+              ? "Rest skipped → starting next block"
+              : "Rest finished → starting next block";
           const message = this.planPaused
-            ? "Rest finished — waiting for resume to continue plan."
-            : "Rest finished → starting next block";
-          this.addLogEntry(message, this.planPaused ? "info" : "success");
+            ? `${baseMessage} (waiting for resume).`
+            : baseMessage;
+          const level = reason === "skipped" ? "info" : "success";
+          this.addLogEntry(message, level);
         }
 
         if (this.planPaused) {
@@ -699,7 +792,17 @@
     },
 
     skipPlanForward: async function skipPlanForward() {
-      await this.navigatePlan(1);
+      if (!this.planActive) {
+        return false;
+      }
+
+      if (this._restState) {
+        this.addLogEntry("Rest skipped → starting next block", "info");
+        this._clearRestState({ signalDone: true, reason: "skipped" });
+        return true;
+      }
+
+      return this.navigatePlan(1);
     },
 
     rewindPlan: async function rewindPlan() {
