@@ -907,11 +907,16 @@ class VitruvianApp {
           : {};
 
       const existingNames = new Set(this.getAllPlanNames());
+      const previousRemoteNames = new Set(this.getDropboxPlanNames());
       const remoteNames = Object.keys(plans);
-      const finalNames = this.setAllPlanNames(remoteNames);
-      const finalSet = new Set(finalNames);
+      const remoteSet = new Set(remoteNames);
 
-      for (const name of finalNames) {
+      const localOnlyNames = [...existingNames].filter(
+        (name) => !previousRemoteNames.has(name),
+      );
+      const finalNames = this.setAllPlanNames([...localOnlyNames, ...remoteNames]);
+
+      for (const name of remoteNames) {
         try {
           const items = Array.isArray(plans[name]) ? plans[name] : [];
           localStorage.setItem(this.planKey(name), JSON.stringify(items));
@@ -920,11 +925,13 @@ class VitruvianApp {
         }
       }
 
-      for (const name of existingNames) {
-        if (!finalSet.has(name)) {
+      for (const name of previousRemoteNames) {
+        if (!remoteSet.has(name)) {
           localStorage.removeItem(this.planKey(name));
         }
       }
+
+      this.setDropboxPlanNames(remoteNames);
 
       this.refreshPlanSelectNames();
 
@@ -3814,10 +3821,18 @@ if (setLabel) {
 
   plansKey() { return "vitruvian.plans.index"; }
   planKey(name) { return `vitruvian.plan.${name}`; }
+  dropboxPlansKey() { return "vitruvian.plans.dropboxIndex"; }
 
   getAllPlanNames() {
     try {
       const raw = localStorage.getItem(this.plansKey());
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  }
+
+  getDropboxPlanNames() {
+    try {
+      const raw = localStorage.getItem(this.dropboxPlansKey());
       return raw ? JSON.parse(raw) : [];
     } catch { return []; }
   }
@@ -3827,6 +3842,15 @@ if (setLabel) {
     names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     try {
       localStorage.setItem(this.plansKey(), JSON.stringify(names));
+    } catch {}
+    return names;
+  }
+
+  setDropboxPlanNames(arr) {
+    const names = Array.isArray(arr) ? Array.from(new Set(arr)) : [];
+    names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    try {
+      localStorage.setItem(this.dropboxPlansKey(), JSON.stringify(names));
     } catch {}
     return names;
   }
