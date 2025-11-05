@@ -2,6 +2,7 @@
 
 const LB_PER_KG = 2.2046226218488;
 const KG_PER_LB = 1 / LB_PER_KG;
+const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
 
 class VitruvianApp {
   constructor() {
@@ -13,8 +14,12 @@ class VitruvianApp {
     this._unitToggleButton = null; // Reference to unit toggle button
     this._weightAdjustTimer = null; // Interval handle for weight hold
     this._weightAdjustDirection = 0; // Current hold direction
-    this._repAudioContext = null; // Web Audio context for rep cues
+    this._weightHoldStartTime = null;
+    this._weightHoldRepeats = 0;
+    this._audioContext = null; // Shared Web Audio context for UI cues
     this._lastRepTopBeep = 0; // Timestamp of last rep top cue
+    this._weightAdjustSoundThrottle = 0;
+    this._countdownBeepThrottle = 0;
     this.stopAtTop = false; // Stop at top of final rep instead of bottom
     this.warmupReps = 0;
     this.workingReps = 0;
@@ -38,20 +43,32 @@ class VitruvianApp {
     this.autoStopStartTime = null; // When we entered the auto-stop danger zone
     this.isJustLiftMode = false; // Flag for Just Lift mode with auto-stop
     this.lastTopCounter = undefined; // Track u16[1] for top detection
+    this.defaultPerCableKg = DEFAULT_PER_CABLE_KG;
+    this._weightInputKg = DEFAULT_PER_CABLE_KG;
+    this._cancelRest = null;
+    this.theme = this.loadStoredTheme();
     this.setupLogging();
     this.setupChart();
     this.setupUnitControls();
-    this.setupLiveWeightAdjuster();
-    this.setupDropbox();
-    this.setupMessageBridge();
-    this.resetRepCountersToEmpty();
-    this.updateStopButtonState();
-
     this.planItems = [];        // array of {type: 'exercise'|'echo', fields...}
     this.planActive = false;    // true when plan runner is active
     this.planCursor = { index: 0, set: 1 }; // current item & set counter
     this.planRestTimer = null;  // rest countdown handle
     this.planOnWorkoutComplete = null; // hook assigned while plan is running
+    this.planTimeline = [];
+    this.planTimelineIndex = 0;
+    this._activePlanEntry = null;
+    this._planSetInProgress = false;
+    this._queuedPlanRun = null;
+    this._planNavigationTargetIndex = null;
+    this.planStartTime = null;
+    this.planPaused = false;
+    this.planPauseStartedAt = null;
+    this.planPausedDurationMs = 0;
+    this._planElapsedInterval = null;
+    this.planPauseActivityStart = null;
+    this.planPauseLastSample = null;
+    this._restState = null;
 
     this._hasPerformedInitialSync = false; // track if we've auto-synced once per session
     this._autoSyncInFlight = false;
@@ -63,15 +80,29 @@ class VitruvianApp {
     this.sidebarCollapsed = false;
     this.loadSidebarPreference();
 
+    this._scrollButtonsUpdate = null;
+
     this.selectedHistoryKey = null; // currently selected history entry key
     this.selectedHistoryIndex = null; // cache index for quick lookup
 
-    // initialize plan UI dropdown from storage
+    // initialize plan UI dropdown from storage and render once UI is ready
     setTimeout(() => {
       this.refreshPlanSelectNames();
       this.renderPlanUI();
       this.applySidebarCollapsedState();
+      this.updatePlanControlsState();
+      this.updatePlanElapsedDisplay();
     }, 0);
+
+    this.setupThemeToggle();
+    this.setupLiveWeightAdjuster();
+    this.setupDropbox();
+    this.setupMessageBridge();
+    this.setupScrollButtons();
+    this.resetRepCountersToEmpty();
+    this.updateStopButtonState();
+    this.updatePlanControlsState?.();
+    this.updatePlanElapsedDisplay?.();
 
     window.addEventListener("resize", () => {
       this.applySidebarCollapsedState();
@@ -79,7 +110,6 @@ class VitruvianApp {
 
 
   }
-
   setupLogging() {
     // Connect device logging to UI
     this.device.onLog = (message, type) => {
@@ -132,6 +162,72 @@ class VitruvianApp {
     }
   }
 
+  setupThemeToggle() {
+    const toggleButton = document.getElementById("themeToggle");
+
+    if (toggleButton) {
+      toggleButton.addEventListener("click", () => {
+        const next = this.theme === "dark" ? "light" : "dark";
+        this.setTheme(next);
+      });
+    }
+
+    this.setTheme(this.theme, { skipSave: true });
+  }
+
+  loadStoredTheme() {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return "light";
+    }
+    try {
+      const stored = window.localStorage.getItem("vitruvian.theme");
+      return stored === "dark" ? "dark" : "light";
+    } catch (error) {
+      return "light";
+    }
+  }
+
+  setTheme(theme, options = {}) {
+    const normalized = theme === "dark" ? "dark" : "light";
+    this.theme = normalized;
+
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.toggle("dark-theme", normalized === "dark");
+    }
+
+    if (!options.skipSave && typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.setItem("vitruvian.theme", normalized);
+      } catch (error) {
+        /* ignore storage errors */
+      }
+    }
+
+    this.updateThemeToggleUI();
+    this.renderPlanUI();
+    this.updatePersonalBestDisplay();
+    this.updateLiveWeightDisplay();
+  }
+
+  updateThemeToggleUI() {
+    const toggleButton = document.getElementById("themeToggle");
+    if (!toggleButton) {
+      return;
+    }
+    const isDark = this.theme === "dark";
+    toggleButton.setAttribute("aria-pressed", isDark ? "true" : "false");
+    toggleButton.classList.toggle("is-dark", isDark);
+
+    const label = toggleButton.querySelector(".theme-toggle__label");
+    const icon = toggleButton.querySelector(".theme-toggle__icon");
+    if (label) {
+      label.textContent = isDark ? "Dark Mode" : "Light Mode";
+    }
+    if (icon) {
+      icon.textContent = isDark ? "🌙" : "🌞";
+    }
+  }
+
   updateUnitToggleUI() {
     if (!this._unitToggleButton) {
       this._unitToggleButton = document.getElementById("unitToggleButton");
@@ -152,16 +248,53 @@ class VitruvianApp {
     button.setAttribute("aria-pressed", this.weightUnit === "lb" ? "true" : "false");
   }
 
+  getWeightHoldDynamics(elapsedMs = 0) {
+    if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+      return { interval: 220, stepMultiplier: 1 };
+    }
+
+    if (elapsedMs >= 4000) {
+      return { interval: 70, stepMultiplier: 5 };
+    }
+    if (elapsedMs >= 2500) {
+      return { interval: 90, stepMultiplier: 4 };
+    }
+    if (elapsedMs >= 1500) {
+      return { interval: 120, stepMultiplier: 3 };
+    }
+    if (elapsedMs >= 800) {
+      return { interval: 160, stepMultiplier: 2 };
+    }
+    return { interval: 220, stepMultiplier: 1 };
+  }
+
   setupLiveWeightAdjuster() {
     const increase = document.getElementById("weightAdjusterIncrease");
     const decrease = document.getElementById("weightAdjusterDecrease");
     const weightInput = document.getElementById("weight");
 
     if (weightInput) {
+      const existingDisplay = parseFloat(weightInput.value);
+      const existingKg = this.convertDisplayToKg(existingDisplay);
+      if (!Number.isFinite(existingDisplay) || !Number.isFinite(existingKg)) {
+        weightInput.value = this.formatWeightValue(
+          this.defaultPerCableKg,
+          this.getWeightInputDecimals(),
+        );
+        this._weightInputKg = this.defaultPerCableKg;
+      } else {
+        this._weightInputKg = existingKg;
+      }
+
       weightInput.addEventListener("input", () => {
         this.updateLiveWeightDisplay();
       });
       weightInput.addEventListener("change", () => {
+        const displayValue = parseFloat(weightInput.value);
+        const kgValue = this.convertDisplayToKg(displayValue);
+        if (Number.isFinite(kgValue)) {
+          this._weightInputKg = kgValue;
+        }
         this.updateLiveWeightDisplay();
       });
     }
@@ -233,24 +366,52 @@ class VitruvianApp {
   startLiveWeightHold(direction) {
     this.stopLiveWeightHold();
     this._weightAdjustDirection = direction;
-    this.adjustLiveWeight(direction, { repeat: false });
-    this._weightAdjustTimer = window.setInterval(() => {
-      this.adjustLiveWeight(direction, { repeat: true });
-    }, 220);
+    this._weightHoldStartTime = typeof performance !== "undefined" ? performance.now() : Date.now();
+    this._weightHoldRepeats = 0;
+
+    const initial = this.getWeightHoldDynamics(0);
+    this.adjustLiveWeight(direction, {
+      repeat: false,
+      holdElapsedMs: 0,
+      holdStepMultiplier: initial.stepMultiplier,
+    });
+    this._weightHoldRepeats = 1;
+
+    const run = () => {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const elapsed = this._weightHoldStartTime ? now - this._weightHoldStartTime : 0;
+      const dynamics = this.getWeightHoldDynamics(elapsed);
+      this._weightAdjustTimer = window.setTimeout(() => {
+        this.adjustLiveWeight(direction, {
+          repeat: true,
+          holdElapsedMs: elapsed,
+          holdStepMultiplier: dynamics.stepMultiplier,
+        });
+        this._weightHoldRepeats += 1;
+        run();
+      }, dynamics.interval);
+    };
+
+    this._weightAdjustTimer = window.setTimeout(run, initial.interval);
   }
 
   stopLiveWeightHold() {
     if (this._weightAdjustTimer !== null) {
-      window.clearInterval(this._weightAdjustTimer);
+      window.clearTimeout(this._weightAdjustTimer);
       this._weightAdjustTimer = null;
     }
     this._weightAdjustDirection = 0;
+    this._weightHoldStartTime = null;
+    this._weightHoldRepeats = 0;
   }
 
   adjustLiveWeight(direction, options = {}) {
-    const stepDisplay = 0.1;
+    const stepMultiplier = Number.isFinite(options.holdStepMultiplier) && options.holdStepMultiplier > 0
+      ? options.holdStepMultiplier
+      : 1;
+    const stepDisplay = 0.1 * stepMultiplier;
     const stepKg = this.convertDisplayToKg(stepDisplay);
-    
+
     const maxKg = 100;
     const minKg = 0;
 
@@ -275,6 +436,8 @@ class VitruvianApp {
       this.currentWorkout.adjustedWeightKg = nextKg;
     }
 
+    this._weightInputKg = nextKg;
+
     const weightInput = document.getElementById("weight");
     if (weightInput) {
       weightInput.value = this.formatWeightValue(
@@ -284,6 +447,7 @@ class VitruvianApp {
     }
 
     this.updateLiveWeightDisplay();
+    this.playWeightAdjustChirp(direction, options);
 
     if (!options.repeat) {
       this.addLogEntry(
@@ -308,16 +472,22 @@ class VitruvianApp {
       const raw = parseFloat(weightInput.value);
       const kg = this.convertDisplayToKg(raw);
       if (Number.isFinite(kg)) {
+        this._weightInputKg = kg;
         return kg;
       }
     }
 
-    return null;
+    if (Number.isFinite(this._weightInputKg)) {
+      return this._weightInputKg;
+    }
+
+    return this.defaultPerCableKg;
   }
 
   updateLiveWeightDisplay() {
     const valueEl = document.getElementById("liveWeightValue");
     const unitEl = document.getElementById("liveWeightUnit");
+    const weightInput = document.getElementById("weight");
     if (!valueEl || !unitEl) {
       return;
     }
@@ -327,8 +497,23 @@ class VitruvianApp {
       valueEl.textContent = this.convertKgToDisplay(currentKg).toFixed(
         this.getWeightInputDecimals(),
       );
+      if (weightInput && weightInput !== document.activeElement) {
+        weightInput.value = this.formatWeightValue(currentKg, this.getWeightInputDecimals());
+      }
     } else {
-      valueEl.textContent = "-";
+      const fallbackKg = this.defaultPerCableKg;
+      const fallbackDisplay = this.convertKgToDisplay(fallbackKg).toFixed(
+        this.getWeightInputDecimals(),
+      );
+      valueEl.textContent = fallbackDisplay;
+      if (
+        weightInput &&
+        weightInput !== document.activeElement &&
+        (!weightInput.value || Number.isNaN(parseFloat(weightInput.value)))
+      ) {
+        weightInput.value = fallbackDisplay;
+      }
+      this._weightInputKg = fallbackKg;
     }
 
     unitEl.textContent = this.getUnitLabel();
@@ -372,6 +557,53 @@ class VitruvianApp {
     } catch (error) {
       // Ignore cross-origin errors or environments without window
     }
+  }
+
+  setupScrollButtons() {
+    const up = document.getElementById("appScrollUp");
+    const down = document.getElementById("appScrollDown");
+
+    if (!up || !down) {
+      return;
+    }
+
+    const updateVisibility = () => {
+      const docEl = document.documentElement;
+      const bodyScroll = document.body ? document.body.scrollHeight : 0;
+      const maxScrollHeight = Math.max(docEl.scrollHeight, bodyScroll);
+      const scrollY = window.scrollY || window.pageYOffset || 0;
+      const maxY = Math.max(maxScrollHeight - window.innerHeight, 0);
+
+      if (scrollY > 400) {
+        up.classList.add("show");
+      } else {
+        up.classList.remove("show");
+      }
+
+      if (scrollY < maxY - 400) {
+        down.classList.add("show");
+      } else {
+        down.classList.remove("show");
+      }
+    };
+
+    up.addEventListener("click", (event) => {
+      event.preventDefault();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    down.addEventListener("click", (event) => {
+      event.preventDefault();
+      const docEl = document.documentElement;
+      const bodyScroll = document.body ? document.body.scrollHeight : 0;
+      const maxScrollHeight = Math.max(docEl.scrollHeight, bodyScroll);
+      window.scrollTo({ top: maxScrollHeight, behavior: "smooth" });
+    });
+
+    this._scrollButtonsUpdate = updateVisibility;
+    window.addEventListener("scroll", updateVisibility, { passive: true });
+    window.addEventListener("resize", updateVisibility);
+    updateVisibility();
   }
 
   async handleBuilderMessage(event) {
@@ -811,14 +1043,11 @@ class VitruvianApp {
     const weightInput = document.getElementById("weight");
     const progressionInput = document.getElementById("progression");
 
-    const currentWeight = weightInput ? parseFloat(weightInput.value) : NaN;
     const currentProgression = progressionInput
       ? parseFloat(progressionInput.value)
       : NaN;
 
-    const weightKg = !isNaN(currentWeight)
-      ? this.convertDisplayToKg(currentWeight, previousUnit)
-      : null;
+    const weightKg = Number.isFinite(this._weightInputKg) ? this._weightInputKg : null;
     const progressionKg = !isNaN(currentProgression)
       ? this.convertDisplayToKg(currentProgression, previousUnit)
       : null;
@@ -826,10 +1055,7 @@ class VitruvianApp {
     this.weightUnit = unit;
 
     if (weightInput && weightKg !== null && !Number.isNaN(weightKg)) {
-      weightInput.value = this.formatWeightValue(
-        weightKg,
-        this.getWeightInputDecimals(),
-      );
+      weightInput.value = this.formatWeightValue(weightKg, this.getWeightInputDecimals());
     }
 
     if (
@@ -1107,13 +1333,16 @@ class VitruvianApp {
     this.setPersonalBestHighlight(true);
     this.updatePersonalBestDisplay();
 
+    const priorBest = Number(this.currentWorkout?.priorBestTotalLoadKg) || 0;
     const formatted = this.formatWeightWithUnit(bestKg);
     const message = identityLabel
       ? `New personal best for ${identityLabel}: ${formatted}`
       : `New personal best: ${formatted}`;
     this.addLogEntry(`🎉 ${message}`, "success");
 
-    this.triggerConfetti();
+    if (priorBest > 0) {
+      this.triggerConfetti();
+    }
   }
 
   triggerConfetti() {
@@ -1235,7 +1464,6 @@ class VitruvianApp {
     const disconnectBtn = document.getElementById("disconnectBtn");
     const programSection = document.getElementById("programSection");
     const echoSection = document.getElementById("echoSection");
-    const colorSection = document.getElementById("colorSection");
 
     if (connected) {
       statusDiv.textContent = "Connected";
@@ -1244,7 +1472,6 @@ class VitruvianApp {
       disconnectBtn.disabled = false;
   //KEEP PROGRAM HIDDEN    programSection.classList.remove("hidden");
   //KEEP ECHO HIDDEN    echoSection.classList.remove("hidden");
-      colorSection.classList.remove("hidden");
     } else {
       statusDiv.textContent = "Disconnected";
       statusDiv.className = "status disconnected";
@@ -1252,7 +1479,6 @@ class VitruvianApp {
       disconnectBtn.disabled = true;
       programSection.classList.add("hidden");
       echoSection.classList.add("hidden");
-      colorSection.classList.add("hidden");
     }
 
     this.updateStopButtonState();
@@ -1326,6 +1552,8 @@ class VitruvianApp {
 
     // Add data to chart
     this.chartManager.addData(sample);
+
+    this.trackPlanPauseMovement(sample);
   }
 
   mixHexColors(colorA, colorB, ratio) {
@@ -2257,6 +2485,7 @@ class VitruvianApp {
 
 const setLabel = document.getElementById("currentSetName");
 if (setLabel) setLabel.textContent = "";
+  this._planSetInProgress = false;
 
   if (this.currentWorkout) {
     // stop polling to avoid queue buildup
@@ -2567,25 +2796,119 @@ if (setLabel) setLabel.textContent = "";
     } else {
       autoStopText.textContent = "Auto-Stop";
       autoStopText.style.color = "#6c757d";
-      autoStopText.style.fontSize = "0.75em";
+    autoStopText.style.fontSize = "0.75em";
     }
+  }
+
+  getAudioContext() {
+    try {
+      const AudioContextClass =
+        typeof window !== "undefined"
+          ? window.AudioContext || window.webkitAudioContext
+          : null;
+      if (!AudioContextClass) {
+        return null;
+      }
+      if (!this._audioContext) {
+        this._audioContext = new AudioContextClass();
+      }
+      if (this._audioContext.state === "suspended") {
+        this._audioContext.resume().catch(() => {});
+      }
+      return this._audioContext;
+    } catch {
+      return null;
+    }
+  }
+
+  playWeightAdjustChirp(direction = 0, options = {}) {
+    if (!direction) {
+      return;
+    }
+
+    const context = this.getAudioContext();
+    if (!context) {
+      return;
+    }
+
+    const repeat = !!options.repeat;
+    const now = context.currentTime || 0;
+    const minInterval = repeat ? 0.12 : 0.18;
+    if (now - this._weightAdjustSoundThrottle < minInterval) {
+      return;
+    }
+    this._weightAdjustSoundThrottle = now;
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    const increasing = direction > 0;
+    const startFreq = increasing ? 220 : 540;
+    const endFreq = increasing ? 680 : 180;
+
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(startFreq, now);
+    oscillator.frequency.exponentialRampToValueAtTime(
+      endFreq,
+      now + 0.4,
+    );
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+
+    oscillator.start(now);
+    oscillator.stop(now + 0.5);
+  }
+
+  playCountdownBeep(secondsRemaining) {
+    if (!Number.isFinite(secondsRemaining) || secondsRemaining <= 0) {
+      return;
+    }
+
+    const context = this.getAudioContext();
+    if (!context) {
+      return;
+    }
+
+    const now = context.currentTime || 0;
+    if (now - this._countdownBeepThrottle < 0.15) {
+      return;
+    }
+    this._countdownBeepThrottle = now;
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    const baseFrequency =
+      secondsRemaining === 1
+        ? 880
+        : secondsRemaining === 2
+          ? 720
+          : 560;
+
+    oscillator.type = "square";
+    oscillator.frequency.setValueAtTime(baseFrequency, now);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.28, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+
+    oscillator.start(now);
+    oscillator.stop(now + 0.24);
   }
 
   playRepTopSound() {
     try {
-      const AudioContextClass =
-        window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) {
+      const context = this.getAudioContext();
+      if (!context) {
         return;
-      }
-
-      if (!this._repAudioContext) {
-        this._repAudioContext = new AudioContextClass();
-      }
-
-      const context = this._repAudioContext;
-      if (context.state === "suspended") {
-        context.resume().catch(() => {});
       }
 
       const now = context.currentTime || 0;
@@ -3085,36 +3408,6 @@ if (setLabel) {
 }
 
   }
-
-  loadColorPreset() {
-    const presetSelect = document.getElementById("colorPreset");
-    const preset = presetSelect.value;
-
-    if (!preset) {
-      return; // Custom option selected
-    }
-
-    const scheme = PredefinedColorSchemes[preset];
-    if (!scheme) {
-      return;
-    }
-
-    // Update color pickers
-    const colorToHex = (color) => {
-      return (
-        "#" +
-        color.r.toString(16).padStart(2, "0") +
-        color.g.toString(16).padStart(2, "0") +
-        color.b.toString(16).padStart(2, "0")
-      );
-    };
-
-    document.getElementById("color1").value = colorToHex(scheme.colors[0]);
-    document.getElementById("color2").value = colorToHex(scheme.colors[1]);
-    document.getElementById("color3").value = colorToHex(scheme.colors[2]);
-  }
-
-
   /* =========================
      PLAN — DATA HELPERS
      ========================= */
@@ -3154,10 +3447,10 @@ if (setLabel) {
   }
 
 
-// Apply a plan item to the visible sidebar UI (Program or Echo)
-// Also sets the global Stop-at-Top checkbox to match the item's setting.
-_applyItemToUI(item){
-  if (!item) return;
+  // Apply a plan item to the visible sidebar UI (Program or Echo)
+  // Also sets the global Stop-at-Top checkbox to match the item's setting.
+  _applyItemToUI(item){
+    if (!item) return;
 
   // Stop at Top (primary/global)
   const sat = document.getElementById("stopAtTopCheckbox");
@@ -3174,8 +3467,16 @@ _applyItemToUI(item){
     const progInp   = document.getElementById("progression");
     const jlChk     = document.getElementById("justLiftCheckbox");
 
+    const perCableKg = Number.isFinite(item.perCableKg)
+      ? item.perCableKg
+      : this.defaultPerCableKg;
+    item.perCableKg = perCableKg;
+
     if (modeSel)   modeSel.value = String(item.mode);
-    if (weightInp) weightInp.value = this.formatWeightValue(item.perCableKg, this.getWeightInputDecimals());
+    if (weightInp) {
+      weightInp.value = this.formatWeightValue(perCableKg, this.getWeightInputDecimals());
+      this._weightInputKg = perCableKg;
+    }
     if (repsInp)   repsInp.value = String(item.reps);
     if (progInp)   progInp.value = this.formatWeightValue(item.progressionKg, this.getProgressionInputDecimals());
     if (jlChk)     { jlChk.checked = !!item.justLift; this.toggleJustLiftMode(); }
@@ -3206,14 +3507,13 @@ _applyItemToUI(item){
     const container = document.getElementById("planItems");
     if (!container) return;
 
+    const items = Array.isArray(this.planItems) ? this.planItems : [];
+
     const unit = this.getUnitLabelShort();
 
     const makeRow = (item, i) => {
       const card = document.createElement("div");
-      card.style.background = "#f8f9fa";
-      card.style.padding = "12px";
-      card.style.borderRadius = "8px";
-      card.style.borderLeft = "4px solid #667eea";
+      card.className = "plan-card";
 
       const sectionTitle =
         item.type === "exercise"
@@ -3221,24 +3521,19 @@ _applyItemToUI(item){
           : `Echo Mode`;
 
       const title = document.createElement("div");
-      title.style.display = "flex";
-      title.style.justifyContent = "space-between";
-      title.style.alignItems = "center";
-      title.style.marginBottom = "10px";
+      title.className = "plan-card__header";
       title.innerHTML = `
-        <div style="font-weight:700; color:#212529">${sectionTitle}</div>
-        <div style="display:flex; gap:8px;">
-          <button class="secondary" style="width:auto; padding:6px 10px;" onclick="app.movePlanItem(${i}, -1)">Move Up</button>
-          <button class="secondary" style="width:auto; padding:6px 10px;" onclick="app.movePlanItem(${i}, 1)">Move Down</button>
-          <button class="secondary" style="width:auto; padding:6px 10px; background:#dc3545" onclick="app.removePlanItem(${i})">Delete</button>
+        <div class="plan-card__header-title">${sectionTitle}</div>
+        <div class="plan-card__actions">
+          <button class="secondary plan-card__action" onclick="app.movePlanItem(${i}, -1)">Move Up</button>
+          <button class="secondary plan-card__action" onclick="app.movePlanItem(${i}, 1)">Move Down</button>
+          <button class="danger plan-card__action" onclick="app.removePlanItem(${i})">Delete</button>
         </div>
       `;
       card.appendChild(title);
 
       const grid = document.createElement("div");
-      grid.style.display = "grid";
-      grid.style.gridTemplateColumns = "1fr 1fr";
-      grid.style.gap = "10px";
+      grid.className = "plan-card__grid";
 
       // Common: Name, Sets, Rest, JL, StopAtTop
       const commonHtml = `
@@ -3257,13 +3552,13 @@ _applyItemToUI(item){
           <input type="number" min="0" max="600" value="${item.restSec}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
         </div>
 
-        <div class="form-group" style="align-self:center">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" ${item.justLift ? "checked" : ""} onchange="app.updatePlanField(${i}, 'justLift', this.checked)" style="width:auto;" />
+        <div class="form-group plan-card__toggles">
+          <label class="plan-card__toggle-option">
+            <input type="checkbox" ${item.justLift ? "checked" : ""} onchange="app.updatePlanField(${i}, 'justLift', this.checked)" />
             <span>Just lift mode</span>
           </label>
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:6px;">
-            <input type="checkbox" ${item.stopAtTop ? "checked" : ""} onchange="app.updatePlanField(${i}, 'stopAtTop', this.checked)" style="width:auto;" />
+          <label class="plan-card__toggle-option">
+            <input type="checkbox" ${item.stopAtTop ? "checked" : ""} onchange="app.updatePlanField(${i}, 'stopAtTop', this.checked)" />
             <span>Stop at Top of final rep</span>
           </label>
         </div>
@@ -3352,7 +3647,7 @@ _applyItemToUI(item){
     };
 
     container.innerHTML = "";
-    if (this.planItems.length === 0) {
+    if (items.length === 0) {
       const empty = document.createElement("div");
       empty.style.color = "#6c757d";
       empty.style.fontSize = "0.9em";
@@ -3361,7 +3656,7 @@ _applyItemToUI(item){
       empty.textContent = "No items yet — add an Exercise or Echo Mode.";
       container.appendChild(empty);
     } else {
-      this.planItems.forEach((it, idx) => container.appendChild(makeRow(it, idx)));
+      items.forEach((it, idx) => container.appendChild(makeRow(it, idx)));
     }
   }
 
@@ -3370,13 +3665,83 @@ _applyItemToUI(item){
      ========================= */
 
   addPlanExercise() {
+    if (!Array.isArray(this.planItems)) {
+      this.planItems = [];
+    }
     this.planItems.push(this.makeExerciseRow());
     this.renderPlanUI();
   }
 
   addPlanEcho() {
+    if (!Array.isArray(this.planItems)) {
+      this.planItems = [];
+    }
     this.planItems.push(this.makeEchoRow());
     this.renderPlanUI();
+  }
+
+  buildPlanTimeline(items = this.planItems) {
+    return window.PlanRunnerPrototype.buildPlanTimeline.call(this, items);
+  }
+
+  describePlanItem(item) {
+    return window.PlanRunnerPrototype.describePlanItem.call(this, item);
+  }
+
+  formatDuration(ms) {
+    return window.PlanRunnerPrototype.formatDuration.call(this, ms);
+  }
+
+  getPlanElapsedMs() {
+    return window.PlanRunnerPrototype.getPlanElapsedMs.call(this);
+  }
+
+  startPlanElapsedTicker() {
+    return window.PlanRunnerPrototype.startPlanElapsedTicker.call(this);
+  }
+
+  stopPlanElapsedTicker() {
+    return window.PlanRunnerPrototype.stopPlanElapsedTicker.call(this);
+  }
+
+  updatePlanElapsedDisplay() {
+    return window.PlanRunnerPrototype.updatePlanElapsedDisplay.call(this);
+  }
+
+  updatePlanControlsState() {
+    return window.PlanRunnerPrototype.updatePlanControlsState.call(this);
+  }
+
+  togglePlanPause() {
+    return window.PlanRunnerPrototype.togglePlanPause.call(this);
+  }
+
+  pausePlan() {
+    return window.PlanRunnerPrototype.pausePlan.call(this);
+  }
+
+  resumePlan(options = {}) {
+    return window.PlanRunnerPrototype.resumePlan.call(this, options);
+  }
+
+  async skipPlanForward() {
+    return window.PlanRunnerPrototype.skipPlanForward.call(this);
+  }
+
+  async rewindPlan() {
+    return window.PlanRunnerPrototype.rewindPlan.call(this);
+  }
+
+  async navigatePlan(delta) {
+    return window.PlanRunnerPrototype.navigatePlan.call(this, delta);
+  }
+
+  _applyPlanNavigationTarget() {
+    return window.PlanRunnerPrototype._applyPlanNavigationTarget.call(this);
+  }
+
+  trackPlanPauseMovement(sample) {
+    return window.PlanRunnerPrototype.trackPlanPauseMovement.call(this, sample);
   }
 
   resetPlanToDefaults() {
@@ -3419,236 +3784,67 @@ _applyItemToUI(item){
     this.planItems[index].progressionKg = Math.max(-3, Math.min(3, kg));
   }
 
-startPlan(){
- 
- // ✅ 1. Check device connection first
-  if (!this.device || !this.device.isConnected) {
-    // Add message in the console log panel
-    this.addLogEntry("⚠️ Please connect your Vitruvian device before starting a plan.", "error");
-    // Optional popup for visibility
-    alert("Please connect your Vitruvian device before starting a plan.");
-    return; // Stop execution
+  startPlan() {
+    return window.PlanRunnerPrototype.startPlan.call(this);
   }
-
- if (!this.planItems || this.planItems.length === 0){
-    this.addLogEntry("No items in plan.", "warning");
-    return;
-  }
-
-  this.planActive = true;
-  this.planCursor = { index: 0, set: 1 };
-  this.planOnWorkoutComplete = () => this._planAdvance();
-  this.addLogEntry(`Starting plan with ${this.planItems.length} item(s)`, "success");
-
-  // ⬇️ Prefill Program/Echo UI + Stop-at-Top & Just Lift for the first set
-  this._applyItemToUI(this.planItems[0]);
-
-  // If you auto-start, keep this; otherwise, remove the next line to let user review first:
-  this._runCurrentPlanBlock();
-}
 
 
 // Run the currently selected plan block (exercise or echo)
 // Uses the visible UI and calls startProgram()/startEcho() just like pressing the buttons.
-async _runCurrentPlanBlock(){
-  if (!this.planActive) return;
-
-  const i = this.planCursor.index;
-  const item = this.planItems[i];
-  if (!item){ this._planFinish?.(); return; }
-
-  // Prefill sidebar so startProgram/startEcho read the right values
-  this._applyItemToUI?.(item);
-
-  // Log what's about to run
-  const label = item.type === "exercise" ? "exercise" : "echo";
-  this.addLogEntry(`Plan item ${i+1}/${this.planItems.length}, set ${this.planCursor.set}/${item.sets}: ${item.name || "Untitled " + (label[0].toUpperCase()+label.slice(1))}`, "info");
-
-  try {
-    // Respect per-item Stop-at-Top for this run
-    const prevStopAtTop = this.stopAtTop;
-    this.stopAtTop = !!item.stopAtTop;
-
-    if (item.type === "exercise") {
-      // Starts using values we just injected into Program Mode UI
-      this.addLogEntry("Starting exercise — set " + this.planCursor.set + "/" + item.sets, "info");
-      await this.startProgram();
-    } else {
-      // Starts using values we just injected into Echo Mode UI
-      this.addLogEntry("Starting echo — set " + this.planCursor.set + "/" + item.sets, "info");
-      await this.startEcho();
-    }
-
-    // restore global flag after we’ve kicked off the set
-    this.stopAtTop = prevStopAtTop;
-  } catch (e) {
-    this.addLogEntry(`Failed to start plan block: ${e.message}`, "error");
-    // fail-safe: try finishing the plan so we don't get stuck
-    this._planFinish?.();
+  async _runCurrentPlanBlock() {
+    return window.PlanRunnerPrototype._runCurrentPlanBlock.call(this);
   }
-}
 
 // Decide next step after a block finishes: next set of same item, or next item.
 // Schedules rest and then calls _runCurrentPlanBlock() again.
-_planAdvance(){
-  if (!this.planActive) return;
-
-  const curIndex = this.planCursor.index;
-  const item = this.planItems[curIndex];
-  if (!item){ this._planFinish?.(); return; }
-
-  // If more sets remain for this item → rest, then same item next set
-  if (this.planCursor.set < item.sets) {
-    this.planCursor.set += 1;
-
-    // Build "Up next" preview text
-    const unit = this.getUnitLabel();
-    let nextHtml = "";
-    if (item.type === "exercise"){
-      const w = this.convertKgToDisplay(item.perCableKg).toFixed(this.getWeightInputDecimals());
-      const modeName = ProgramModeNames?.[item.mode] || "Mode";
-      nextHtml = `${modeName} • ${w} ${unit}/cable × ${item.cables ?? 2} • ${item.reps} reps`;
-    } else {
-      const lvl = EchoLevelNames?.[item.level] || "Level";
-      nextHtml = `${lvl} • ecc ${item.eccentricPct}% • target ${item.targetReps} reps`;
-    }
-
-    // Prefill the UI for the upcoming set so startProgram/startEcho will read correct values
-    this._applyItemToUI?.(item);
-
-    // Rest → then run the same item again
-    this.addLogEntry(`Rest ${item.restSec}s → then next set/item (_runCurrentPlanBlock)`, "info");
-    this._beginRest
-      ? this._beginRest(item.restSec, () => this._runCurrentPlanBlock(), `Next set (${this.planCursor.set}/${item.sets})`, nextHtml, item)
-      : setTimeout(() => this._runCurrentPlanBlock(), Math.max(0, (item.restSec|0))*1000);
-    return;
+  _planAdvance() {
+    return window.PlanRunnerPrototype._planAdvance.call(this);
   }
-
-  // Otherwise advance to next item
-  this.planCursor.index += 1;
-  this.planCursor.set = 1;
-
-  if (this.planCursor.index >= this.planItems.length){
-    // No more items
-    this._planFinish?.();
-    return;
-  }
-
-  const nextItem = this.planItems[this.planCursor.index];
-
-  // Build "Up next" preview text
-  const unit = this.getUnitLabel();
-  let nextHtml = "";
-  if (nextItem.type === "exercise"){
-    const w = this.convertKgToDisplay(nextItem.perCableKg).toFixed(this.getWeightInputDecimals());
-    const modeName = ProgramModeNames?.[nextItem.mode] || "Mode";
-    nextHtml = `${modeName} • ${w} ${unit}/cable × ${nextItem.cables ?? 2} • ${nextItem.reps} reps`;
-  } else {
-    const lvl = EchoLevelNames?.[nextItem.level] || "Level";
-    nextHtml = `${lvl} • ecc ${nextItem.eccentricPct}% • target ${nextItem.targetReps} reps`;
-  }
-
-  // Prefill the UI for the next item so startProgram/startEcho will read correct values
-  this._applyItemToUI?.(nextItem);
-
-  // Use the *current* item's rest before the next item starts (common convention)
-  this.addLogEntry(`Rest ${item.restSec}s → then next set/item (_runCurrentPlanBlock)`, "info");
-  this._beginRest
-    ? this._beginRest(item.restSec, () => this._runCurrentPlanBlock(), `Next: ${nextItem.name || (nextItem.type === "exercise" ? "Exercise" : "Echo Mode")}`, nextHtml, nextItem)
-    : setTimeout(() => this._runCurrentPlanBlock(), Math.max(0, (item.restSec|0))*1000);
-}
 
 
 // Show a ring countdown, update “up next”, wire Skip/+30s, then call onDone()
-_beginRest(totalSec, onDone, labelText = "Next set", nextHtml = "", nextItemOrName = null) {
-  const overlay   = document.getElementById("restOverlay");
-  const progress  = document.getElementById("restProgress");
-  const timeText  = document.getElementById("restTimeText");
-  const nextDiv   = document.getElementById("restNext");
-  const addBtn    = document.getElementById("restAddBtn");
-  const skipBtn   = document.getElementById("restSkipBtn");
-  const inlineHud = document.getElementById("planRestInline");
-  const setNameEl = document.getElementById("restSetName");
-
-  // Fallback: if overlay not present, just delay then continue
-  if (!overlay || !progress || !timeText) {
-    const ms = Math.max(0, (totalSec|0) * 1000);
-    this.addLogEntry(`(No overlay found) Rest ${totalSec}s…`, "info");
-    setTimeout(() => onDone && onDone(), ms);
-    return;
+  _beginRest(totalSec, onDone, labelText = "Next set", nextHtml = "", nextItemOrName = null) {
+    return window.PlanRunnerPrototype._beginRest.call(
+      this,
+      totalSec,
+      onDone,
+      labelText,
+      nextHtml,
+      nextItemOrName,
+    );
   }
 
-  // Setup UI
-  overlay.classList.remove("hidden");
-  if (nextDiv) nextDiv.innerHTML = nextHtml || "";
-  if (inlineHud) inlineHud.textContent = `Rest: ${totalSec}s`;
+  _startRestTimer(state) {
+    return window.PlanRunnerPrototype._startRestTimer.call(this, state);
+  }
 
-  const nextName = (typeof nextItemOrName === "string")
-    ? nextItemOrName
-    : (nextItemOrName && nextItemOrName.name) || "";
-  if (setNameEl) setNameEl.textContent = nextName;
+  _stopRestTimer(state) {
+    return window.PlanRunnerPrototype._stopRestTimer.call(this, state);
+  }
 
-  const CIRC = 2 * Math.PI * 45; // r=45 in index.html
-  progress.setAttribute("stroke-dasharray", CIRC.toFixed(3));
+  _tickRest(state, options = {}) {
+    return window.PlanRunnerPrototype._tickRest.call(this, state, options);
+  }
 
-  let remaining = Math.max(0, totalSec|0);
-  let paused = false;
-  let rafId = null;
-  let endT = performance.now() + remaining * 1000;
+  _updateRestUI(state, options = {}) {
+    return window.PlanRunnerPrototype._updateRestUI.call(this, state, options);
+  }
 
-  const closeOverlay = () => { // ← NEW helper to clear name as well
-    overlay.classList.add("hidden");
-    if (inlineHud) inlineHud.textContent = "";
-    if (setNameEl) setNameEl.textContent = "";
-  };
+  _pauseRestCountdown() {
+    return window.PlanRunnerPrototype._pauseRestCountdown.call(this);
+  }
 
-  const tick = (t) => {
-    if (paused) { rafId = requestAnimationFrame(tick); return; }
-    const leftMs = Math.max(0, endT - t);
-    remaining = Math.ceil(leftMs / 1000);
+  _resumeRestCountdown() {
+    return window.PlanRunnerPrototype._resumeRestCountdown.call(this);
+  }
 
-    // ring
-    const ratio = Math.min(1, Math.max(0, leftMs / (totalSec * 1000)));
-    const dash  = ratio * CIRC;
-    progress.setAttribute("stroke-dashoffset", String((CIRC - dash).toFixed(3)));
+  _clearRestState(options = {}) {
+    return window.PlanRunnerPrototype._clearRestState.call(this, options);
+  }
 
-    // text
-    timeText.textContent = String(remaining);
-    if (inlineHud) inlineHud.textContent = `Rest: ${remaining}s`;
-
-    if (leftMs <= 0) {
-      // done
-      cancelAnimationFrame(rafId);
-      overlay.classList.add("hidden");
-      if (inlineHud) inlineHud.textContent = "";
-      this.addLogEntry("Rest finished → starting next block", "success");
-      onDone && onDone();
-      return;
-    }
-    rafId = requestAnimationFrame(tick);
-  };
-
-  // Buttons
-  const add30 = () => {
-    const addMs = 30_000;
-    endT += addMs;
-    this.addLogEntry("+30s added to rest", "info");
-  };
-  const skip = () => {
-    this.addLogEntry("Rest skipped", "info");
-    cancelAnimationFrame(rafId);
-    overlay.classList.add("hidden");
-    if (inlineHud) inlineHud.textContent = "";
-    onDone && onDone();
-  };
-
-  addBtn.onclick = add30;
-  skipBtn.onclick = skip;
-
-  // start loop
-  cancelAnimationFrame(rafId);
-  rafId = requestAnimationFrame(tick);
-}
+  _planFinish(options = {}) {
+    return window.PlanRunnerPrototype._planFinish.call(this, options);
+  }
 
 
 
@@ -3781,6 +3977,12 @@ _beginRest(totalSec, onDone, labelText = "Next set", nextHtml = "", nextItemOrNa
     const sel = document.getElementById("planSelect");
     if (!sel || !sel.value) { alert("No saved plan selected."); return; }
     const name = sel.value;
+
+    if (typeof window !== "undefined" && !window.confirm(`Delete plan "${name}"? This action cannot be undone.`)) {
+      this.addLogEntry(`Plan deletion for "${name}" cancelled by user`, "info");
+      return;
+    }
+
     const currentNames = this.getAllPlanNames();
     const remaining = currentNames.filter((n) => n !== name);
 
@@ -3808,48 +4010,13 @@ _beginRest(totalSec, onDone, labelText = "Next set", nextHtml = "", nextItemOrNa
     }
   }
 
-
-
-
-
-  async setColorScheme() {
-    try {
-      const color1Input = document.getElementById("color1");
-      const color2Input = document.getElementById("color2");
-      const color3Input = document.getElementById("color3");
-
-      // Use fixed brightness of 0.4 (adjusting brightness doesn't seem to work)
-      const brightness = 0.4;
-
-      // Parse colors from hex inputs
-      const hexToRgb = (hex) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result
-          ? {
-              r: parseInt(result[1], 16),
-              g: parseInt(result[2], 16),
-              b: parseInt(result[3], 16),
-            }
-          : { r: 0, g: 0, b: 0 };
-      };
-
-      const colors = [
-        hexToRgb(color1Input.value),
-        hexToRgb(color2Input.value),
-        hexToRgb(color3Input.value),
-      ];
-
-      await this.device.setColorScheme(brightness, colors);
-    } catch (error) {
-      console.error("Set color scheme error:", error);
-      this.addLogEntry(`Failed to set color scheme: ${error.message}`, "error");
-      alert(`Failed to set color scheme: ${error.message}`);
-    }
-  }
 }
 
 // Create global app instance
 const app = new VitruvianApp();
+if (typeof window !== "undefined") {
+  window.app = app;
+}
 
 // Log startup message
 app.addLogEntry("Vitruvian Web Control Ready", "success");

@@ -10,6 +10,92 @@
             href="https://leeoniya.github.io/uPlot/dist/uPlot.min.css"
         />
         <style>
+            :root {
+                --background-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                --sidebar-bg: #ffffff;
+                --sidebar-text: #212529;
+                --sidebar-subtext: #6c757d;
+                --sidebar-header-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                --section-border: #e0e0e0;
+                --main-bg: #f5f6fa;
+                --card-bg: #ffffff;
+                --card-shadow: rgba(0, 0, 0, 0.1);
+                --surface-subtle: #f8f9fa;
+                --text-primary: #212529;
+                --text-secondary: #495057;
+                --text-muted: #6c757d;
+                --accent-color: #667eea;
+                --accent-contrast: #4c51bf;
+                --danger-color: #dc3545;
+                --danger-color-hover: #c82333;
+                --success-color: #2b8a3e;
+                --tile-background: #f1f3f5;
+                --tile-background-warmup: #e7f5ff;
+                --tile-background-working: #d3f9d8;
+                --warmup-label-color: #1971c2;
+                --warmup-value-color: #1864ab;
+                --working-label-color: #2f9e44;
+                --working-value-color: #2b8a3e;
+                --divider-color: rgba(0, 0, 0, 0.05);
+                --input-bg: #ffffff;
+                --input-border: #ced4da;
+                --input-text: #212529;
+                --input-placeholder: #6c757d;
+                --status-connected-bg: #d3f9d8;
+                --status-connected-text: #2b8a3e;
+                --status-disconnected-bg: #ffe0e0;
+                --status-disconnected-text: #c92a2a;
+                --pr-default-bg: #e9ecef;
+                --pr-default-text: #343a40;
+                --pr-new-bg: #d3f9d8;
+                --pr-new-text: #2b8a3e;
+                --pr-tie-bg: #ffe8a1;
+                --pr-tie-text: #704214;
+            }
+
+            body.dark-theme {
+                --background-gradient: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+                --sidebar-bg: #1f2534;
+                --sidebar-text: #f1f3f5;
+                --sidebar-subtext: #9aa5ce;
+                --sidebar-header-gradient: linear-gradient(135deg, #3949ab 0%, #283593 100%);
+                --section-border: rgba(255, 255, 255, 0.08);
+                --main-bg: #0f1624;
+                --card-bg: #1f2937;
+                --card-shadow: rgba(0, 0, 0, 0.55);
+                --surface-subtle: #2b3447;
+                --text-primary: #f1f3f5;
+                --text-secondary: #d0d8f0;
+                --text-muted: #9aa5ce;
+                --accent-color: #8fa2ff;
+                --accent-contrast: #b0c4ff;
+                --danger-color: #ff6b6b;
+                --danger-color-hover: #ff5252;
+                --success-color: #7dd3a7;
+                --tile-background: rgba(255, 255, 255, 0.05);
+                --tile-background-warmup: rgba(65, 106, 190, 0.25);
+                --tile-background-working: rgba(32, 116, 72, 0.25);
+                --warmup-label-color: #74c0fc;
+                --warmup-value-color: #4dabf7;
+                --working-label-color: #51cf66;
+                --working-value-color: #38d9a9;
+                --divider-color: rgba(255, 255, 255, 0.08);
+                --input-bg: #253043;
+                --input-border: rgba(255, 255, 255, 0.18);
+                --input-text: #f1f3f5;
+                --input-placeholder: #9aa5ce;
+                --status-connected-bg: rgba(81, 207, 102, 0.18);
+                --status-connected-text: #7dd3a7;
+                --status-disconnected-bg: rgba(255, 107, 107, 0.2);
+                --status-disconnected-text: #ff8787;
+                --pr-default-bg: rgba(255, 255, 255, 0.08);
+                --pr-default-text: var(--text-primary);
+                --pr-new-bg: rgba(81, 207, 102, 0.18);
+                --pr-new-text: #7dd3a7;
+                --pr-tie-bg: rgba(255, 196, 77, 0.2);
+                --pr-tie-text: #ffe08a;
+            }
+
             * {
                 margin: 0;
                 padding: 0;
@@ -20,8 +106,10 @@
                 font-family:
                     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
                     sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: var(--background-gradient);
+                color: var(--text-primary);
                 min-height: 100vh;
+                transition: background 0.3s ease, color 0.3s ease;
             }
 
             /* Layout */
@@ -34,20 +122,23 @@
             /* Sidebar */
             .sidebar {
                 width: 400px;
-                background: white;
+                background: var(--sidebar-bg);
+                color: var(--sidebar-text);
                 overflow-y: auto;
-                box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+                box-shadow: 2px 0 10px var(--card-shadow);
                 transition:
                     transform 0.3s ease,
                     width 0.3s ease,
-                    box-shadow 0.3s ease;
+                    box-shadow 0.3s ease,
+                    background 0.3s ease,
+                    color 0.3s ease;
                 z-index: 1000;
                 flex-shrink: 0;
             }
 
             .sidebar-header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
+                background: var(--sidebar-header-gradient);
+                color: #ffffff;
                 padding: 30px;
                 text-align: center;
                 transition: opacity 0.2s ease;
@@ -65,13 +156,14 @@
 
             .sidebar-content {
                 padding: 20px;
+                color: var(--sidebar-text);
                 transition: opacity 0.2s ease;
             }
 
             .section {
                 margin-bottom: 25px;
                 padding-bottom: 25px;
-                border-bottom: 1px solid #e0e0e0;
+                border-bottom: 1px solid var(--section-border);
             }
 
             .section:last-child {
@@ -79,7 +171,7 @@
             }
 
             .section h2 {
-                color: #667eea;
+                color: var(--accent-color);
                 margin-bottom: 15px;
                 font-size: 1.2em;
             }
@@ -89,7 +181,11 @@
                 flex: 1;
                 overflow-y: auto;
                 padding: 20px;
-                transition: padding-left 0.3s ease;
+                background: var(--main-bg);
+                transition:
+                    padding-left 0.3s ease,
+                    background 0.3s ease,
+                    color 0.3s ease;
             }
 
             .live-view-container {
@@ -98,18 +194,188 @@
             }
 
             .live-card {
-                background: white;
+                background: var(--card-bg);
                 border-radius: 12px;
                 padding: 25px;
                 margin-bottom: 20px;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 4px 20px var(--card-shadow);
+                color: var(--text-primary);
             }
 
             .live-card h2 {
-                color: #667eea;
+                color: var(--accent-color);
                 margin-bottom: 20px;
                 font-size: 1.4em;
                 text-align: center;
+            }
+
+            .current-set-name {
+                margin-bottom: 6px;
+                font-weight: 600;
+                color: var(--text-secondary);
+                min-height: 1em;
+            }
+
+            .stat-card-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+
+            .stat-card__label {
+                font-size: 0.9em;
+                font-weight: 600;
+                margin-bottom: 5px;
+                color: var(--text-secondary);
+            }
+
+            .stat-card__value {
+                font-size: 2em;
+                font-weight: 700;
+                color: var(--text-primary);
+            }
+
+            body.dark-theme .stat-card:not(.stat-card--warmup):not(.stat-card--working) {
+                background: #0f172a;
+                border-left-color: var(--accent-color);
+            }
+
+            body.dark-theme .stat-card:not(.stat-card--warmup):not(.stat-card--working) .stat-card__label,
+            body.dark-theme .stat-card:not(.stat-card--warmup):not(.stat-card--working) .stat-card__value,
+            body.dark-theme .stat-card:not(.stat-card--warmup):not(.stat-card--working) .stat-unit {
+                color: #f8fafc;
+            }
+
+            .stat-card--warmup {
+                background: var(--tile-background-warmup);
+                border-left-color: var(--warmup-label-color);
+            }
+
+            .stat-card--warmup .stat-card__label {
+                color: var(--warmup-label-color);
+            }
+
+            .stat-card--warmup .stat-card__value {
+                color: var(--warmup-value-color);
+            }
+
+            .stat-card--working {
+                background: var(--tile-background-working);
+                border-left-color: var(--working-label-color);
+            }
+
+            .stat-card--working .stat-card__label {
+                color: var(--working-label-color);
+            }
+
+            .stat-card--working .stat-card__value {
+                color: var(--working-value-color);
+            }
+
+            .plan-card {
+                background: var(--surface-subtle);
+                padding: 12px;
+                border-radius: 8px;
+                border-left: 4px solid var(--accent-color);
+                box-shadow: 0 2px 8px var(--card-shadow);
+                transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            }
+
+            .plan-card__header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+                gap: 10px;
+            }
+
+            .plan-card__header-title {
+                font-weight: 700;
+                color: var(--text-primary);
+            }
+
+            .plan-card__actions {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+
+            .plan-card__actions .plan-card__action {
+                width: auto;
+                padding: 6px 10px;
+            }
+
+            .plan-card__grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+
+            .plan-card__toggles {
+                align-self: center;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .plan-card__toggle-option {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+                color: var(--text-secondary);
+                font-size: 0.9em;
+            }
+
+            .plan-card__toggle-option input {
+                width: auto;
+            }
+
+            .plan-section-actions {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 15px;
+                flex-wrap: wrap;
+            }
+
+            .plan-section-actions button {
+                width: auto;
+            }
+
+            .plan-rest-inline {
+                font-size: 0.9rem;
+                color: var(--text-muted);
+            }
+
+            .plan-items-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .dropbox-status-box {
+                font-size: 0.8em;
+                color: var(--text-secondary);
+                margin-bottom: 15px;
+                padding: 8px;
+                background: var(--surface-subtle);
+                border-radius: 4px;
+            }
+
+            .dropbox-status-note {
+                font-size: 0.8em;
+                color: var(--text-muted);
+                margin-top: 10px;
+                font-style: italic;
+            }
+
+            .muted-note {
+                font-size: 0.75em;
+                color: var(--text-muted);
+                margin-top: 10px;
             }
 
             .pr-banner {
@@ -117,8 +383,8 @@
                 margin-bottom: 12px;
                 padding: 10px 14px;
                 border-radius: 10px;
-                background: #e9ecef;
-                color: #343a40;
+                background: var(--pr-default-bg);
+                color: var(--pr-default-text);
                 font-weight: 600;
                 text-align: center;
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -129,13 +395,13 @@
             }
 
             .pr-banner--new {
-                background: #d3f9d8;
-                color: #2b8a3e;
+                background: var(--pr-new-bg);
+                color: var(--pr-new-text);
             }
 
             .pr-banner--tie {
-                background: #ffe8a1;
-                color: #704214;
+                background: var(--pr-tie-bg);
+                color: var(--pr-tie-text);
             }
 
             .personal-best-wrapper {
@@ -148,7 +414,7 @@
 
             .personal-best-label {
                 font-size: 0.85em;
-                color: #6c757d;
+                color: var(--text-muted);
                 font-weight: 600;
                 letter-spacing: 0.02em;
                 text-transform: uppercase;
@@ -221,22 +487,32 @@
                 display: block;
                 width: 25px;
                 height: 3px;
-                background: #667eea;
+                background: var(--accent-color);
                 margin: 5px 0;
                 border-radius: 2px;
                 transition: 0.3s;
             }
 
+            .hamburger.is-collapsed span {
+                transform-origin: left center;
+            }
+
             .hamburger.is-collapsed span:nth-child(1) {
-                transform: translate(5px, 6px) rotate(45deg);
+                transform: translate(7px, 6px) rotate(45deg);
+                width: 18px;
+                margin: 0;
             }
 
             .hamburger.is-collapsed span:nth-child(2) {
-                opacity: 0;
+                transform: translate(7px, -6px) rotate(-45deg);
+                width: 18px;
+                margin: 0;
+                opacity: 1;
             }
 
             .hamburger.is-collapsed span:nth-child(3) {
-                transform: translate(5px, -6px) rotate(-45deg);
+                opacity: 0;
+                transform: none;
             }
 
             /* Form elements */
@@ -247,7 +523,7 @@
             label {
                 display: block;
                 margin-bottom: 5px;
-                color: #333;
+                color: var(--text-secondary);
                 font-weight: 500;
                 font-size: 0.9em;
             }
@@ -256,16 +532,26 @@
             input {
                 width: 100%;
                 padding: 10px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid var(--input-border);
                 border-radius: 6px;
                 font-size: 14px;
-                transition: border-color 0.2s;
+                background: var(--input-bg);
+                color: var(--input-text);
+                transition:
+                    border-color 0.2s,
+                    background 0.2s,
+                    color 0.2s;
+            }
+
+            input::placeholder {
+                color: var(--input-placeholder);
             }
 
             select:focus,
             input:focus {
                 outline: none;
-                border-color: #667eea;
+                border-color: var(--accent-color);
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
             }
 
             button {
@@ -299,7 +585,46 @@
             }
 
             button.secondary {
-                background: #6c757d;
+                background: var(--text-muted);
+                color: #ffffff;
+            }
+
+            button.danger {
+                background: var(--danger-color);
+                color: #ffffff;
+            }
+
+            button.danger:hover:not(:disabled) {
+                box-shadow: 0 5px 20px rgba(220, 53, 69, 0.35);
+            }
+
+            .theme-toggle-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                width: auto;
+                padding: 10px 16px;
+                background: var(--surface-subtle);
+                color: var(--text-primary);
+                border: 2px solid var(--divider-color);
+                border-radius: 999px;
+                box-shadow: none;
+            }
+
+            .theme-toggle-btn:hover:not(:disabled) {
+                box-shadow: 0 4px 14px rgba(102, 126, 234, 0.25);
+                border-color: var(--accent-color);
+            }
+
+            .theme-toggle-btn .theme-toggle__icon {
+                font-size: 1.2em;
+            }
+
+            .theme-toggle-btn.is-dark {
+                border-color: var(--accent-color);
+                color: var(--accent-color);
+                background: rgba(143, 162, 255, 0.12);
             }
 
             .unit-toggle-button {
@@ -308,9 +633,9 @@
                 justify-content: space-between;
                 gap: 8px;
                 padding: 10px 18px;
-                background: white;
-                border: 2px solid #667eea;
-                color: #667eea;
+                background: var(--input-bg);
+                border: 2px solid var(--accent-color);
+                color: var(--accent-color);
                 border-radius: 999px;
                 font-weight: 600;
                 cursor: pointer;
@@ -362,23 +687,8 @@
 
             .unit-toggle-hint {
                 font-size: 0.75em;
-                color: #6c757d;
+                color: var(--text-muted);
                 margin-top: 6px;
-            }
-
-            .live-weight-control {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 12px;
-            }
-
-            .live-weight-label {
-                font-size: 0.85em;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                color: #495057;
-                font-weight: 700;
             }
 
             .live-weight-display {
@@ -387,12 +697,12 @@
                 gap: 6px;
                 font-size: 1.8em;
                 font-weight: 700;
-                color: #343a40;
+                color: #ffffff;
             }
 
             .live-weight-display .stat-unit {
                 font-size: 0.4em;
-                color: #6c757d;
+                color: rgba(255, 255, 255, 0.7);
                 font-weight: 500;
                 text-transform: uppercase;
                 letter-spacing: 0.08em;
@@ -400,37 +710,33 @@
 
             .weight-adjuster-circle {
                 position: relative;
-                width: 120px;
-                height: 120px;
+                width: clamp(160px, 25vw, 220px);
+                aspect-ratio: 1;
                 border-radius: 50%;
-                background: white;
-                border: 3px solid rgba(102, 126, 234, 0.35);
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                box-shadow:
-                    0 8px 20px rgba(102, 126, 234, 0.15),
-                    inset 0 4px 12px rgba(102, 126, 234, 0.1);
+                box-shadow: 0 12px 28px rgba(102, 126, 234, 0.35);
                 overflow: hidden;
+                flex-shrink: 0;
             }
 
             .weight-adjuster-center {
                 position: absolute;
-                width: 70px;
-                height: 70px;
+                inset: 0;
                 border-radius: 50%;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
+                color: #ffffff;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 0.8em;
-                font-weight: 600;
-                z-index: 1;
-                pointer-events: none;
-                text-transform: uppercase;
+                font-size: 0.9em;
+                font-weight: 700;
                 letter-spacing: 0.08em;
-                box-shadow: 0 5px 15px rgba(102, 126, 234, 0.35);
+                text-transform: uppercase;
+                pointer-events: none;
+                z-index: 1;
+                padding: 20px;
             }
 
             .weight-adjuster-segment {
@@ -444,29 +750,149 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 1.5em;
+                font-size: 1.8em;
                 font-weight: 700;
-                color: #667eea;
+                color: #ffffff;
                 z-index: 2;
                 transition: background 0.2s ease;
             }
 
             .weight-adjuster-segment:hover {
-                background: rgba(102, 126, 234, 0.12);
+                background: rgba(255, 255, 255, 0.15);
             }
 
             .weight-adjuster-segment:active {
-                background: rgba(102, 126, 234, 0.2);
+                background: rgba(255, 255, 255, 0.25);
             }
 
             .weight-adjuster-segment.increase {
                 top: 0;
-                border-radius: 60px 60px 0 0;
+                border-radius: 999px 999px 0 0;
             }
 
             .weight-adjuster-segment.decrease {
                 bottom: 0;
-                border-radius: 0 0 60px 60px;
+                border-radius: 0 0 999px 999px;
+            }
+
+            .weight-adjuster-value {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 6px;
+                text-transform: none;
+                letter-spacing: normal;
+            }
+
+            .plan-inline-controls {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 18px;
+                width: 100%;
+                flex-wrap: nowrap;
+            }
+
+            .plan-nav-btn {
+                background: transparent;
+                border: 1px solid transparent;
+                color: var(--text-secondary);
+                width: 44px;
+                height: 44px;
+                border-radius: 999px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.6rem;
+                line-height: 1;
+                transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+                flex: 0 0 auto;
+            }
+
+            .plan-nav-btn:hover,
+            .plan-nav-btn:focus-visible {
+                color: var(--accent-color);
+                border-color: color-mix(in oklab, var(--accent-color), transparent 60%);
+                background: color-mix(in oklab, var(--accent-color), transparent 92%);
+                outline: none;
+            }
+
+            .plan-nav-btn:disabled {
+                opacity: 0.35;
+                cursor: default;
+                background: transparent;
+                border-color: transparent;
+            }
+
+            .plan-nav-btn span[aria-hidden="true"] {
+                transform: translateY(1px);
+            }
+
+            .plan-pause-btn {
+                margin-top: -4px;
+                background: var(--card-bg);
+                border: 1px solid var(--section-border);
+                width: 48px;
+                height: 48px;
+                border-radius: 999px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--accent-color);
+                box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+                transition: transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+            }
+
+            .plan-pause-btn:hover,
+            .plan-pause-btn:focus-visible {
+                transform: translateY(-2px);
+                box-shadow: 0 16px 32px rgba(0, 0, 0, 0.32);
+                outline: none;
+            }
+
+            .plan-pause-btn.is-paused {
+                color: var(--success-color);
+                border-color: color-mix(in oklab, var(--success-color), transparent 50%);
+            }
+
+            .plan-pause-btn span[aria-hidden="true"] {
+                font-size: 1.4rem;
+                line-height: 1;
+            }
+
+            .plan-live-controls {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+                margin-top: 18px;
+            }
+
+            .plan-live-main {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+
+            .plan-elapsed-timer {
+                min-width: 76px;
+                padding: 6px 12px;
+                border-radius: 10px;
+                background: var(--tile-background);
+                color: var(--text-primary);
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .plan-elapsed-timer.is-paused {
+                opacity: 0.75;
+            }
+
+            .plan-pause-btn.is-paused:hover,
+            .plan-pause-btn.is-paused:focus-visible {
+                color: var(--success-color);
             }
 
             .status {
@@ -479,26 +905,34 @@
             }
 
             .status.disconnected {
-                background: #ffe0e0;
-                color: #c92a2a;
+                background: var(--status-disconnected-bg);
+                color: var(--status-disconnected-text);
             }
 
             .status.connected {
-                background: #d3f9d8;
-                color: #2b8a3e;
+                background: var(--status-connected-bg);
+                color: var(--status-connected-text);
             }
 
             /* Position bars */
             .position-bars {
                 display: flex;
                 justify-content: space-around;
-                align-items: flex-end;
-                height: 300px;
+                align-items: stretch;
+                gap: 24px;
+                height: 420px;
                 padding: 20px;
-                background: #f8f9fa;
+                background: var(--surface-subtle);
                 border-radius: 8px;
-                margin-bottom: 20px;
-                margin-top: 40px;
+                margin: 40px 0 20px;
+                box-shadow: 0 1px 8px var(--card-shadow);
+            }
+
+            .position-bars__center {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 28px;
             }
 
             .bar-container {
@@ -512,17 +946,17 @@
                 font-weight: 600;
                 margin-bottom: 10px;
                 margin-top: 15px;
-                color: #495057;
+                color: var(--text-secondary);
             }
 
             .bar-wrapper {
                 position: relative;
                 width: 60px;
                 height: 250px;
-                background: #e9ecef;
+                background: var(--tile-background);
                 border-radius: 8px;
                 overflow: hidden;
-                border: 2px solid #dee2e6;
+                border: 2px solid var(--divider-color);
             }
 
             .bar {
@@ -584,12 +1018,12 @@
             .bar-value {
                 margin-top: 10px;
                 font-size: 0.9em;
-                color: #495057;
+                color: var(--text-secondary);
             }
 
             /* Load graph */
             #loadGraphContainer {
-                background: #f8f9fa;
+                background: var(--surface-subtle);
                 border-radius: 8px;
                 margin-bottom: 20px;
                 padding: 15px;
@@ -654,7 +1088,7 @@
 
             .data-retention-note {
                 font-size: 0.75em;
-                color: #6c757d;
+                color: var(--text-muted);
                 margin-top: -10px;
                 margin-bottom: 10px;
                 font-style: italic;
@@ -669,15 +1103,17 @@
             }
 
             .stat-card {
-                background: #f8f9fa;
                 padding: 15px;
                 border-radius: 8px;
-                border-left: 4px solid #667eea;
+                text-align: center;
+                background: var(--tile-background);
+                border-left: 4px solid var(--accent-color);
+                box-shadow: 0 1px 8px var(--card-shadow);
             }
 
             .stat-label {
                 font-size: 0.85em;
-                color: #6c757d;
+                color: var(--text-muted);
                 margin-bottom: 5px;
             }
 
@@ -689,7 +1125,7 @@
 
             .stat-unit {
                 font-size: 0.6em;
-                color: #6c757d;
+                color: var(--text-muted);
                 font-weight: 400;
             }
 
@@ -749,7 +1185,7 @@
             }
 
             .history-item-details {
-                color: #6c757d;
+                color: var(--text-muted);
                 font-size: 0.95em;
                 margin-bottom: 8px;
             }
@@ -854,9 +1290,42 @@
                     left: 420px;
                 }
 
-                .app-container.sidebar-collapsed .hamburger {
-                    left: 20px;
-                }
+            .app-container.sidebar-collapsed .hamburger {
+                left: 20px;
+            }
+        }
+
+            .scroll-btn {
+                position: fixed;
+                right: 24px;
+                width: 44px;
+                height: 44px;
+                border-radius: 999px;
+                border: 1px solid var(--section-border);
+                background: var(--card-bg);
+                color: var(--accent-color);
+                cursor: pointer;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+                box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+                z-index: 1100;
+                transition: opacity 0.2s ease, transform 0.2s ease;
+            }
+
+            .scroll-btn.up {
+                top: 50%;
+                transform: translateY(-70px);
+            }
+
+            .scroll-btn.down {
+                top: 50%;
+                transform: translateY(20px);
+            }
+
+            .scroll-btn.show {
+                display: inline-flex;
             }
 
             /* Overlay for mobile */
@@ -964,7 +1433,7 @@
                                 id="progressionHint"
                                 style="
                                     font-size: 0.75em;
-                                    color: #6c757d;
+                                    color: var(--text-muted);
                                     margin-top: 5px;
                                 "
                             >
@@ -1010,7 +1479,7 @@
                                 <div
                                     style="
                                         font-size: 0.75em;
-                                        color: #6c757d;
+                                        color: var(--text-muted);
                                         margin-top: 0;
                                         line-height: 1.3;
                                     "
@@ -1053,7 +1522,7 @@
                             <div
                                 style="
                                     font-size: 0.75em;
-                                    color: #6c757d;
+                                    color: var(--text-muted);
                                     margin-top: 5px;
                                 "
                             >
@@ -1099,7 +1568,7 @@
                                 <div
                                     style="
                                         font-size: 0.75em;
-                                        color: #6c757d;
+                                        color: var(--text-muted);
                                         margin-top: 0;
                                         line-height: 1.3;
                                     "
@@ -1118,6 +1587,11 @@
                     <div class="section" id="planSection">
                         <h2>Workout Plan</h2>
 
+                        <div class="plan-section-actions">
+                            <button id="startPlanBtn" onclick="app.startPlan()">Start Plan</button>
+                            <span id="planRestInline" class="plan-rest-inline"></span>
+                        </div>
+
                         <!-- Plan header / save-load row -->
                         <div class="form-group" style="display:grid; grid-template-columns: 1fr; gap:10px; margin-bottom:10px;">
                             <div style="display:grid; grid-template-columns: 1fr auto; gap:10px;">
@@ -1127,7 +1601,7 @@
                             <div style="display:grid; grid-template-columns: 1fr auto auto; gap:10px;">
                                 <select id="planSelect"></select>
                                 <button class="secondary" id="loadPlanBtn" onclick="app.loadSelectedPlan()">Load</button>
-                                <button class="secondary" id="deletePlanBtn" onclick="app.deleteSelectedPlan()">Delete</button>
+                                <button class="danger" id="deletePlanBtn" onclick="app.deleteSelectedPlan()">Delete</button>
                             </div>
                         </div>
 
@@ -1139,14 +1613,10 @@
                         </div>
 
                         <!-- List -->
-                        <div id="planItems" style="display:flex; flex-direction:column; gap:12px;"></div>
-
-                        <!-- Start -->
-                        <button id="startPlanBtn" style="margin-top:15px;" onclick="app.startPlan()">Start Plan</button>
-                        <span id="planRestInline" style="margin-left:10px; font-size:.9rem; color:#6c757d;"></span>
+                        <div id="planItems" class="plan-items-list"></div>
 
                         <!-- Tiny note -->
-                        <div style="font-size:0.75em; color:#6c757d; margin-top:10px;">
+                        <div class="muted-note">
                             Tips: reorder with Move Up/Down. Weights follow your unit setting; device still receives kg.
                         </div>
                     </div>
@@ -1155,6 +1625,19 @@
                     <!-- Configuration Section -->
                     <div class="section" id="configSection">
                         <h2>Configuration</h2>
+
+                        <div class="form-group">
+                            <label>Theme:</label>
+                            <button
+                                type="button"
+                                id="themeToggle"
+                                class="theme-toggle-btn"
+                                aria-pressed="false"
+                            >
+                                <span class="theme-toggle__icon">🌞</span>
+                                <span class="theme-toggle__label">Light Mode</span>
+                            </button>
+                        </div>
 
                         <div class="form-group">
                             <label>Display Units:</label>
@@ -1178,7 +1661,7 @@
                         <div
                             style="
                                 font-size: 0.8em;
-                                color: #6c757d;
+                                color: var(--text-muted);
                                 line-height: 1.4;
                                 margin-bottom: 20px;
                             "
@@ -1203,7 +1686,7 @@
                         <div
                             style="
                                 font-size: 0.8em;
-                                color: #6c757d;
+                                color: var(--text-muted);
                                 line-height: 1.4;
                             "
                         >
@@ -1222,7 +1705,7 @@
                                 font-size: 0.65em;
                                 margin-left: 8px;
                                 background: #e0e0e0;
-                                color: #6c757d;
+                                color: var(--text-muted);
                             ">Not Connected</span>
                         </h2>
 
@@ -1230,7 +1713,7 @@
                             <div
                                 style="
                                     font-size: 0.85em;
-                                    color: #6c757d;
+                                    color: var(--text-muted);
                                     line-height: 1.4;
                                     margin-bottom: 15px;
                                 "
@@ -1245,7 +1728,7 @@
                             <div
                                 style="
                                     font-size: 0.75em;
-                                    color: #6c757d;
+                                    color: var(--text-muted);
                                     margin-top: 10px;
                                     line-height: 1.3;
                                 "
@@ -1262,7 +1745,7 @@
                             <div
                                 style="
                                     font-size: 0.85em;
-                                    color: #6c757d;
+                                    color: var(--text-muted);
                                     line-height: 1.4;
                                     margin-bottom: 10px;
                                 "
@@ -1270,14 +1753,7 @@
                                 Your workouts are automatically saved to <code>/Apps/VitruvianWorkouts/workouts/</code> in your Dropbox.
                             </div>
 
-                            <div id="dropboxLastBackup" style="
-                                font-size: 0.8em;
-                                color: #495057;
-                                margin-bottom: 15px;
-                                padding: 8px;
-                                background: #f8f9fa;
-                                border-radius: 4px;
-                            ">
+                            <div id="dropboxLastBackup" class="dropbox-status-box">
                                 <!-- Last backup time will appear here -->
                             </div>
 
@@ -1290,62 +1766,17 @@
                                     Export All as CSV to Dropbox
                                 </button>
 
-                                <button class="secondary" onclick="app.disconnectDropbox()" style="background: #dc3545;">
+                                <button class="danger" onclick="app.disconnectDropbox()">
                                     Disconnect Dropbox
                                 </button>
                             </div>
 
-                            <div id="dropboxSyncStatus" style="
-                                font-size: 0.8em;
-                                color: #6c757d;
-                                margin-top: 10px;
-                                font-style: italic;
-                            ">
+                            <div id="dropboxSyncStatus" class="dropbox-status-note">
                                 <!-- Sync status messages appear here -->
                             </div>
                         </div>
                     </div>
 
-                    <!-- Color Scheme Section -->
-                    <div class="section hidden" id="colorSection">
-                        <h2>Color Scheme</h2>
-
-                        <div class="form-group">
-                            <label for="colorPreset">Preset:</label>
-                            <select
-                                id="colorPreset"
-                                onchange="app.loadColorPreset()"
-                            >
-                                <option value="">Custom...</option>
-                                <option value="blue">Blue</option>
-                                <option value="green">Green</option>
-                                <option value="teal">Teal</option>
-                                <option value="yellow">Yellow</option>
-                                <option value="pink">Pink</option>
-                                <option value="red">Red</option>
-                                <option value="purple">Purple</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="color1">Color 1:</label>
-                            <input type="color" id="color1" value="#0000ff" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="color2">Color 2:</label>
-                            <input type="color" id="color2" value="#4c00ff" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="color3">Color 3:</label>
-                            <input type="color" id="color3" value="#8c23ff" />
-                        </div>
-
-                        <button onclick="app.setColorScheme()">
-                            Update Colors
-                        </button>
-                    </div>
                 </div>
             </aside>
 
@@ -1355,74 +1786,17 @@
                     <!-- Live stats card -->
                     <div class="live-card" id="liveStatsCard">
                         <h2>Live Workout Data</h2>
-<div id="currentSetName" style="margin-bottom:6px; font-weight:600; color:#444;">&nbsp;</div>
+<div id="currentSetName" class="current-set-name">&nbsp;</div>
                         <div id="prBanner" class="pr-banner hidden"></div>
                         <!-- Rep Counters -->
-                        <div
-                            style="
-                                display: grid;
-                                grid-template-columns: 1fr 1fr;
-                                gap: 15px;
-                                margin-bottom: 20px;
-                            "
-                        >
-                            <div
-                                style="
-                                    background: #e7f5ff;
-                                    padding: 15px;
-                                    border-radius: 8px;
-                                    text-align: center;
-                                "
-                            >
-                                <div
-                                    style="
-                                        font-size: 0.9em;
-                                        color: #1971c2;
-                                        margin-bottom: 5px;
-                                        font-weight: 600;
-                                    "
-                                >
-                                    Warmup Reps
-                                </div>
-                                <div
-                                    style="
-                                        font-size: 2em;
-                                        font-weight: 700;
-                                        color: #1864ab;
-                                    "
-                                    id="warmupCounter"
-                                >
-                                    -/3
-                                </div>
+                        <div class="stat-card-grid">
+                            <div class="stat-card stat-card--warmup">
+                                <div class="stat-card__label">Warmup Reps</div>
+                                <div class="stat-card__value" id="warmupCounter">-/3</div>
                             </div>
-                            <div
-                                style="
-                                    background: #d3f9d8;
-                                    padding: 15px;
-                                    border-radius: 8px;
-                                    text-align: center;
-                                "
-                            >
-                                <div
-                                    style="
-                                        font-size: 0.9em;
-                                        color: #2f9e44;
-                                        margin-bottom: 5px;
-                                        font-weight: 600;
-                                    "
-                                >
-                                    Working Reps
-                                </div>
-                                <div
-                                    style="
-                                        font-size: 2em;
-                                        font-weight: 700;
-                                        color: #2b8a3e;
-                                    "
-                                    id="workingCounter"
-                                >
-                                    -/-
-                                </div>
+                            <div class="stat-card stat-card--working">
+                                <div class="stat-card__label">Working Reps</div>
+                                <div class="stat-card__value" id="workingCounter">-/-</div>
                             </div>
                         </div>
 
@@ -1451,38 +1825,51 @@
                                 </div>
                                 <div class="bar-value" id="posBValue">0</div>
                             </div>
-                            <div
-                                style="
-                                    display: flex;
-                                    flex-direction: column;
-                                    align-items: center;
-                                    gap: 20px;
-                                "
-                            >
-                                <div class="live-weight-control" id="liveWeightControl">
-                                    <div class="live-weight-label">Weight Per Cable</div>
-                                    <div class="live-weight-display" id="liveWeightDisplay" aria-live="polite">
-                                        <span id="liveWeightValue">-</span>
-                                        <span class="stat-unit" id="liveWeightUnit">kg</span>
-                                    </div>
-                                </div>
-                                <div class="weight-adjuster-circle">
+                                <div class="position-bars__center">
+                                <div class="plan-inline-controls" role="group" aria-label="Plan navigation">
                                     <button
                                         type="button"
-                                        class="weight-adjuster-segment increase"
-                                        id="weightAdjusterIncrease"
-                                        aria-label="Increase weight per cable"
+                                        class="plan-nav-btn"
+                                        id="planPrevBtn"
+                                        onclick="app.rewindPlan()"
+                                        aria-label="Previous set"
                                     >
-                                        +
+                                        <span aria-hidden="true">&#8592;</span>
+                                        <span class="sr-only">Previous set</span>
                                     </button>
-                                    <div class="weight-adjuster-center">Adjust</div>
+                                    <div class="weight-adjuster-circle" aria-live="polite">
+                                        <button
+                                            type="button"
+                                            class="weight-adjuster-segment increase"
+                                            id="weightAdjusterIncrease"
+                                            aria-label="Increase weight per cable"
+                                        >
+                                            +
+                                        </button>
+                                        <div class="weight-adjuster-center">
+                                            <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
+                                                <span id="liveWeightValue">-</span>
+                                                <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="weight-adjuster-segment decrease"
+                                            id="weightAdjusterDecrease"
+                                            aria-label="Decrease weight per cable"
+                                        >
+                                            &minus;
+                                        </button>
+                                    </div>
                                     <button
                                         type="button"
-                                        class="weight-adjuster-segment decrease"
-                                        id="weightAdjusterDecrease"
-                                        aria-label="Decrease weight per cable"
+                                        class="plan-nav-btn"
+                                        id="planNextBtn"
+                                        onclick="app.skipPlanForward()"
+                                        aria-label="Next set"
                                     >
-                                        &minus;
+                                        <span aria-hidden="true">&#8594;</span>
+                                        <span class="sr-only">Next set</span>
                                     </button>
                                 </div>
 
@@ -1500,6 +1887,18 @@
                                         - <span class="stat-unit">kg</span>
                                     </div>
                                 </div>
+
+                                <button
+                                    type="button"
+                                    class="plan-pause-btn"
+                                    id="planPauseBtn"
+                                    onclick="app.togglePlanPause()"
+                                    aria-pressed="false"
+                                    aria-label="Pause plan"
+                                >
+                                    <span aria-hidden="true">&#10074;&#10074;</span>
+                                    <span class="sr-only">Pause plan</span>
+                                </button>
 
                                 <!-- Auto-stop timer (Just Lift mode only) -->
                                 <div
@@ -1551,7 +1950,7 @@
                                         style="
                                             margin-top: -54px;
                                             font-size: 0.75em;
-                                            color: #6c757d;
+                                            color: var(--text-muted);
                                             font-weight: 600;
                                             pointer-events: none;
                                         "
@@ -1560,23 +1959,34 @@
                                     </div>
                                 </div>
 
-                                <button
-                                    id="stopBtn"
-                                    onclick="app.stopWorkout()"
-                                    style="
-                                        background: linear-gradient(
-                                            135deg,
-                                            #dc3545 0%,
-                                            #c82333 100%
-                                        );
-                                        padding: 15px 30px;
-                                        font-size: 16px;
-                                        width: auto;
-                                        margin: 0;
-                                    "
-                                >
-                                    STOP
-                                </button>
+                                <div class="plan-live-controls">
+                                    <div class="plan-live-main">
+                                        <div
+                                            id="planElapsedTimer"
+                                            class="plan-elapsed-timer"
+                                            role="timer"
+                                            aria-live="off"
+                                        ></div>
+                                        <button
+                                            id="stopBtn"
+                                            type="button"
+                                            onclick="app.stopWorkout()"
+                                            style="
+                                                background: linear-gradient(
+                                                    135deg,
+                                                    #dc3545 0%,
+                                                    #c82333 100%
+                                                );
+                                                padding: 15px 30px;
+                                                font-size: 16px;
+                                                width: auto;
+                                                margin: 0;
+                                            "
+                                        >
+                                            STOP
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                             <div class="bar-container">
                                 <div class="bar-label">Right Cable</div>
@@ -1636,7 +2046,7 @@
                             id="graphHistoryContainer"
                         >
                             <div>
-                                <h3 style="color: #667eea; margin-bottom: 10px">
+                                <h3 style="color: var(--accent-color); margin-bottom: 10px">
                                     Load History
                                 </h3>
                                 <div id="loadGraphContainer">
@@ -1688,7 +2098,7 @@
                             </div>
 
                             <div>
-                                <h3 style="color: #667eea; margin-bottom: 10px">
+                                <h3 style="color: var(--accent-color); margin-bottom: 10px">
                                     Workout History
                                 </h3>
                                 <div
@@ -1708,7 +2118,7 @@
                                     >
                                         <div
                                             style="
-                                                color: #6c757d;
+                                                color: var(--text-muted);
                                                 font-size: 0.9em;
                                                 text-align: center;
                                                 padding: 20px;
@@ -1733,14 +2143,14 @@
     <div class="rest-ring">
       <svg width="140" height="140" viewBox="0 0 100 100">
         <!-- track -->
-        <circle cx="50" cy="50" r="45" stroke="#e9ecef" stroke-width="8" fill="none"/>
+        <circle cx="50" cy="50" r="45" stroke="var(--divider-color)" stroke-width="8" fill="none"/>
         <!-- progress -->
         <circle id="restProgress" cx="50" cy="50" r="45"
-                stroke="#667eea" stroke-width="8" fill="none"
+                stroke="var(--accent-color)" stroke-width="8" fill="none"
                 stroke-linecap="round"
                 stroke-dasharray="282.743" stroke-dashoffset="0"
                 transform="rotate(-90 50 50)"/>
-        <text id="restTimeText" x="50" y="55" text-anchor="middle" font-size="22" fill="#212529">0</text>
+        <text id="restTimeText" x="50" y="55" text-anchor="middle" font-size="22" fill="var(--text-primary)">0</text>
       </svg>
     </div>
 
@@ -1756,14 +2166,14 @@
 <style>
   .rest-overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.45); z-index:9999; }
   .rest-overlay.hidden { display:none; }
-  .rest-card { width:min(560px,92vw); background:#fff; border-radius:14px; padding:18px 20px; box-shadow:0 12px 40px rgba(0,0,0,.2); }
-  .rest-label { font-weight:700; color:#212529; margin-bottom:8px; text-align:center; }
+  .rest-card { width:min(560px,92vw); background:var(--card-bg); border-radius:14px; padding:18px 20px; box-shadow:0 12px 40px var(--card-shadow); }
+  .rest-label { font-weight:700; color:var(--text-primary); margin-bottom:8px; text-align:center; }
   .rest-ring  { display:grid; place-items:center; margin:6px 0 12px; }
-  .rest-next  { color:#495057; font-size:.95rem; text-align:center; margin-bottom:12px; }
+  .rest-next  { color: var(--text-secondary); font-size:.95rem; text-align:center; margin-bottom:12px; }
   .rest-actions { display:flex; gap:10px; justify-content:center; }
-  .rest-actions .primary   { background:#667eea; color:#fff; border:0; padding:8px 14px; border-radius:8px; }
-  .rest-actions .secondary { background:#f1f3f5; color:#212529; border:0; padding:8px 14px; border-radius:8px; }
-  .rest-setname { text-align:center; font-weight:600; color:#343a40; margin-top:2px; margin-bottom:4px; }
+  .rest-actions .primary   { background:var(--accent-color); color:#fff; border:0; padding:8px 14px; border-radius:8px; }
+  .rest-actions .secondary { background:var(--tile-background); color:var(--text-primary); border:0; padding:8px 14px; border-radius:8px; }
+  .rest-setname { text-align:center; font-weight:600; color:var(--text-secondary); margin-top:2px; margin-bottom:4px; }
 </style>
 
 	 <!-- Log card -->
@@ -1778,12 +2188,16 @@
         <!-- Dropbox SDK -->
         <script src="https://unpkg.com/dropbox@10.34.0/dist/Dropbox-sdk.min.js"></script>
 
+        <button type="button" id="appScrollUp" class="scroll-btn up" aria-label="Back to top">↑</button>
+        <button type="button" id="appScrollDown" class="scroll-btn down" aria-label="Jump to bottom">↓</button>
+
         <script src="https://leeoniya.github.io/uPlot/dist/uPlot.iife.js"></script>
         <script src="modes.js"></script>
         <script src="protocol.js"></script>
         <script src="device.js"></script>
         <script src="chart.js"></script>
         <script src="dropbox.js"></script>
+        <script src="plan-runner.js"></script>
         <script src="app.js"></script>
     </body>
 </html>

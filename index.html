@@ -121,10 +121,20 @@
             </div>
           </div>
           <div class="plan-controls">
-              <div class="plan-name-field">
-                <label for="planNameInput">Plan Name</label>
-                <input type="text" id="planNameInput" placeholder="e.g., Push / Pull Split" />
-              </div>
+        <div class="plan-name-field">
+          <label for="planNameInput">Plan Name</label>
+          <div class="plan-name-input-row">
+            <input id="planNameInput" type="text" placeholder="Plan name (e.g., Push Day A)" />
+            <button type="button" id="planSaveButton" class="btn small primary" title="Save this plan locally">Save Plan</button>
+            <button type="button" id="planRenameButton" class="btn small" title="Rename the selected plan">Rename Selected</button>
+          </div>
+          <div class="plan-name-input-row">
+            <select id="planNameSelect" title="Select a saved plan" aria-label="Saved plans"></select>
+            <button type="button" id="refreshPlanNames" class="btn small" title="Refresh available plans">Refresh</button>
+            <button type="button" id="deletePlanFromBuilder" class="btn small danger" title="Delete selected plan from Dropbox">Delete</button>
+          </div>
+          <div class="plan-name-hint">Selecting a plan loads its exercises into the builder.</div>
+        </div>
               <div class="schedule-fields">
                 <div class="schedule-field">
                   <label for="scheduleStart">Start Date</label>

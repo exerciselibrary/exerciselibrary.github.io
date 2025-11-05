@@ -26,6 +26,7 @@ export const getBuilderSnapshot = () => ({
         g: entry.exercise.muscleGroups || [],
         m: entry.exercise.muscles || [],
         q: entry.exercise.equipment || [],
+        v: entry.exercise.videos || [],
         s: entry.sets.map((set) => [
           set.reps ?? '',
           set.weight ?? '',
@@ -134,6 +135,7 @@ export const persistState = (options = {}) => {
       builder: getBuilderSnapshot(),
       plan: {
         name: state.plan.name || '',
+        selectedName: state.plan.selectedName || '',
         schedule: {
           startDate: state.plan.schedule.startDate || null,
           endDate: state.plan.schedule.endDate || null,
@@ -173,6 +175,7 @@ export const loadPersistedState = () => {
     const parsed = JSON.parse(raw);
     if (parsed?.plan) {
       state.plan.name = parsed.plan.name || '';
+      state.plan.selectedName = parsed.plan.selectedName || '';
       const sched = parsed.plan.schedule || {};
       state.plan.schedule.startDate = sched.startDate || state.plan.schedule.startDate || null;
       state.plan.schedule.endDate = sched.endDate || null;

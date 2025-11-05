@@ -26,6 +26,19 @@ Code structure (new modular layout)
 
 Each module is documented at the top to make it clear what part of the experience it owns. The builder and library modules also register a render callback so UI updates stay centralised in `main.js`.
 
+Workout Time app structure
+
+- `workout-time/app.js` — main Vitruvian console UI wiring (device lifecycle, live telemetry, logging, etc.). The heavy plan-specific logic delegates to helper modules to keep the file focused on orchestration.
+- `workout-time/plan-runner.js` — mixin that owns plan execution (timeline building, rest countdowns with audio cues, skip/rewind logic, pause/auto-resume detection, and the plan elapsed timer). Methods in `app.js` call into this mixin so all business rules live in one place.
+- `workout-time/dropbox.js`, `device.js`, `chart.js`, `modes.js`, `protocol.js` — unchanged supporting modules for cloud sync, Bluetooth transport, charting, and protocol constants.
+- `workout-time/plan-runner.js` is loaded before `app.js`, so you can further extend the plan behaviour without reopening the main file.
+
+Local tests
+
+- Tests live in `local-tests/` and are ignored by git so they never end up in commits.
+- `local-tests/builder.test.js` bootstraps a minimal DOM stub, exercises the builder metadata pipeline (`buildPlanSyncPayload` ➜ `loadPlanIntoBuilder`), and asserts that videos and set groupings survive a round trip. Run it with `node local-tests/builder.test.js`.
+- The script requires a Node runtime available on your PATH. If you are on Windows without Node, install it from https://nodejs.org/ and rerun the command.
+
 What's included
 
 - Multi-select filters for muscle groups, individual muscles, and equipment with OR/AND matching.
