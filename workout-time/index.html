@@ -483,7 +483,9 @@
 
             /* Sidebar toggle button */
             .hamburger {
-                display: block;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 position: fixed;
                 top: 20px;
                 left: 20px;
@@ -495,39 +497,14 @@
                 cursor: pointer;
                 box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
                 width: 50px;
-                transition: left 0.3s ease, box-shadow 0.2s ease;
+                height: 50px;
+                color: var(--accent-color);
+                transition: left 0.3s ease, box-shadow 0.2s ease, color 0.2s ease;
             }
 
-            .hamburger span {
-                display: block;
-                width: 25px;
-                height: 3px;
-                background: var(--accent-color);
-                margin: 5px 0;
-                border-radius: 2px;
-                transition: 0.3s;
-            }
-
-            .hamburger.is-collapsed span {
-                transform-origin: left center;
-            }
-
-            .hamburger.is-collapsed span:nth-child(1) {
-                transform: translate(7px, 6px) rotate(45deg);
-                width: 18px;
-                margin: 0;
-            }
-
-            .hamburger.is-collapsed span:nth-child(2) {
-                transform: translate(7px, -6px) rotate(-45deg);
-                width: 18px;
-                margin: 0;
-                opacity: 1;
-            }
-
-            .hamburger.is-collapsed span:nth-child(3) {
-                opacity: 0;
-                transform: none;
+            .hamburger .bi {
+                font-size: 1.5rem;
+                line-height: 1;
             }
 
             /* Form elements */
@@ -1419,10 +1396,8 @@
     </head>
     <body>
         <!-- Mobile hamburger menu -->
-        <button class="hamburger" id="hamburger" onclick="app.toggleSidebar()">
-            <span></span>
-            <span></span>
-            <span></span>
+        <button class="hamburger" id="hamburger" type="button" onclick="app.toggleSidebar()">
+            <i class="bi bi-list" aria-hidden="true"></i>
         </button>
 
         <!-- Overlay for mobile -->
