@@ -39,7 +39,8 @@
       this.planPauseLastSample = null;
       this.planStartTime = Date.now();
       this.planCursor = { index: timeline[0].itemIndex, set: timeline[0].set };
-      this.planOnWorkoutComplete = () => this._planAdvance();
+      this.planOnWorkoutComplete = (completion = {}) =>
+        this._planAdvance(completion);
 
       this._clearRestState({ signalDone: false });
       this.stopPlanElapsedTicker();
@@ -122,12 +123,14 @@
       }
     },
 
-    _planAdvance: function _planAdvance() {
+    _planAdvance: function _planAdvance(completion = {}) {
       if (!this.planActive) {
         return;
       }
 
       this._planSetInProgress = false;
+
+      const { reason = null, completedEntry = null } = completion || {};
 
       if (this._planNavigationTargetIndex !== null && this._planNavigationTargetIndex !== undefined) {
         this._applyPlanNavigationTarget();
@@ -149,9 +152,16 @@
         this._applyItemToUI?.(upcomingItem);
       }
 
+      const lastEntry =
+        completedEntry && Number.isFinite(completedEntry.restSec)
+          ? completedEntry
+          : this._activePlanEntry && Number.isFinite(this._activePlanEntry.restSec)
+            ? this._activePlanEntry
+            : null;
+
       const restSource =
-        this._activePlanEntry && Number.isFinite(this._activePlanEntry.restSec)
-          ? this._activePlanEntry
+        lastEntry && Number.isFinite(lastEntry.restSec)
+          ? lastEntry
           : upcomingItem && Number.isFinite(upcomingItem.restSec)
             ? { restSec: upcomingItem.restSec, name: upcomingItem.name, type: upcomingItem.type }
             : null;
@@ -160,6 +170,14 @@
       const nextLabel =
         upcomingItem?.name || (upcomingItem?.type === "exercise" ? "Exercise" : "Echo Mode");
       const nextSummary = upcomingItem ? this.describePlanItem(upcomingItem) : "";
+
+      if (reason === "echo-auto-stop" && upcomingItem) {
+        const queueMessage =
+          restSec > 0
+            ? `Echo Just Lift auto-stop complete → resting ${restSec}s before ${nextLabel}`
+            : `Echo Just Lift auto-stop complete → starting ${nextLabel}`;
+        this.addLogEntry(queueMessage, "info");
+      }
 
       const runNext = () => {
         if (this.planPaused) {
