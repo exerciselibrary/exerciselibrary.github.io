@@ -789,7 +789,7 @@
 
             .rest-countdown-ring {
                 position: absolute;
-                inset: 10px;
+                inset: 0;
                 transform: rotate(-90deg);
                 opacity: 0;
                 pointer-events: none;
@@ -871,13 +871,16 @@
 
             .rest-countdown-summary {
                 display: none;
-                margin-top: 14px;
                 color: var(--text-secondary);
-                font-size: 0.9em;
+                font-size: 0.85em;
                 text-align: center;
+                line-height: 1.35;
+                flex: 1 1 auto;
+                padding: 0 10px;
+                overflow-wrap: anywhere;
             }
 
-            .weight-adjuster-circle.rest-active + .rest-countdown-summary {
+            .rest-countdown-summary.is-visible {
                 display: block;
             }
 
@@ -956,19 +959,23 @@
             .weight-adjuster-actions {
                 display: flex;
                 flex-direction: column;
-                align-items: center;
+                align-items: stretch;
                 justify-content: center;
                 gap: 16px;
                 padding: 12px 0;
                 width: 100%;
             }
 
-            .weight-adjuster-action-buttons {
+            .weight-adjuster-control-row {
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 12px;
                 width: 100%;
+            }
+
+            .weight-adjuster-control-row.resting {
+                justify-content: space-between;
             }
 
             .plan-pause-btn {
@@ -1043,6 +1050,8 @@
                 color: var(--text-primary);
                 font-weight: 600;
                 font-variant-numeric: tabular-nums;
+                align-self: flex-end;
+                margin-left: auto;
             }
 
             .plan-elapsed-timer.is-paused {
@@ -2060,7 +2069,7 @@
                                                         class="rest-countdown-hint"
                                                         id="restCountdownHint"
                                                     >
-                                                        Tap circle to add +30s
+                                                        Tap anywhere to add +30s
                                                     </span>
                                                 </button>
                                                 <button
@@ -2087,16 +2096,15 @@
                                                 </button>
                                             </div>
                                             <div
-                                                class="rest-countdown-summary"
-                                                id="restCountdownSummary"
-                                                aria-live="polite"
-                                            ></div>
-                                            <div
                                                 class="weight-adjuster-actions"
+                                                id="weightAdjusterActions"
                                                 role="group"
                                                 aria-label="Workout controls"
                                             >
-                                                <div class="weight-adjuster-action-buttons">
+                                                <div
+                                                    class="weight-adjuster-control-row"
+                                                    id="planControlRow"
+                                                >
                                                     <button
                                                         type="button"
                                                         class="plan-pause-btn"
@@ -2110,6 +2118,11 @@
                                                             >Pause plan</span
                                                         >
                                                     </button>
+                                                    <div
+                                                        class="rest-countdown-summary"
+                                                        id="restCountdownSummary"
+                                                        aria-live="polite"
+                                                    ></div>
                                                     <button
                                                         id="stopBtn"
                                                         type="button"
