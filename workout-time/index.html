@@ -715,6 +715,10 @@
                 flex-shrink: 0;
             }
 
+            .weight-adjuster-circle.rest-active {
+                cursor: pointer;
+            }
+
             .weight-adjuster-center {
                 position: absolute;
                 inset: 0;
@@ -730,6 +734,12 @@
                 pointer-events: none;
                 z-index: 1;
                 padding: 20px;
+            }
+
+            .weight-adjuster-circle.rest-active .weight-adjuster-center,
+            .weight-adjuster-circle.rest-active .weight-adjuster-segment {
+                opacity: 0;
+                pointer-events: none;
             }
 
             .weight-adjuster-segment {
@@ -775,6 +785,112 @@
                 gap: 6px;
                 text-transform: none;
                 letter-spacing: normal;
+            }
+
+            .rest-countdown-ring {
+                position: absolute;
+                inset: 10px;
+                transform: rotate(-90deg);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
+                z-index: 0;
+            }
+
+            .rest-countdown-track {
+                fill: none;
+                stroke: rgba(255, 255, 255, 0.2);
+                stroke-width: 6;
+            }
+
+            .rest-countdown-progress {
+                fill: none;
+                stroke: #ffffff;
+                stroke-width: 6;
+                stroke-linecap: round;
+                stroke-dasharray: 339.292;
+                stroke-dashoffset: 339.292;
+                transition: stroke-dashoffset 0.1s linear;
+            }
+
+            .rest-countdown-button {
+                position: absolute;
+                inset: 0;
+                border: none;
+                background: transparent;
+                color: #ffffff;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                font-weight: 600;
+                padding: 18px;
+                text-align: center;
+                cursor: pointer;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
+                z-index: 3;
+            }
+
+            .rest-countdown-button:focus {
+                outline: 2px solid rgba(255, 255, 255, 0.9);
+                outline-offset: -6px;
+            }
+
+            .rest-countdown-label {
+                font-size: 0.9em;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                opacity: 0.85;
+            }
+
+            .rest-countdown-time {
+                font-size: 2.4em;
+                font-weight: 700;
+                line-height: 1;
+            }
+
+            .rest-countdown-hint {
+                font-size: 0.75em;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                opacity: 0.85;
+            }
+
+            .weight-adjuster-circle.rest-active .rest-countdown-ring,
+            .weight-adjuster-circle.rest-active .rest-countdown-button {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .weight-adjuster-circle.rest-paused .rest-countdown-button {
+                opacity: 1;
+            }
+
+            .rest-countdown-summary {
+                display: none;
+                margin-top: 14px;
+                color: var(--text-secondary);
+                font-size: 0.9em;
+                text-align: center;
+            }
+
+            .weight-adjuster-circle.rest-active + .rest-countdown-summary {
+                display: block;
+            }
+
+            .rest-countdown-summary strong {
+                display: block;
+                color: var(--text-primary);
+                font-size: 0.95em;
+                margin-bottom: 4px;
+            }
+
+            .rest-countdown-summary-details {
+                font-size: 0.85em;
+                line-height: 1.35;
             }
 
             .plan-inline-controls {
@@ -1894,7 +2010,59 @@
                                                     - <span class="stat-unit">kg</span>
                                                 </div>
                                             </div>
-                                            <div class="weight-adjuster-circle" aria-live="polite">
+                                            <div
+                                                class="weight-adjuster-circle"
+                                                aria-live="polite"
+                                                id="weightAdjusterCircle"
+                                            >
+                                                <svg
+                                                    class="rest-countdown-ring"
+                                                    id="restCountdownRing"
+                                                    viewBox="0 0 120 120"
+                                                    aria-hidden="true"
+                                                >
+                                                    <circle
+                                                        class="rest-countdown-track"
+                                                        cx="60"
+                                                        cy="60"
+                                                        r="54"
+                                                    ></circle>
+                                                    <circle
+                                                        class="rest-countdown-progress"
+                                                        id="restCountdownProgress"
+                                                        cx="60"
+                                                        cy="60"
+                                                        r="54"
+                                                    ></circle>
+                                                </svg>
+                                                <button
+                                                    type="button"
+                                                    class="rest-countdown-button"
+                                                    id="restCountdownButton"
+                                                    aria-label="Rest countdown"
+                                                    tabindex="-1"
+                                                >
+                                                    <span
+                                                        class="rest-countdown-label"
+                                                        id="restCountdownLabel"
+                                                    >
+                                                        Rest
+                                                    </span>
+                                                    <span
+                                                        class="rest-countdown-time"
+                                                        id="restCountdownTime"
+                                                        role="timer"
+                                                        aria-live="polite"
+                                                    >
+                                                        0
+                                                    </span>
+                                                    <span
+                                                        class="rest-countdown-hint"
+                                                        id="restCountdownHint"
+                                                    >
+                                                        Tap circle to add +30s
+                                                    </span>
+                                                </button>
                                                 <button
                                                     type="button"
                                                     class="weight-adjuster-segment increase"
@@ -1918,6 +2086,11 @@
                                                     &minus;
                                                 </button>
                                             </div>
+                                            <div
+                                                class="rest-countdown-summary"
+                                                id="restCountdownSummary"
+                                                aria-live="polite"
+                                            ></div>
                                             <div
                                                 class="weight-adjuster-actions"
                                                 role="group"
@@ -2177,48 +2350,6 @@
 
 
                    
-<!-- Rest Overlay -->
-<div id="restOverlay" class="rest-overlay hidden">
-  <div class="rest-card">
-    <div id="restLabel" class="rest-label">Next set starts</div>
-    <div id="restSetName" class="rest-setname"></div> 
-
-    <div class="rest-ring">
-      <svg width="140" height="140" viewBox="0 0 100 100">
-        <!-- track -->
-        <circle cx="50" cy="50" r="45" stroke="var(--divider-color)" stroke-width="8" fill="none"/>
-        <!-- progress -->
-        <circle id="restProgress" cx="50" cy="50" r="45"
-                stroke="var(--accent-color)" stroke-width="8" fill="none"
-                stroke-linecap="round"
-                stroke-dasharray="282.743" stroke-dashoffset="0"
-                transform="rotate(-90 50 50)"/>
-        <text id="restTimeText" x="50" y="55" text-anchor="middle" font-size="22" fill="var(--text-primary)">0</text>
-      </svg>
-    </div>
-
-    <div id="restNext" class="rest-next"><!-- next block summary --></div>
-
-    <div class="rest-actions">
-      <button id="restAddBtn"  class="secondary">+30 sec</button>
-      <button id="restSkipBtn" class="primary">Skip</button>
-    </div>
-  </div>
-</div>
-
-<style>
-  .rest-overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.45); z-index:9999; }
-  .rest-overlay.hidden { display:none; }
-  .rest-card { width:min(560px,92vw); background:var(--card-bg); border-radius:14px; padding:18px 20px; box-shadow:0 12px 40px var(--card-shadow); }
-  .rest-label { font-weight:700; color:var(--text-primary); margin-bottom:8px; text-align:center; }
-  .rest-ring  { display:grid; place-items:center; margin:6px 0 12px; }
-  .rest-next  { color: var(--text-secondary); font-size:.95rem; text-align:center; margin-bottom:12px; }
-  .rest-actions { display:flex; gap:10px; justify-content:center; }
-  .rest-actions .primary   { background:var(--accent-color); color:#fff; border:0; padding:8px 14px; border-radius:8px; }
-  .rest-actions .secondary { background:var(--tile-background); color:var(--text-primary); border:0; padding:8px 14px; border-radius:8px; }
-  .rest-setname { text-align:center; font-weight:600; color:var(--text-secondary); margin-top:2px; margin-bottom:4px; }
-</style>
-
 	 <!-- Log card -->
                     <div class="live-card">
                         <h2>Console Log</h2>
