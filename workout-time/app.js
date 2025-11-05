@@ -911,6 +911,7 @@ class VitruvianApp {
             unlimited: !!entry.isUnlimited,
             totalVolumeKg: 0,
             pr: !!entry.pr,
+            prDetails: entry.prDetails || null,
           });
         }
 
@@ -929,6 +930,17 @@ class VitruvianApp {
         }
         if (entry.pr) {
           aggregate.pr = true;
+          if (entry.prDetails) {
+            const currentBest = Number.isFinite(aggregate.prDetails?.currentKg)
+              ? aggregate.prDetails.currentKg
+              : -Infinity;
+            const candidateBest = Number.isFinite(entry.prDetails.currentKg)
+              ? entry.prDetails.currentKg
+              : currentBest;
+            if (!aggregate.prDetails || candidateBest >= currentBest) {
+              aggregate.prDetails = { ...entry.prDetails };
+            }
+          }
         }
       }
 
@@ -976,6 +988,53 @@ class VitruvianApp {
         meta.appendChild(repsSpan);
 
         itemEl.appendChild(meta);
+
+        if (aggregate.pr && aggregate.prDetails) {
+          const prDetailsEl = document.createElement("div");
+          prDetailsEl.className = "plan-summary-item__pr-details";
+
+          const previousBestKg = Number.isFinite(aggregate.prDetails.previousBestKg)
+            ? aggregate.prDetails.previousBestKg
+            : null;
+          const currentBestKg = Number.isFinite(aggregate.prDetails.currentKg)
+            ? aggregate.prDetails.currentKg
+            : null;
+          const deltaKg = Number.isFinite(aggregate.prDetails.deltaKg)
+            ? aggregate.prDetails.deltaKg
+            : null;
+          const deltaPct = Number.isFinite(aggregate.prDetails.deltaPct)
+            ? aggregate.prDetails.deltaPct
+            : null;
+
+          const previousDisplay =
+            previousBestKg && previousBestKg > 0
+              ? this.formatWeightWithUnit(previousBestKg)
+              : "—";
+          const currentDisplay = currentBestKg !== null
+            ? this.formatWeightWithUnit(currentBestKg)
+            : "—";
+
+          const deltaParts = [];
+          if (deltaKg !== null) {
+            const diffValue = this.formatWeightWithUnit(Math.abs(deltaKg));
+            if (diffValue) {
+              const diffSign = deltaKg >= 0 ? "+" : "−";
+              deltaParts.push(`${diffSign}${diffValue}`);
+            }
+          }
+          if (deltaPct !== null) {
+            const pctSign = deltaPct >= 0 ? "+" : "−";
+            deltaParts.push(`${pctSign}${Math.abs(deltaPct).toFixed(1)}%`);
+          }
+
+          let detailText = `Previous best: ${previousDisplay} → ${currentDisplay}`;
+          if (deltaParts.length) {
+            detailText += ` (${deltaParts.join(", ")})`;
+          }
+
+          prDetailsEl.textContent = detailText;
+          itemEl.appendChild(prDetailsEl);
+        }
 
         const loadEl = document.createElement("div");
         loadEl.className = "plan-summary-item__load";
@@ -1053,6 +1112,18 @@ class VitruvianApp {
     const volumeKg = unlimited ? 0 : weightPerCableKg * cables * repsValue;
 
     const prInfo = meta.prInfo || null;
+    const prDetails =
+      prInfo?.status === "new"
+        ? {
+            label: prInfo.label || name,
+            previousBestKg: Number.isFinite(prInfo.previousBestKg)
+              ? prInfo.previousBestKg
+              : prInfo.previousBestKg || 0,
+            currentKg: Number.isFinite(prInfo.currentKg) ? prInfo.currentKg : 0,
+            deltaKg: Number.isFinite(prInfo.deltaKg) ? prInfo.deltaKg : null,
+            deltaPct: Number.isFinite(prInfo.deltaPct) ? prInfo.deltaPct : null,
+          }
+        : null;
 
     this._planSummaryData.sets.push({
       name,
@@ -1065,6 +1136,7 @@ class VitruvianApp {
       cables,
       volumeKg,
       pr: prInfo?.status === "new",
+      prDetails,
     });
   }
 
@@ -2830,6 +2902,10 @@ class VitruvianApp {
       !isNewPR && Math.abs(currentPeakKg - priorBestKg) <= epsilon && priorBestKg > 0;
 
     const bestKg = Math.max(currentPeakKg, priorBestKg);
+    const deltaKg = priorBestKg > 0 ? currentPeakKg - priorBestKg : currentPeakKg;
+    const deltaPct = priorBestKg > 0 && Number.isFinite(priorBestKg)
+      ? ((currentPeakKg - priorBestKg) / priorBestKg) * 100
+      : null;
     const bestDisplay = this.formatWeightWithUnit(bestKg);
     const currentDisplay = this.formatWeightWithUnit(currentPeakKg);
 
@@ -2865,6 +2941,9 @@ class VitruvianApp {
       status,
       bestKg,
       currentKg: currentPeakKg,
+      previousBestKg: priorBestKg,
+      deltaKg,
+      deltaPct,
       label: identity.label,
     };
   }
