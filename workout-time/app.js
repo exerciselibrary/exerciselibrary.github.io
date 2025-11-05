@@ -85,6 +85,21 @@ class VitruvianApp {
     this.selectedHistoryKey = null; // currently selected history entry key
     this.selectedHistoryIndex = null; // cache index for quick lookup
 
+    this._warmupCounterEl = null;
+    this._workingCounterEl = null;
+    this._planIndicatorEls = null;
+    this._planSummaryData = null;
+    this._lastPlanSummary = null;
+    this._planSummaryOverlay = null;
+    this._planSummaryListEl = null;
+    this._planSummaryTotalEl = null;
+    this._planSummaryPlanNameEl = null;
+    this._fullscreenButton = null;
+    this._fullscreenPreference = false;
+    this._fullscreenExitRequested = false;
+    this._manualFullscreenExit = false;
+    this._boundFullscreenChange = null;
+
     // initialize plan UI dropdown from storage and render once UI is ready
     setTimeout(() => {
       this.refreshPlanSelectNames();
@@ -92,6 +107,17 @@ class VitruvianApp {
       this.applySidebarCollapsedState();
       this.updatePlanControlsState();
       this.updatePlanElapsedDisplay();
+      this._warmupCounterEl = document.getElementById("warmupCounter");
+      this._workingCounterEl = document.getElementById("workingCounter");
+      this._planIndicatorEls = {
+        container: document.getElementById("planSetIndicator"),
+        name: document.getElementById("planSetIndicatorName"),
+        set: document.getElementById("planSetIndicatorSet"),
+        reps: document.getElementById("planSetIndicatorReps"),
+      };
+      this.updatePlanSetIndicator();
+      this.updateCurrentSetLabel();
+      this.syncFullscreenButton();
     }, 0);
 
     this.setupThemeToggle();
@@ -99,6 +125,8 @@ class VitruvianApp {
     this.setupDropbox();
     this.setupMessageBridge();
     this.setupScrollButtons();
+    this.setupFullscreenControls();
+    this.setupPlanSummaryOverlay();
     this.resetRepCountersToEmpty();
     this.updateStopButtonState();
     this.updatePlanControlsState?.();
@@ -630,6 +658,529 @@ class VitruvianApp {
     window.addEventListener("scroll", updateVisibility, { passive: true });
     window.addEventListener("resize", updateVisibility);
     updateVisibility();
+  }
+
+  setupFullscreenControls() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (!this._boundFullscreenChange) {
+      this._boundFullscreenChange = this.handleFullscreenChange.bind(this);
+      document.addEventListener("fullscreenchange", this._boundFullscreenChange);
+    }
+
+    const button = document.getElementById("fullscreenToggle");
+    this._fullscreenButton = button || null;
+
+    if (!button) {
+      return;
+    }
+
+    const activate = (event) => {
+      if (event) {
+        event.preventDefault();
+      }
+      this.toggleFullscreen();
+    };
+
+    button.addEventListener("click", activate);
+    button.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        activate(event);
+      }
+    });
+  }
+
+  handleFullscreenChange() {
+    if (!this.isFullscreen() && this._manualFullscreenExit) {
+      this._fullscreenPreference = false;
+    }
+
+    this._manualFullscreenExit = false;
+    this._fullscreenExitRequested = false;
+    this.syncFullscreenButton();
+
+    if (this._fullscreenPreference && !this.isFullscreen()) {
+      window.setTimeout(() => this.ensureFullscreenPreference(), 0);
+    }
+  }
+
+  syncFullscreenButton() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const button = this._fullscreenButton || document.getElementById("fullscreenToggle");
+    if (!button) {
+      return;
+    }
+
+    this._fullscreenButton = button;
+    const isFull = this.isFullscreen();
+    button.setAttribute("aria-pressed", isFull ? "true" : "false");
+    const label = isFull ? "Exit full screen" : "Enter full screen";
+    button.setAttribute("aria-label", label);
+
+    const icon = button.querySelector("i");
+    if (icon) {
+      icon.className = isFull ? "bi bi-fullscreen-exit" : "bi bi-arrows-fullscreen";
+      icon.setAttribute("aria-hidden", "true");
+    }
+
+    const textSpan = button.querySelector("span");
+    if (textSpan) {
+      textSpan.textContent = isFull ? "Exit Full Screen" : "Full Screen";
+    }
+  }
+
+  isFullscreen() {
+    if (typeof document === "undefined") {
+      return false;
+    }
+    return Boolean(document.fullscreenElement);
+  }
+
+  toggleFullscreen() {
+    if (this.isFullscreen()) {
+      this.exitFullscreen({ manual: true });
+    } else {
+      this.enterFullscreen({ remember: true });
+    }
+  }
+
+  enterFullscreen(options = {}) {
+    if (typeof document === "undefined") {
+      return Promise.resolve(false);
+    }
+
+    const { remember = true } = options;
+    const element = document.documentElement;
+
+    if (!element || typeof element.requestFullscreen !== "function") {
+      this.addLogEntry("Full screen is not supported in this browser.", "warning");
+      return Promise.resolve(false);
+    }
+
+    return element
+      .requestFullscreen()
+      .then(() => {
+        if (remember) {
+          this._fullscreenPreference = true;
+        }
+        this.syncFullscreenButton();
+        return true;
+      })
+      .catch((error) => {
+        this.addLogEntry(`Unable to enter full screen: ${error.message}`, "error");
+        return false;
+      });
+  }
+
+  exitFullscreen(options = {}) {
+    if (typeof document === "undefined") {
+      return Promise.resolve(false);
+    }
+
+    const { manual = false } = options;
+
+    if (!this.isFullscreen()) {
+      if (manual) {
+        this._fullscreenPreference = false;
+        this.syncFullscreenButton();
+      }
+      return Promise.resolve(true);
+    }
+
+    const exit = document.exitFullscreen;
+    if (typeof exit !== "function") {
+      return Promise.resolve(false);
+    }
+
+    this._manualFullscreenExit = manual;
+    this._fullscreenExitRequested = true;
+
+    return exit
+      .call(document)
+      .then(() => {
+        if (manual) {
+          this._fullscreenPreference = false;
+        }
+        this.syncFullscreenButton();
+        return true;
+      })
+      .catch((error) => {
+        this.addLogEntry(`Unable to exit full screen: ${error.message}`, "error");
+        return false;
+      })
+      .finally(() => {
+        this._manualFullscreenExit = false;
+        this._fullscreenExitRequested = false;
+      });
+  }
+
+  ensureFullscreenPreference() {
+    if (this._fullscreenPreference && !this.isFullscreen()) {
+      this.enterFullscreen({ remember: false });
+    }
+  }
+
+  setupPlanSummaryOverlay() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    this._planSummaryOverlay = document.getElementById("planSummaryOverlay");
+    this._planSummaryListEl = document.getElementById("planSummaryList");
+    this._planSummaryTotalEl = document.getElementById("planSummaryTotal");
+    this._planSummaryPlanNameEl = document.getElementById("planSummaryPlanName");
+
+    const closeBtn = document.getElementById("planSummaryCloseBtn");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        this.hidePlanSummary();
+      });
+    }
+
+    if (this._planSummaryOverlay) {
+      this._planSummaryOverlay.addEventListener("click", (event) => {
+        if (event.target === this._planSummaryOverlay) {
+          this.hidePlanSummary();
+        }
+      });
+    }
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("keydown", (event) => {
+        if (
+          event.key === "Escape" &&
+          this._planSummaryOverlay?.classList.contains("is-visible")
+        ) {
+          this.hidePlanSummary();
+        }
+      });
+    }
+  }
+
+  hidePlanSummary() {
+    if (!this._planSummaryOverlay) {
+      return;
+    }
+
+    this._planSummaryOverlay.classList.remove("is-visible");
+    this._planSummaryOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  presentPlanSummary(summary) {
+    if (!this._planSummaryOverlay) {
+      return;
+    }
+
+    const data = summary || this._lastPlanSummary;
+    if (!data || !Array.isArray(data.sets) || data.sets.length === 0) {
+      this.hidePlanSummary();
+      return;
+    }
+
+    if (this._planSummaryPlanNameEl) {
+      this._planSummaryPlanNameEl.textContent = data.planName || "";
+    }
+
+    if (this._planSummaryListEl) {
+      this._planSummaryListEl.innerHTML = "";
+
+      const aggregates = new Map();
+
+      for (const entry of data.sets) {
+        if (!entry) continue;
+        const key = `${entry.name || "Exercise"}|${entry.itemType || "exercise"}`;
+        if (!aggregates.has(key)) {
+          aggregates.set(key, {
+            name: entry.name || (entry.itemType === "echo" ? "Echo Mode" : "Exercise"),
+            itemType: entry.itemType || "exercise",
+            completedSets: 0,
+            totalSets: entry.totalSets || null,
+            totalReps: 0,
+            unlimited: !!entry.isUnlimited,
+            totalVolumeKg: 0,
+            pr: !!entry.pr,
+          });
+        }
+
+        const aggregate = aggregates.get(key);
+        aggregate.completedSets += 1;
+        if (entry.totalSets) {
+          aggregate.totalSets = entry.totalSets;
+        }
+        if (entry.isUnlimited) {
+          aggregate.unlimited = true;
+        } else if (Number.isFinite(entry.reps)) {
+          aggregate.totalReps += Math.max(0, entry.reps);
+        }
+        if (Number.isFinite(entry.volumeKg) && entry.volumeKg > 0) {
+          aggregate.totalVolumeKg += entry.volumeKg;
+        }
+        if (entry.pr) {
+          aggregate.pr = true;
+        }
+      }
+
+      let overallKg = 0;
+      aggregates.forEach((aggregate) => {
+        const itemEl = document.createElement("div");
+        itemEl.className = "plan-summary-item";
+
+        const header = document.createElement("div");
+        header.className = "plan-summary-item__header";
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "plan-summary-item__name";
+        nameEl.textContent = aggregate.name;
+        header.appendChild(nameEl);
+
+        if (aggregate.pr) {
+          const prEl = document.createElement("div");
+          prEl.className = "plan-summary-item__pr";
+          prEl.innerHTML = `<i class="bi bi-star-fill" aria-hidden="true"></i><span>PR</span>`;
+          header.appendChild(prEl);
+        }
+
+        itemEl.appendChild(header);
+
+        const meta = document.createElement("div");
+        meta.className = "plan-summary-item__meta";
+
+        if (aggregate.totalSets) {
+          const setsSpan = document.createElement("span");
+          setsSpan.textContent = `Sets: ${aggregate.completedSets}/${aggregate.totalSets}`;
+          meta.appendChild(setsSpan);
+        } else {
+          const setsSpan = document.createElement("span");
+          setsSpan.textContent = `Sets completed: ${aggregate.completedSets}`;
+          meta.appendChild(setsSpan);
+        }
+
+        const repsSpan = document.createElement("span");
+        if (aggregate.unlimited) {
+          repsSpan.textContent = "Reps: Unlimited reps";
+        } else {
+          repsSpan.textContent = `Reps: ${aggregate.totalReps}`;
+        }
+        meta.appendChild(repsSpan);
+
+        itemEl.appendChild(meta);
+
+        const loadEl = document.createElement("div");
+        loadEl.className = "plan-summary-item__load";
+        if (aggregate.totalVolumeKg > 0) {
+          loadEl.textContent = `Total load lifted: ${this.formatWeightWithUnit(aggregate.totalVolumeKg)}`;
+        } else {
+          loadEl.textContent = "Total load lifted: —";
+        }
+        itemEl.appendChild(loadEl);
+
+        this._planSummaryListEl.appendChild(itemEl);
+        overallKg += aggregate.totalVolumeKg;
+      });
+
+      if (this._planSummaryTotalEl) {
+        if (overallKg > 0) {
+          this._planSummaryTotalEl.textContent = `Total load across exercises: ${this.formatWeightWithUnit(overallKg)}`;
+        } else {
+          this._planSummaryTotalEl.textContent = "Total load across exercises: —";
+        }
+      }
+    }
+
+    this._planSummaryOverlay.classList.add("is-visible");
+    this._planSummaryOverlay.setAttribute("aria-hidden", "false");
+
+    const closeBtn = document.getElementById("planSummaryCloseBtn");
+    closeBtn?.focus({ preventScroll: true });
+  }
+
+  initializePlanSummary() {
+    this._planSummaryData = {
+      startedAt: Date.now(),
+      planName: this.getActivePlanDisplayName(),
+      sets: [],
+    };
+    this._lastPlanSummary = null;
+    this.hidePlanSummary();
+  }
+
+  recordPlanSetResult(workout, meta = {}) {
+    if (!this._planSummaryData || !workout) {
+      return;
+    }
+
+    const entryMeta = meta.completedEntry || null;
+    const planItem = entryMeta ? this.planItems?.[entryMeta.itemIndex] : null;
+
+    const name =
+      entryMeta?.name ||
+      planItem?.name ||
+      workout.setName ||
+      (workout.itemType === "echo" ? "Echo Mode" : "Exercise");
+
+    const itemType = entryMeta?.type || planItem?.type || workout.itemType || "exercise";
+    const isEcho = itemType === "echo";
+    const totalSets = Number(entryMeta?.totalSets || planItem?.sets) || null;
+    const setNumber = entryMeta?.set ?? workout.setNumber ?? null;
+    const cablesValue = Number(entryMeta?.cables || planItem?.cables);
+    const cables = Number.isFinite(cablesValue) && cablesValue > 0 ? cablesValue : 2;
+
+    const weightPerCableKg = Number.isFinite(workout.weightKg) && workout.weightKg > 0
+      ? workout.weightKg
+      : Number(entryMeta?.perCableKg || planItem?.perCableKg) || 0;
+
+    const plannedReps = Number(planItem?.reps);
+    const completedReps = Number.isFinite(workout.reps) ? workout.reps : plannedReps;
+    const unlimited =
+      isEcho ||
+      Boolean(planItem?.justLift) ||
+      (!Number.isFinite(completedReps) && (!Number.isFinite(plannedReps) || plannedReps <= 0)) ||
+      (Number.isFinite(plannedReps) && plannedReps <= 0);
+
+    const repsValue = unlimited ? 0 : Math.max(0, completedReps || 0);
+    const volumeKg = unlimited ? 0 : weightPerCableKg * cables * repsValue;
+
+    const prInfo = meta.prInfo || null;
+
+    this._planSummaryData.sets.push({
+      name,
+      itemType,
+      setNumber,
+      totalSets,
+      reps: repsValue,
+      isUnlimited: unlimited,
+      weightKg: weightPerCableKg,
+      cables,
+      volumeKg,
+      pr: prInfo?.status === "new",
+    });
+  }
+
+  finalizePlanSummary() {
+    if (!this._planSummaryData) {
+      return this._lastPlanSummary;
+    }
+
+    const snapshot = {
+      ...this._planSummaryData,
+      sets: [...this._planSummaryData.sets],
+      finishedAt: Date.now(),
+    };
+
+    this._planSummaryData = null;
+    this._lastPlanSummary = snapshot;
+    return snapshot;
+  }
+
+  onPlanRestStateChange() {
+    this.ensureFullscreenPreference();
+    this.updatePlanSetIndicator();
+  }
+
+  updatePlanSetIndicator() {
+    const els = this._planIndicatorEls;
+    if (!els || !els.container || !els.name || !els.set || !els.reps) {
+      return;
+    }
+
+    if (!this.planActive || !Array.isArray(this.planTimeline) || !this.planTimeline.length) {
+      els.container.classList.add("is-hidden");
+      els.name.textContent = "";
+      els.set.textContent = "";
+      els.reps.textContent = "";
+      return;
+    }
+
+    let entry = this._activePlanEntry || null;
+    if (!entry && this.planTimelineIndex < this.planTimeline.length) {
+      entry = this.planTimeline[this.planTimelineIndex];
+    }
+
+    const item = entry ? this.planItems?.[entry.itemIndex] : null;
+    if (!entry || !item) {
+      els.container.classList.add("is-hidden");
+      els.name.textContent = "";
+      els.set.textContent = "";
+      els.reps.textContent = "";
+      return;
+    }
+
+    const name = item.name || (item.type === "echo" ? "Echo Mode" : "Exercise");
+    els.name.textContent = name;
+
+    const totalSets = Math.max(1, Number(item.sets) || 1);
+    const setText = `Set ${entry.set} of ${totalSets}`;
+    els.set.textContent = setText;
+
+    const planReps = Number(item.reps);
+    const unlimited =
+      item.type === "echo" ||
+      Boolean(item.justLift) ||
+      (Number.isFinite(planReps) && planReps <= 0) ||
+      !Number.isFinite(planReps);
+    let repsText = "";
+    if (unlimited) {
+      repsText = "Unlimited reps";
+    } else if (planReps > 0) {
+      repsText = `${planReps} reps`;
+    }
+
+    els.reps.textContent = repsText ? `• ${repsText}` : "";
+    els.container.classList.remove("is-hidden");
+  }
+
+  getActivePlanDisplayName() {
+    if (typeof document === "undefined") {
+      return "Workout Plan";
+    }
+
+    const nameInput = document.getElementById("planNameInput");
+    const typedName = nameInput?.value?.trim();
+    if (typedName) {
+      return typedName;
+    }
+
+    const select = document.getElementById("planSelect");
+    const option = select?.selectedOptions?.[0];
+    const selectedName = option?.textContent?.trim();
+    if (selectedName) {
+      return selectedName;
+    }
+
+    return "Workout Plan";
+  }
+
+  updateCurrentSetLabel() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const label = document.getElementById("currentSetName");
+    if (!label) {
+      return;
+    }
+
+    if (this.planActive && this.planCursor && this.planItems[this.planCursor.index]) {
+      const planItem = this.planItems[this.planCursor.index];
+      label.textContent = planItem.name || (planItem.type === "echo" ? "Echo Mode" : "Plan Set");
+      return;
+    }
+
+    if (this.currentWorkout) {
+      if (this.currentWorkout.setName) {
+        label.textContent = this.currentWorkout.setName;
+      } else {
+        label.textContent = "Live Set";
+      }
+      return;
+    }
+
+    label.textContent = "\u00a0";
   }
 
   async handleBuilderMessage(event) {
@@ -1790,8 +2341,9 @@ class VitruvianApp {
 
   updateRepCounters() {
     // Update warmup counter
-    const warmupEl = document.getElementById("warmupCounter");
+    const warmupEl = this._warmupCounterEl || document.getElementById("warmupCounter");
     if (warmupEl) {
+      this._warmupCounterEl = warmupEl;
       if (this.currentWorkout) {
         warmupEl.textContent = `${this.warmupReps}/${this.warmupTarget}`;
       } else {
@@ -1800,8 +2352,9 @@ class VitruvianApp {
     }
 
     // Update working reps counter
-    const workingEl = document.getElementById("workingCounter");
+    const workingEl = this._workingCounterEl || document.getElementById("workingCounter");
     if (workingEl) {
+      this._workingCounterEl = workingEl;
       if (this.currentWorkout) {
         if (this.targetReps > 0) {
           workingEl.textContent = `${this.workingReps}/${this.targetReps}`;
@@ -1948,6 +2501,8 @@ class VitruvianApp {
     this.isJustLiftMode = false;
     this.lastTopCounter = undefined;
     this.updateRepCounters();
+    this.updateCurrentSetLabel();
+    this.updatePlanSetIndicator();
 
     // Hide auto-stop timer
     const autoStopTimer = document.getElementById("autoStopTimer");
@@ -2256,7 +2811,10 @@ class VitruvianApp {
 
     banner.classList.remove("hidden", "pr-banner--new", "pr-banner--tie");
 
+    let status = "existing";
+
     if (isNewPR || priorBestKg <= 0) {
+      status = "new";
       banner.classList.add("pr-banner--new");
       banner.textContent = `New total load PR for ${identity.label}: ${bestDisplay}!`;
       this.addLogEntry(
@@ -2264,6 +2822,7 @@ class VitruvianApp {
         "success",
       );
     } else if (matchedPR) {
+      status = "matched";
       banner.classList.add("pr-banner--tie");
       banner.textContent = `Matched total load PR for ${identity.label}: ${bestDisplay}`;
       this.addLogEntry(
@@ -2277,6 +2836,13 @@ class VitruvianApp {
         "info",
       );
     }
+
+    return {
+      status,
+      bestKg,
+      currentKg: currentPeakKg,
+      label: identity.label,
+    };
   }
 
   addToWorkoutHistory(workout) {
@@ -2495,92 +3061,112 @@ class VitruvianApp {
         ? { ...this._activePlanEntry }
         : null;
 
-    const setLabel = document.getElementById("currentSetName");
-    if (setLabel) setLabel.textContent = "";
+    this.updateCurrentSetLabel();
     this._planSetInProgress = false;
 
     if (this.currentWorkout) {
-    // stop polling to avoid queue buildup
-    this.device.stopPropertyPolling();
-    this.device.stopMonitorPolling();
+      // stop polling to avoid queue buildup
+      this.device.stopPropertyPolling();
+      this.device.stopMonitorPolling();
 
-    const endTime = new Date();
-    this.currentWorkout.endTime = endTime;
+      const endTime = new Date();
+      this.currentWorkout.endTime = endTime;
 
-    // Extract movement data for this workout from chart history
-    const movementData = this.extractWorkoutMovementData(
-      this.currentWorkout.startTime,
-      endTime
-    );
+      // Extract movement data for this workout from chart history
+      const movementData = this.extractWorkoutMovementData(
+        this.currentWorkout.startTime,
+        endTime,
+      );
 
-    const workout = {
-      mode: this.currentWorkout.mode,
-      weightKg: this.currentWorkout.weightKg,
-      plannedWeightKg: Number.isFinite(
-        this.currentWorkout.originalWeightKg,
-      )
-        ? this.currentWorkout.originalWeightKg
-        : this.currentWorkout.weightKg,
-      reps: this.workingReps,
-      timestamp: endTime,
-      startTime: this.currentWorkout.startTime,
-      warmupEndTime: this.currentWorkout.warmupEndTime,
-      endTime,
+      const workout = {
+        mode: this.currentWorkout.mode,
+        weightKg: this.currentWorkout.weightKg,
+        plannedWeightKg: Number.isFinite(
+          this.currentWorkout.originalWeightKg,
+        )
+          ? this.currentWorkout.originalWeightKg
+          : this.currentWorkout.weightKg,
+        reps: this.workingReps,
+        timestamp: endTime,
+        startTime: this.currentWorkout.startTime,
+        warmupEndTime: this.currentWorkout.warmupEndTime,
+        endTime,
 
-      setName: this.currentWorkout.setName || null,
-      setNumber: this.currentWorkout.setNumber ?? null,
-      setTotal: this.currentWorkout.setTotal ?? null,
-      itemType: this.currentWorkout.itemType || null,
+        setName: this.currentWorkout.setName || null,
+        setNumber: this.currentWorkout.setNumber ?? null,
+        setTotal: this.currentWorkout.setTotal ?? null,
+        itemType: this.currentWorkout.itemType || null,
 
-      // Include detailed movement data (positions and loads over time)
-      movementData: movementData,
-    };
+        // Include detailed movement data (positions and loads over time)
+        movementData: movementData,
+      };
 
-    const storedWorkout = this.addToWorkoutHistory(workout);
+      const isSkipped = reason === "skipped";
+      let storedWorkout = null;
+      if (!isSkipped) {
+        storedWorkout = this.addToWorkoutHistory(workout);
+      }
 
-    // Log movement data capture
-    if (movementData.length > 0) {
-      this.addLogEntry(`Captured ${movementData.length} movement data points`, "info");
-    } else {
-      this.addLogEntry("Warning: No movement data captured for this workout", "warning");
-    }
+      const summaryWorkout = storedWorkout || this.normalizeWorkout({ ...workout });
 
-    if (storedWorkout) {
-      this.displayTotalLoadPR(storedWorkout);
-    } else {
-      this.hidePRBanner();
-    }
+      if (!isSkipped) {
+        if (movementData.length > 0) {
+          this.addLogEntry(`Captured ${movementData.length} movement data points`, "info");
+        } else {
+          this.addLogEntry("Warning: No movement data captured for this workout", "warning");
+        }
+      }
 
-    // Auto-save to Dropbox if connected
-    if (this.dropboxManager.isConnected) {
-      const workoutToPersist = storedWorkout || workout;
-      this.dropboxManager.saveWorkout(workoutToPersist)
-        .then(() => {
-          // Store last backup timestamp
-          localStorage.setItem("vitruvian.dropbox.lastBackup", new Date().toISOString());
-          this.updateLastBackupDisplay();
-          this.addLogEntry("Workout backed up to Dropbox", "success");
-        })
-        .catch((error) => {
-          this.addLogEntry(`Failed to auto-save to Dropbox: ${error.message}`, "error");
+      let prInfo = null;
+      if (storedWorkout) {
+        prInfo = this.displayTotalLoadPR(storedWorkout);
+      } else {
+        this.hidePRBanner();
+      }
+
+      // Auto-save to Dropbox if connected
+      if (!isSkipped && this.dropboxManager.isConnected) {
+        const workoutToPersist = storedWorkout || summaryWorkout;
+        this.dropboxManager
+          .saveWorkout(workoutToPersist)
+          .then(() => {
+            // Store last backup timestamp
+            localStorage.setItem("vitruvian.dropbox.lastBackup", new Date().toISOString());
+            this.updateLastBackupDisplay();
+            this.addLogEntry("Workout backed up to Dropbox", "success");
+          })
+          .catch((error) => {
+            this.addLogEntry(`Failed to auto-save to Dropbox: ${error.message}`, "error");
+          });
+      }
+
+      if (!isSkipped && this.planActive && completedPlanEntry) {
+        this.recordPlanSetResult(summaryWorkout, {
+          completedEntry: completedPlanEntry,
+          prInfo,
         });
-    }
+      }
 
       this.resetRepCountersToEmpty();
-
-      const summaryMessages = {
-        "auto-stop": "Workout auto-stopped and saved to history",
-        "echo-auto-stop": "Echo Just Lift auto-stop saved to history",
-        "stop-at-top": "Workout stopped at top and saved to history",
-        "target-reps": "Workout completed at target reps and saved to history",
-        user: "Workout completed and saved to history",
-        complete: "Workout completed and saved to history",
-      };
-      const summaryMessage = summaryMessages[reason] || summaryMessages.complete;
-      const summaryLevel =
-        reason === "auto-stop" || reason === "echo-auto-stop" ? "info" : "success";
-      this.addLogEntry(summaryMessage, summaryLevel);
     }
+
+    const summaryMessages = {
+      "auto-stop": "Workout auto-stopped and saved to history",
+      "echo-auto-stop": "Echo Just Lift auto-stop saved to history",
+      "stop-at-top": "Workout stopped at top and saved to history",
+      "target-reps": "Workout completed at target reps and saved to history",
+      skipped: "Workout skipped and advanced to the next block",
+      user: "Workout completed and saved to history",
+      complete: "Workout completed and saved to history",
+    };
+    const summaryMessage = summaryMessages[reason] || summaryMessages.complete;
+    const summaryLevel =
+      reason === "auto-stop" ||
+      reason === "echo-auto-stop" ||
+      reason === "skipped"
+        ? "info"
+        : "success";
+    this.addLogEntry(summaryMessage, summaryLevel);
 
     // 👉 hand control back to the plan runner so it can show the rest overlay
     try {
@@ -3180,7 +3766,7 @@ class VitruvianApp {
   }
 
   async stopWorkout(options = {}) {
-    const { reason = "user", complete = true } = options;
+    const { reason = "user", complete = true, skipPlanAdvance = false } = options;
 
     try {
       await this.device.sendStopCommand();
@@ -3196,7 +3782,7 @@ class VitruvianApp {
       this.addLogEntry(stopMessage, "info");
 
       if (complete) {
-        this.completeWorkout({ reason });
+        this.completeWorkout({ reason, skipPlanAdvance });
       }
     } catch (error) {
       console.error("Stop workout error:", error);
@@ -3285,10 +3871,13 @@ class VitruvianApp {
         ? `Just Lift (${ProgramModeNames[baseMode]})`
         : ProgramModeNames[baseMode];
 
-
-
-const inPlan = this.planActive && this.planItems[this.planCursor.index];
-const planItem = inPlan ? this.planItems[this.planCursor.index] : null;
+      const planIndex = Number.isInteger(this.planCursor?.index)
+        ? this.planCursor.index
+        : null;
+      const planItem =
+        this.planActive && planIndex !== null
+          ? this.planItems?.[planIndex] || null
+          : null;
 
       this.currentWorkout = {
         mode: modeName || "Program",
@@ -3299,17 +3888,16 @@ const planItem = inPlan ? this.planItems[this.planCursor.index] : null;
         startTime: new Date(),
         warmupEndTime: null,
         endTime: null,
-
-  // ⬇ NEW: plan metadata for history
-  setName: planItem?.name || null,
-  setNumber: inPlan ? this.planCursor.set : null,
-  setTotal: planItem?.sets ?? null,
-  itemType: planItem?.type || "exercise",
-
+        setName: planItem?.name || null,
+        setNumber:
+          this.planActive && planItem ? this.planCursor?.set ?? null : null,
+        setTotal: planItem?.sets ?? null,
+        itemType: planItem?.type || "exercise",
       };
       this.initializeCurrentWorkoutPersonalBest();
       this.updateRepCounters();
       this.updateLiveWeightDisplay();
+      this.updateCurrentSetLabel();
 
       // Show auto-stop timer if Just Lift mode
       const autoStopTimer = document.getElementById("autoStopTimer");
@@ -3334,24 +3922,11 @@ const planItem = inPlan ? this.planItems[this.planCursor.index] : null;
 
       // Close sidebar on mobile after starting
       this.closeSidebar();
-} catch (error) {
+    } catch (error) {
       console.error("Start program error:", error);
       this.addLogEntry(`Failed to start program: ${error.message}`, "error");
       alert(`Failed to start program: ${error.message}`);
     }
-
-// === Update current set name under "Live Workout Data" ===
-const setLabel = document.getElementById("currentSetName");
-if (setLabel) {
-  // If a plan is active, show the current plan item's name; otherwise clear
-  if (this.planActive && this.planItems[this.planCursor.index]) {
-    const planItem = this.planItems[this.planCursor.index];
-    setLabel.textContent = planItem.name || "Unnamed Set";
-  } else {
-    setLabel.textContent = "Live Set";
-  }
-}
-
   }
 
   async startEcho() {
@@ -3407,11 +3982,16 @@ if (setLabel) {
       const modeName = isJustLift
         ? `Just Lift Echo ${EchoLevelNames[level]}`
         : `Echo ${EchoLevelNames[level]}`;
-      
-const inPlan = this.planActive && this.planItems[this.planCursor.index];
-const planItem = inPlan ? this.planItems[this.planCursor.index] : null;
 
-this.currentWorkout = {
+      const planIndex = Number.isInteger(this.planCursor?.index)
+        ? this.planCursor.index
+        : null;
+      const planItem =
+        this.planActive && planIndex !== null
+          ? this.planItems?.[planIndex] || null
+          : null;
+
+      this.currentWorkout = {
         mode: modeName,
         weightKg: 0, // Echo mode doesn't have fixed weight
         originalWeightKg: 0,
@@ -3420,16 +4000,16 @@ this.currentWorkout = {
         startTime: new Date(),
         warmupEndTime: null,
         endTime: null,
-
-  setName: planItem?.name || null,
-  setNumber: inPlan ? this.planCursor.set : null,
-  setTotal: planItem?.sets ?? null,
-  itemType: planItem?.type || "echo",
-
+        setName: planItem?.name || null,
+        setNumber:
+          this.planActive && planItem ? this.planCursor?.set ?? null : null,
+        setTotal: planItem?.sets ?? null,
+        itemType: planItem?.type || "echo",
       };
       this.initializeCurrentWorkoutPersonalBest();
       this.updateRepCounters();
       this.updateLiveWeightDisplay();
+      this.updateCurrentSetLabel();
 
       // Show auto-stop timer if Just Lift mode
       const autoStopTimer = document.getElementById("autoStopTimer");
@@ -3459,19 +4039,6 @@ this.currentWorkout = {
       this.addLogEntry(`Failed to start Echo mode: ${error.message}`, "error");
       alert(`Failed to start Echo mode: ${error.message}`);
     }
-
-// === Update current set name under "Live Workout Data" ===
-const setLabel = document.getElementById("currentSetName");
-if (setLabel) {
-  // If a plan is active, show the current plan item's name; otherwise clear
-  if (this.planActive && this.planItems[this.planCursor.index]) {
-    const planItem = this.planItems[this.planCursor.index];
-    setLabel.textContent = planItem.name || "Unnamed Set";
-  } else {
-    setLabel.textContent = "Live Set";
-  }
-}
-
   }
   /* =========================
      PLAN — DATA HELPERS
@@ -3510,59 +4077,79 @@ if (setLabel) {
       stopAtTop: false,
     };
   }
-
-
   // Apply a plan item to the visible sidebar UI (Program or Echo)
   // Also sets the global Stop-at-Top checkbox to match the item's setting.
-  _applyItemToUI(item){
-    if (!item) return;
-
-  // Stop at Top (primary/global)
-  const sat = document.getElementById("stopAtTopCheckbox");
-  if (sat) {
-    sat.checked = !!item.stopAtTop;
-    this.stopAtTop = !!item.stopAtTop;           // keep runtime flag in sync
-  }
-
-  if (item.type === "exercise") {
-    // Program Mode fields
-    const modeSel   = document.getElementById("mode");
-    const weightInp = document.getElementById("weight");
-    const repsInp   = document.getElementById("reps");
-    const progInp   = document.getElementById("progression");
-    const jlChk     = document.getElementById("justLiftCheckbox");
-
-    const perCableKg = Number.isFinite(item.perCableKg)
-      ? item.perCableKg
-      : this.defaultPerCableKg;
-    item.perCableKg = perCableKg;
-
-    if (modeSel)   modeSel.value = String(item.mode);
-    if (weightInp) {
-      weightInp.value = this.formatWeightValue(perCableKg, this.getWeightInputDecimals());
-      this._weightInputKg = perCableKg;
+  _applyItemToUI(item) {
+    if (!item) {
+      return;
     }
-    if (repsInp)   repsInp.value = String(item.reps);
-    if (progInp)   progInp.value = this.formatWeightValue(item.progressionKg, this.getProgressionInputDecimals());
-    if (jlChk)     { jlChk.checked = !!item.justLift; this.toggleJustLiftMode(); }
 
-  } else if (item.type === "echo") {
-    // Echo Mode fields
-    const levelSel  = document.getElementById("echoLevel");
-    const eccInp    = document.getElementById("eccentric");
-    const targInp   = document.getElementById("targetReps");
-    const jlChkE    = document.getElementById("echoJustLiftCheckbox");
+    const stopAtTopCheckbox = document.getElementById("stopAtTopCheckbox");
+    if (stopAtTopCheckbox) {
+      stopAtTopCheckbox.checked = !!item.stopAtTop;
+      this.stopAtTop = !!item.stopAtTop;
+    }
 
-    // UI is 1..4 while internal is 0..3 in many builds—adjust if your UI expects 0..3, drop the +1
-    if (levelSel) levelSel.value = String((item.level ?? 0) + 1);
-    if (eccInp)   eccInp.value   = String(item.eccentricPct ?? 100);
-    if (targInp)  targInp.value  = String(item.targetReps ?? 0);
-    if (jlChkE)   { jlChkE.checked = !!item.justLift; this.toggleEchoJustLiftMode(); }
+    if (item.type === "exercise") {
+      const modeSelect = document.getElementById("mode");
+      const weightInput = document.getElementById("weight");
+      const repsInput = document.getElementById("reps");
+      const progressionInput = document.getElementById("progression");
+      const justLiftCheckbox = document.getElementById("justLiftCheckbox");
+
+      const perCableKg = Number.isFinite(item.perCableKg)
+        ? item.perCableKg
+        : this.defaultPerCableKg;
+      item.perCableKg = perCableKg;
+
+      if (modeSelect) {
+        modeSelect.value = String(item.mode);
+      }
+      if (weightInput) {
+        weightInput.value = this.formatWeightValue(
+          perCableKg,
+          this.getWeightInputDecimals(),
+        );
+        this._weightInputKg = perCableKg;
+      }
+      if (repsInput) {
+        repsInput.value = String(item.reps);
+      }
+      if (progressionInput) {
+        progressionInput.value = this.formatWeightValue(
+          item.progressionKg,
+          this.getProgressionInputDecimals(),
+        );
+      }
+      if (justLiftCheckbox) {
+        justLiftCheckbox.checked = !!item.justLift;
+        this.toggleJustLiftMode();
+      }
+    } else if (item.type === "echo") {
+      const levelSelect = document.getElementById("echoLevel");
+      const eccentricInput = document.getElementById("eccentric");
+      const targetInput = document.getElementById("targetReps");
+      const echoJustLiftCheckbox = document.getElementById("echoJustLiftCheckbox");
+
+      if (levelSelect) {
+        levelSelect.value = String((item.level ?? 0) + 1);
+      }
+      if (eccentricInput) {
+        eccentricInput.value = String(item.eccentricPct ?? 100);
+      }
+      if (targetInput) {
+        targetInput.value = String(item.targetReps ?? 0);
+      }
+      if (echoJustLiftCheckbox) {
+        echoJustLiftCheckbox.checked = !!item.justLift;
+        this.toggleEchoJustLiftMode();
+      }
+    }
+
+    this.updateLiveWeightDisplay();
+    this.updatePlanSetIndicator();
+    this.updateCurrentSetLabel();
   }
-
-  this.updateLiveWeightDisplay();
-}
-
 
   inferPlanWeightUnit(items) {
     if (!Array.isArray(items)) {
