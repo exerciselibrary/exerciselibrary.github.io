@@ -2766,15 +2766,29 @@ class VitruvianApp {
       this.updateAutoStopUI(progress);
 
       if (elapsed >= 5.0) {
-        this.addLogEntry(
-          "Auto-stop triggered! Finishing workout...",
-          "success",
-        );
-        const autoStopReason =
-          this.isJustLiftMode && this.currentWorkout?.itemType === "echo"
-            ? "echo-auto-stop"
-            : "auto-stop";
-        this.stopWorkout({ reason: autoStopReason });
+        const isEchoAutoStop =
+          this.isJustLiftMode && this.currentWorkout?.itemType === "echo";
+        const autoStopReason = isEchoAutoStop ? "echo-auto-stop" : "auto-stop";
+
+        // Reset timer state before we transition out of the danger zone
+        this.autoStopStartTime = null;
+        this.updateAutoStopUI(0);
+
+        if (isEchoAutoStop) {
+          this.addLogEntry(
+            "Echo auto-stop triggered → advancing to the next set",
+            "success",
+          );
+          // Prevent additional auto-stop checks while we hand control back to the plan runner
+          this.isJustLiftMode = false;
+          this.completeWorkout({ reason: autoStopReason });
+        } else {
+          this.addLogEntry(
+            "Auto-stop triggered! Finishing workout...",
+            "success",
+          );
+          this.stopWorkout({ reason: autoStopReason });
+        }
       }
     } else {
       // Reset timer if we left the danger zone

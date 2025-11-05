@@ -205,6 +205,7 @@
       const labelEl = document.getElementById("restCountdownLabel");
       const hintEl = document.getElementById("restCountdownHint");
       const restButton = document.getElementById("restCountdownButton");
+      const controlRow = document.getElementById("planControlRow");
       const summaryEl = document.getElementById("restCountdownSummary");
       const inlineHud = document.getElementById("planRestInline");
 
@@ -265,12 +266,14 @@
         labelEl,
         hintEl,
         restButton,
+        controlRow,
         summaryEl,
         inlineHud,
         timerId: null,
         targetTimestamp: null,
         lastAnnounce: null,
         addHandler: null,
+        circleAddHandler: null,
         previousAriaLabel: restButton.getAttribute("aria-label"),
         disabledButtons,
       };
@@ -282,6 +285,9 @@
 
       circle.classList.add("rest-active");
       circle.classList.remove("rest-paused");
+      if (controlRow) {
+        controlRow.classList.add("resting");
+      }
       restButton.disabled = false;
       restButton.tabIndex = 0;
 
@@ -301,6 +307,15 @@
 
       restButton.addEventListener("click", addTime);
       state.addHandler = addTime;
+
+      const handleCircleClick = (event) => {
+        if (event?.target === restButton) {
+          return;
+        }
+        addTime(event);
+      };
+      circle.addEventListener("click", handleCircleClick);
+      state.circleAddHandler = handleCircleClick;
 
       this._updateRestUI(state, { force: true });
 
@@ -376,7 +391,17 @@
 
     _updateRestUI: function _updateRestUI(state, options = {}) {
       if (!state) return;
-      const { circle, progress, timeText, inlineHud, restButton, hintEl, labelEl, summaryEl } = state;
+      const {
+        circle,
+        progress,
+        timeText,
+        inlineHud,
+        restButton,
+        hintEl,
+        labelEl,
+        summaryEl,
+        controlRow,
+      } = state;
 
       if (circle) {
         circle.classList.add("rest-active");
@@ -392,14 +417,16 @@
       }
 
       if (hintEl) {
-        hintEl.textContent = this.planPaused ? "Plan paused" : "Tap circle to add +30s";
+        hintEl.textContent = this.planPaused ? "Plan paused" : "Tap anywhere to add +30s";
       }
 
       if (restButton) {
         restButton.classList.toggle("rest-paused", this.planPaused);
         const remaining = Math.max(0, state.remainingSec);
         const baseLabel = this.planPaused ? "Rest paused" : "Rest";
-        const action = this.planPaused ? "Resume the plan to continue." : "Tap to add 30 seconds.";
+        const action = this.planPaused
+          ? "Resume the plan to continue."
+          : "Tap anywhere on the circle to add 30 seconds.";
         restButton.setAttribute(
           "aria-label",
           `${baseLabel}. ${remaining}s remaining. ${action}`,
@@ -425,6 +452,11 @@
         } else {
           summaryEl.textContent = "";
         }
+        summaryEl.classList.toggle("is-visible", summaryEl.innerHTML !== "");
+      }
+
+      if (controlRow) {
+        controlRow.classList.add("resting");
       }
 
       if (progress) {
@@ -503,6 +535,9 @@
       this._stopRestTimer(state);
 
       if (state.circle) {
+        if (typeof state.circleAddHandler === "function") {
+          state.circle.removeEventListener("click", state.circleAddHandler);
+        }
         state.circle.classList.remove("rest-active", "rest-paused");
       }
       if (state.restButton) {
@@ -535,14 +570,18 @@
           }
         });
       }
+      if (state.controlRow) {
+        state.controlRow.classList.remove("resting");
+      }
       if (state.inlineHud) {
         state.inlineHud.textContent = "";
       }
       if (state.summaryEl) {
+        state.summaryEl.classList.remove("is-visible");
         state.summaryEl.innerHTML = "";
       }
       if (state.hintEl) {
-        state.hintEl.textContent = "Tap circle to add +30s";
+        state.hintEl.textContent = "Tap anywhere to add +30s";
       }
       if (state.timeText) {
         state.timeText.textContent = "0";
