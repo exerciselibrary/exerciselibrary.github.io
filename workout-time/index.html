@@ -839,6 +839,16 @@
 
             .weight-adjuster-actions {
                 display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 16px;
+                padding: 12px 0;
+                width: 100%;
+            }
+
+            .weight-adjuster-action-buttons {
+                display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 12px;
@@ -907,22 +917,6 @@
             .plan-stop-btn [aria-hidden="true"] {
                 font-size: 1.4rem;
                 line-height: 1;
-            }
-
-            .plan-live-controls {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 12px;
-                margin-top: 18px;
-            }
-
-            .plan-live-main {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-wrap: wrap;
-                gap: 12px;
             }
 
             .plan-elapsed-timer {
@@ -1929,27 +1923,39 @@
                                                 role="group"
                                                 aria-label="Workout controls"
                                             >
-                                                <button
-                                                    type="button"
-                                                    class="plan-pause-btn"
-                                                    id="planPauseBtn"
-                                                    onclick="app.togglePlanPause()"
-                                                    aria-pressed="false"
-                                                    aria-label="Pause plan"
-                                                >
-                                                    <i class="bi bi-pause-fill" aria-hidden="true"></i>
-                                                    <span class="sr-only">Pause plan</span>
-                                                </button>
-                                                <button
-                                                    id="stopBtn"
-                                                    type="button"
-                                                    class="plan-stop-btn"
-                                                    onclick="app.stopWorkout()"
-                                                    aria-label="Stop workout"
-                                                >
-                                                    <i class="bi bi-stop-fill" aria-hidden="true"></i>
-                                                    <span class="sr-only">Stop workout</span>
-                                                </button>
+                                                <div class="weight-adjuster-action-buttons">
+                                                    <button
+                                                        type="button"
+                                                        class="plan-pause-btn"
+                                                        id="planPauseBtn"
+                                                        onclick="app.togglePlanPause()"
+                                                        aria-pressed="false"
+                                                        aria-label="Pause plan"
+                                                    >
+                                                        <i class="bi bi-pause-fill" aria-hidden="true"></i>
+                                                        <span class="sr-only"
+                                                            >Pause plan</span
+                                                        >
+                                                    </button>
+                                                    <button
+                                                        id="stopBtn"
+                                                        type="button"
+                                                        class="plan-stop-btn"
+                                                        onclick="app.stopWorkout()"
+                                                        aria-label="Stop workout"
+                                                    >
+                                                        <i class="bi bi-stop-fill" aria-hidden="true"></i>
+                                                        <span class="sr-only"
+                                                            >Stop workout</span
+                                                        >
+                                                    </button>
+                                                </div>
+                                                <div
+                                                    id="planElapsedTimer"
+                                                    class="plan-elapsed-timer"
+                                                    role="timer"
+                                                    aria-live="off"
+                                                ></div>
                                             </div>
                                         </div>
                                     </div>
@@ -2024,16 +2030,6 @@
                                     </div>
                                 </div>
 
-                                <div class="plan-live-controls">
-                                    <div class="plan-live-main">
-                                        <div
-                                            id="planElapsedTimer"
-                                            class="plan-elapsed-timer"
-                                            role="timer"
-                                            aria-live="off"
-                                        ></div>
-                                    </div>
-                                </div>
                             </div>
                             <div class="bar-container">
                                 <div class="bar-label">Right Cable</div>
