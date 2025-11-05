@@ -721,6 +721,7 @@ class VitruvianApp {
     button.setAttribute("aria-pressed", isFull ? "true" : "false");
     const label = isFull ? "Exit full screen" : "Enter full screen";
     button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
 
     const icon = button.querySelector("i");
     if (icon) {
@@ -730,7 +731,7 @@ class VitruvianApp {
 
     const textSpan = button.querySelector("span");
     if (textSpan) {
-      textSpan.textContent = isFull ? "Exit Full Screen" : "Full Screen";
+      textSpan.textContent = label;
     }
   }
 
@@ -844,6 +845,12 @@ class VitruvianApp {
 
     if (this._planSummaryOverlay) {
       this._planSummaryOverlay.addEventListener("click", (event) => {
+        if (event.target === this._planSummaryOverlay) {
+          this.hidePlanSummary();
+        }
+      });
+
+      this._planSummaryOverlay.addEventListener("pointerdown", (event) => {
         if (event.target === this._planSummaryOverlay) {
           this.hidePlanSummary();
         }
@@ -2269,6 +2276,10 @@ class VitruvianApp {
       if (overlay) {
         overlay.classList.toggle("show");
       }
+      const isOpen = sidebar.classList.contains("open");
+      if (document.body) {
+        document.body.classList.toggle("sidebar-open", isOpen);
+      }
       this.updateSidebarToggleVisual();
     }
   }
@@ -2288,6 +2299,9 @@ class VitruvianApp {
     sidebar.classList.remove("open");
     if (overlay) {
       overlay.classList.remove("show");
+    }
+    if (document.body) {
+      document.body.classList.remove("sidebar-open");
     }
     this.updateSidebarToggleVisual();
   }
@@ -2735,6 +2749,16 @@ class VitruvianApp {
       appContainer.classList.add("sidebar-collapsed");
     } else {
       appContainer.classList.remove("sidebar-collapsed");
+    }
+
+    if (document.body) {
+      document.body.classList.toggle(
+        "sidebar-collapsed",
+        isDesktop && this.sidebarCollapsed,
+      );
+      if (isDesktop || !sidebar.classList.contains("open")) {
+        document.body.classList.remove("sidebar-open");
+      }
     }
 
     if (!isDesktop) {
