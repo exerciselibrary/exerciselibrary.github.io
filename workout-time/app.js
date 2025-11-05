@@ -907,55 +907,11 @@ class VitruvianApp {
           : {};
 
       const existingNames = new Set(this.getAllPlanNames());
-      const localPlans = new Map();
-      for (const name of existingNames) {
-        const raw = localStorage.getItem(this.planKey(name));
-        if (raw) {
-          try {
-            localPlans.set(name, JSON.parse(raw));
-          } catch {
-            // ignore malformed local plan
-          }
-        }
-      }
-
-      const remoteNames = new Set(Object.keys(plans));
-      let uploadedCount = 0;
-      const failedUploads = new Set();
-
-      for (const [name, planItems] of localPlans.entries()) {
-        if (!remoteNames.has(name)) {
-          try {
-            await this.dropboxManager.savePlan(name, planItems);
-            plans[name] = JSON.parse(JSON.stringify(planItems || []));
-            remoteNames.add(name);
-            uploadedCount += 1;
-          } catch (error) {
-            failedUploads.add(name);
-            if (!silent) {
-              this.addLogEntry(
-                `Failed to upload local plan "${name}" to Dropbox: ${error.message}`,
-                "error",
-              );
-            }
-          }
-        }
-      }
-
-      const mergedNames = Object.keys(plans);
-      for (const name of failedUploads) {
-        if (!mergedNames.includes(name)) {
-          mergedNames.push(name);
-        }
-      }
-
-      const finalNames = this.setAllPlanNames(mergedNames);
+      const remoteNames = Object.keys(plans);
+      const finalNames = this.setAllPlanNames(remoteNames);
       const finalSet = new Set(finalNames);
 
       for (const name of finalNames) {
-        if (!plans[name]) {
-          continue;
-        }
         try {
           const items = Array.isArray(plans[name]) ? plans[name] : [];
           localStorage.setItem(this.planKey(name), JSON.stringify(items));
@@ -965,7 +921,7 @@ class VitruvianApp {
       }
 
       for (const name of existingNames) {
-        if (!finalSet.has(name) && !failedUploads.has(name)) {
+        if (!finalSet.has(name)) {
           localStorage.removeItem(this.planKey(name));
         }
       }
@@ -973,10 +929,14 @@ class VitruvianApp {
       this.refreshPlanSelectNames();
 
       if (!silent) {
-        const summaryMessage = uploadedCount > 0
-          ? `Synced ${finalNames.length} plan${finalNames.length === 1 ? "" : "s"} from Dropbox (uploaded ${uploadedCount} local plan${uploadedCount === 1 ? "" : "s"})`
-          : `Synced ${finalNames.length} plan${finalNames.length === 1 ? "" : "s"} from Dropbox`;
-        this.addLogEntry(summaryMessage, "success");
+        if (finalNames.length > 0) {
+          this.addLogEntry(
+            `Loaded ${finalNames.length} plan${finalNames.length === 1 ? "" : "s"} from Dropbox`,
+            "success",
+          );
+        } else {
+          this.addLogEntry("No plans found in Dropbox", "info");
+        }
       }
     } catch (error) {
       if (!silent) {
@@ -3887,12 +3847,11 @@ if (setLabel) {
     this.setAllPlanNames([...names]);
     this.refreshPlanSelectNames();
 
-    if (this.dropboxManager && this.dropboxManager.isConnected) {
-      await this.dropboxManager.savePlan(name, items);
-      this.addLogEntry(`Saved plan "${name}" to Dropbox from Workout Builder`, 'success');
-    } else {
-      this.addLogEntry(`Stored plan "${name}" from Workout Builder`, 'info');
-    }
+    const dropboxNote =
+      this.dropboxManager && this.dropboxManager.isConnected
+        ? ' (Dropbox plan sync disabled in Workout Time)'
+        : '';
+    this.addLogEntry(`Stored plan "${name}" from Workout Builder${dropboxNote}`, 'info');
   }
 
   populatePlanSelect() {
@@ -3940,16 +3899,10 @@ if (setLabel) {
     }
 
     if (this.dropboxManager.isConnected) {
-      try {
-        await this.dropboxManager.savePlan(name, this.planItems);
-        this.addLogEntry(`Uploaded plan "${name}" to Dropbox`, "success");
-      } catch (error) {
-        this.addLogEntry(
-          `Failed to sync plan "${name}" to Dropbox: ${error.message}`,
-          "error",
-        );
-        alert(`Plan saved locally but Dropbox sync failed: ${error.message}`);
-      }
+      this.addLogEntry(
+        `Dropbox plan sync is disabled in Workout Time; "${name}" was saved locally only.`,
+        "info",
+      );
     }
   }
 
@@ -3987,17 +3940,10 @@ if (setLabel) {
     const remaining = currentNames.filter((n) => n !== name);
 
     if (this.dropboxManager.isConnected) {
-      try {
-        await this.dropboxManager.deletePlan(name);
-        this.addLogEntry(`Removed plan "${name}" from Dropbox`, "info");
-      } catch (error) {
-        this.addLogEntry(
-          `Failed to delete plan "${name}" from Dropbox: ${error.message}`,
-          "error",
-        );
-        alert(`Could not delete plan from Dropbox: ${error.message}`);
-        return;
-      }
+      this.addLogEntry(
+        `Dropbox plan sync is disabled in Workout Time; remote plan "${name}" was not deleted.`,
+        "info",
+      );
     }
 
     try {

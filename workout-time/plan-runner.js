@@ -617,8 +617,8 @@
         pauseBtn.disabled = !active;
         const isPaused = this.planPaused;
         const label = isPaused ? "Resume plan" : "Pause plan";
-        const icon = isPaused ? "\u25B6" : "\u23F8";
-        pauseBtn.innerHTML = `<span aria-hidden="true">${icon}</span><span class="sr-only">${label}</span>`;
+        const iconClass = isPaused ? "bi-play-fill" : "bi-pause-fill";
+        pauseBtn.innerHTML = `<i class="bi ${iconClass}" aria-hidden="true"></i><span class="sr-only">${label}</span>`;
         pauseBtn.classList.toggle("is-paused", isPaused);
         pauseBtn.setAttribute("aria-pressed", isPaused ? "true" : "false");
         pauseBtn.setAttribute("aria-label", label);

@@ -407,6 +407,8 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
   margin-bottom: 18px;
 }
 .plan-name-field { display: grid; gap: 8px; }
+.plan-name-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.plan-name-header > label { margin: 0; }
 .plan-name-field select {
   font-size: 14px;
   padding: 8px 38px 8px 12px;
