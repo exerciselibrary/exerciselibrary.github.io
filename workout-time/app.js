@@ -17,6 +17,11 @@ class VitruvianApp {
     this._weightHoldStartTime = null;
     this._weightHoldRepeats = 0;
     this._audioContext = null; // Shared Web Audio context for UI cues
+    this._audioUnlockEvents = ["pointerdown", "touchstart", "keydown", "mousedown"];
+    this._boundAudioUnlock = null;
+    this._boundAudioVisibilityChange = null;
+    this._boundAudioStateChange = null;
+    this._audioUnlockListenersAttached = false;
     this._lastRepTopBeep = 0; // Timestamp of last rep top cue
     this._weightAdjustSoundThrottle = 0;
     this._countdownBeepThrottle = 0;
@@ -94,11 +99,6 @@ class VitruvianApp {
     this._planSummaryListEl = null;
     this._planSummaryTotalEl = null;
     this._planSummaryPlanNameEl = null;
-    this._fullscreenButton = null;
-    this._fullscreenPreference = false;
-    this._fullscreenExitRequested = false;
-    this._manualFullscreenExit = false;
-    this._boundFullscreenChange = null;
 
     // initialize plan UI dropdown from storage and render once UI is ready
     setTimeout(() => {
@@ -117,7 +117,6 @@ class VitruvianApp {
       };
       this.updatePlanSetIndicator();
       this.updateCurrentSetLabel();
-      this.syncFullscreenButton();
     }, 0);
 
     this.setupThemeToggle();
@@ -125,8 +124,8 @@ class VitruvianApp {
     this.setupDropbox();
     this.setupMessageBridge();
     this.setupScrollButtons();
-    this.setupFullscreenControls();
     this.setupPlanSummaryOverlay();
+    this.setupAudioUnlockSupport();
     this.resetRepCountersToEmpty();
     this.updateStopButtonState();
     this.updatePlanControlsState?.();
@@ -660,172 +659,6 @@ class VitruvianApp {
     updateVisibility();
   }
 
-  setupFullscreenControls() {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    if (!this._boundFullscreenChange) {
-      this._boundFullscreenChange = this.handleFullscreenChange.bind(this);
-      document.addEventListener("fullscreenchange", this._boundFullscreenChange);
-    }
-
-    const button = document.getElementById("fullscreenToggle");
-    this._fullscreenButton = button || null;
-
-    if (!button) {
-      return;
-    }
-
-    const activate = (event) => {
-      if (event) {
-        event.preventDefault();
-      }
-      this.toggleFullscreen();
-    };
-
-    button.addEventListener("click", activate);
-    button.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        activate(event);
-      }
-    });
-  }
-
-  handleFullscreenChange() {
-    if (!this.isFullscreen() && this._manualFullscreenExit) {
-      this._fullscreenPreference = false;
-    }
-
-    this._manualFullscreenExit = false;
-    this._fullscreenExitRequested = false;
-    this.syncFullscreenButton();
-
-    if (this._fullscreenPreference && !this.isFullscreen()) {
-      window.setTimeout(() => this.ensureFullscreenPreference(), 0);
-    }
-  }
-
-  syncFullscreenButton() {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const button = this._fullscreenButton || document.getElementById("fullscreenToggle");
-    if (!button) {
-      return;
-    }
-
-    this._fullscreenButton = button;
-    const isFull = this.isFullscreen();
-    button.setAttribute("aria-pressed", isFull ? "true" : "false");
-    const label = isFull ? "Exit full screen" : "Enter full screen";
-    button.setAttribute("aria-label", label);
-    button.setAttribute("title", label);
-
-    const icon = button.querySelector("i");
-    if (icon) {
-      icon.className = isFull ? "bi bi-fullscreen-exit" : "bi bi-arrows-fullscreen";
-      icon.setAttribute("aria-hidden", "true");
-    }
-
-    const textSpan = button.querySelector("span");
-    if (textSpan) {
-      textSpan.textContent = label;
-    }
-  }
-
-  isFullscreen() {
-    if (typeof document === "undefined") {
-      return false;
-    }
-    return Boolean(document.fullscreenElement);
-  }
-
-  toggleFullscreen() {
-    if (this.isFullscreen()) {
-      this.exitFullscreen({ manual: true });
-    } else {
-      this.enterFullscreen({ remember: true });
-    }
-  }
-
-  enterFullscreen(options = {}) {
-    if (typeof document === "undefined") {
-      return Promise.resolve(false);
-    }
-
-    const { remember = true } = options;
-    const element = document.documentElement;
-
-    if (!element || typeof element.requestFullscreen !== "function") {
-      this.addLogEntry("Full screen is not supported in this browser.", "warning");
-      return Promise.resolve(false);
-    }
-
-    return element
-      .requestFullscreen()
-      .then(() => {
-        if (remember) {
-          this._fullscreenPreference = true;
-        }
-        this.syncFullscreenButton();
-        return true;
-      })
-      .catch((error) => {
-        this.addLogEntry(`Unable to enter full screen: ${error.message}`, "error");
-        return false;
-      });
-  }
-
-  exitFullscreen(options = {}) {
-    if (typeof document === "undefined") {
-      return Promise.resolve(false);
-    }
-
-    const { manual = false } = options;
-
-    if (!this.isFullscreen()) {
-      if (manual) {
-        this._fullscreenPreference = false;
-        this.syncFullscreenButton();
-      }
-      return Promise.resolve(true);
-    }
-
-    const exit = document.exitFullscreen;
-    if (typeof exit !== "function") {
-      return Promise.resolve(false);
-    }
-
-    this._manualFullscreenExit = manual;
-    this._fullscreenExitRequested = true;
-
-    return exit
-      .call(document)
-      .then(() => {
-        if (manual) {
-          this._fullscreenPreference = false;
-        }
-        this.syncFullscreenButton();
-        return true;
-      })
-      .catch((error) => {
-        this.addLogEntry(`Unable to exit full screen: ${error.message}`, "error");
-        return false;
-      })
-      .finally(() => {
-        this._manualFullscreenExit = false;
-        this._fullscreenExitRequested = false;
-      });
-  }
-
-  ensureFullscreenPreference() {
-    if (this._fullscreenPreference && !this.isFullscreen()) {
-      this.enterFullscreen({ remember: false });
-    }
-  }
-
   setupPlanSummaryOverlay() {
     if (typeof document === "undefined") {
       return;
@@ -1157,7 +990,6 @@ class VitruvianApp {
   }
 
   onPlanRestStateChange() {
-    this.ensureFullscreenPreference();
     this.updatePlanSetIndicator();
   }
 
@@ -3542,6 +3374,135 @@ class VitruvianApp {
     }
   }
 
+  setupAudioUnlockSupport() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!this._boundAudioUnlock) {
+      this._boundAudioUnlock = () => this.handleAudioUnlockEvent();
+    }
+
+    this.attachAudioUnlockListeners();
+
+    if (typeof document !== "undefined" && !this._boundAudioVisibilityChange) {
+      this._boundAudioVisibilityChange = () => {
+        if (!document.hidden) {
+          this.handleAudioUnlockEvent();
+        }
+      };
+      document.addEventListener(
+        "visibilitychange",
+        this._boundAudioVisibilityChange,
+        false,
+      );
+    }
+  }
+
+  attachAudioUnlockListeners() {
+    if (typeof window === "undefined" || this._audioUnlockListenersAttached) {
+      return;
+    }
+
+    if (!this._boundAudioUnlock) {
+      this._boundAudioUnlock = () => this.handleAudioUnlockEvent();
+    }
+    const handler = this._boundAudioUnlock;
+
+    this._audioUnlockEvents.forEach((eventName) => {
+      const options = eventName === "touchstart" ? { passive: true } : undefined;
+      window.addEventListener(eventName, handler, options);
+    });
+
+    this._audioUnlockListenersAttached = true;
+  }
+
+  detachAudioUnlockListeners() {
+    if (typeof window === "undefined" || !this._audioUnlockListenersAttached) {
+      return;
+    }
+
+    const handler = this._boundAudioUnlock || (() => {});
+
+    this._audioUnlockEvents.forEach((eventName) => {
+      window.removeEventListener(eventName, handler);
+    });
+
+    this._audioUnlockListenersAttached = false;
+  }
+
+  handleAudioUnlockEvent() {
+    const context = this.getAudioContext();
+    if (!context) {
+      return;
+    }
+
+    if (context.state === "running") {
+      this.detachAudioUnlockListeners();
+      return;
+    }
+
+    try {
+      context
+        .resume()
+        .then(() => {
+          if (context.state === "running") {
+            this.detachAudioUnlockListeners();
+          }
+        })
+        .catch(() => {});
+    } catch {
+      // Ignore resume errors triggered outside a user gesture
+    }
+  }
+
+  setupAudioContextStateHandlers(context) {
+    if (!context) {
+      return;
+    }
+
+    if (!this._boundAudioStateChange) {
+      this._boundAudioStateChange = () => this.handleAudioStateChange();
+    }
+
+    if (typeof context.addEventListener === "function") {
+      context.addEventListener("statechange", this._boundAudioStateChange);
+    } else {
+      context.onstatechange = this._boundAudioStateChange;
+    }
+
+    this.handleAudioStateChange();
+  }
+
+  handleAudioStateChange() {
+    const context = this._audioContext;
+    if (!context) {
+      return;
+    }
+
+    const state = context.state;
+    if (state === "running") {
+      this.detachAudioUnlockListeners();
+    } else if (state === "suspended" || state === "interrupted") {
+      this.attachAudioUnlockListeners();
+      this.tryResumeAudioContext();
+    }
+  }
+
+  tryResumeAudioContext() {
+    const context = this._audioContext;
+    if (
+      context &&
+      (context.state === "suspended" || context.state === "interrupted")
+    ) {
+      try {
+        context.resume().catch(() => {});
+      } catch {
+        // Ignore resume errors triggered outside a user gesture
+      }
+    }
+  }
+
   getAudioContext() {
     try {
       const AudioContextClass =
@@ -3552,11 +3513,15 @@ class VitruvianApp {
         return null;
       }
       if (!this._audioContext) {
-        this._audioContext = new AudioContextClass();
+        try {
+          this._audioContext = new AudioContextClass({ latencyHint: "interactive" });
+        } catch {
+          this._audioContext = new AudioContextClass();
+        }
+        this.setupAudioContextStateHandlers(this._audioContext);
       }
-      if (this._audioContext.state === "suspended") {
-        this._audioContext.resume().catch(() => {});
-      }
+
+      this.tryResumeAudioContext();
       return this._audioContext;
     } catch {
       return null;
