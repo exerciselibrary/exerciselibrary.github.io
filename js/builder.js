@@ -79,6 +79,20 @@ const formatISODate = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const sanitizePlanNameForSync = (name) => {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (!trimmed) {
+    return DEFAULT_PLAN_NAME;
+  }
+
+  const withoutLeadingDates = trimmed.replace(/^(?:\d{4}-\d{2}-\d{2}\s+)+/, '').trim();
+  if (withoutLeadingDates) {
+    return withoutLeadingDates;
+  }
+
+  return DEFAULT_PLAN_NAME;
+};
+
 const parseISODate = (value) => {
   if (typeof value !== 'string' || !value) return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -1129,6 +1143,7 @@ export const toggleGrouping = (type) => {
 export const buildPlanSyncPayload = () => {
   const planItems = buildPlanItems();
   const baseName = state.plan.name.trim() || DEFAULT_PLAN_NAME;
+  const syncBaseName = sanitizePlanNameForSync(baseName);
 
   if (!planItems.length) {
     return {
@@ -1146,7 +1161,7 @@ export const buildPlanSyncPayload = () => {
     return {
       plans: [
         {
-          name: baseName,
+          name: syncBaseName,
           items: planItems.map((item) => ({ ...item }))
         }
       ],
@@ -1176,8 +1191,9 @@ export const buildPlanSyncPayload = () => {
       return copy;
     });
 
+    const finalBaseName = syncBaseName || baseName;
     return {
-      name: `${iso} ${baseName}`,
+      name: `${iso} ${finalBaseName}`,
       date: iso,
       items
     };

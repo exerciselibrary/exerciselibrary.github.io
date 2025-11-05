@@ -843,8 +843,14 @@
                 transform: translateY(1px);
             }
 
+            .plan-inline-center {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+
             .plan-pause-btn {
-                margin-top: -4px;
                 background: var(--card-bg);
                 border: 1px solid var(--section-border);
                 width: 48px;
@@ -1852,29 +1858,42 @@
                                         <i class="bi bi-skip-backward-fill" aria-hidden="true"></i>
                                         <span class="sr-only">Previous set</span>
                                     </button>
-                                    <div class="weight-adjuster-circle" aria-live="polite">
+                                    <div class="plan-inline-center">
                                         <button
                                             type="button"
-                                            class="weight-adjuster-segment increase"
-                                            id="weightAdjusterIncrease"
-                                            aria-label="Increase weight per cable"
+                                            class="plan-pause-btn"
+                                            id="planPauseBtn"
+                                            onclick="app.togglePlanPause()"
+                                            aria-pressed="false"
+                                            aria-label="Pause plan"
                                         >
-                                            +
+                                            <i class="bi bi-pause-fill" aria-hidden="true"></i>
+                                            <span class="sr-only">Pause plan</span>
                                         </button>
-                                        <div class="weight-adjuster-center">
-                                            <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
-                                                <span id="liveWeightValue">-</span>
-                                                <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                        <div class="weight-adjuster-circle" aria-live="polite">
+                                            <button
+                                                type="button"
+                                                class="weight-adjuster-segment increase"
+                                                id="weightAdjusterIncrease"
+                                                aria-label="Increase weight per cable"
+                                            >
+                                                +
+                                            </button>
+                                            <div class="weight-adjuster-center">
+                                                <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
+                                                    <span id="liveWeightValue">-</span>
+                                                    <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                                </div>
                                             </div>
+                                            <button
+                                                type="button"
+                                                class="weight-adjuster-segment decrease"
+                                                id="weightAdjusterDecrease"
+                                                aria-label="Decrease weight per cable"
+                                            >
+                                                &minus;
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            class="weight-adjuster-segment decrease"
-                                            id="weightAdjusterDecrease"
-                                            aria-label="Decrease weight per cable"
-                                        >
-                                            &minus;
-                                        </button>
                                     </div>
                                     <button
                                         type="button"
@@ -1902,18 +1921,6 @@
                                         - <span class="stat-unit">kg</span>
                                     </div>
                                 </div>
-
-                                <button
-                                    type="button"
-                                    class="plan-pause-btn"
-                                    id="planPauseBtn"
-                                    onclick="app.togglePlanPause()"
-                                    aria-pressed="false"
-                                    aria-label="Pause plan"
-                                >
-                                    <i class="bi bi-pause-fill" aria-hidden="true"></i>
-                                    <span class="sr-only">Pause plan</span>
-                                </button>
 
                                 <!-- Auto-stop timer (Just Lift mode only) -->
                                 <div
