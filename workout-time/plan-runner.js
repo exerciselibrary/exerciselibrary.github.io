@@ -25,6 +25,8 @@
         return;
       }
 
+      this.initializePlanSummary?.();
+
       this.planActive = true;
       this.planTimeline = timeline;
       this.planTimelineIndex = 0;
@@ -46,6 +48,9 @@
       this.stopPlanElapsedTicker();
       this.startPlanElapsedTicker();
       this.updatePlanControlsState();
+
+      this.updatePlanSetIndicator?.();
+      this.updateCurrentSetLabel?.();
 
       const firstItem = this.planItems[this.planCursor.index];
       if (firstItem) {
@@ -104,6 +109,10 @@
       };
       this._planSetInProgress = true;
 
+      this.updatePlanSetIndicator?.();
+      this.updateCurrentSetLabel?.();
+      this.ensureFullscreenPreference?.();
+
       try {
         const prevStopAtTop = this.stopAtTop;
         this.stopAtTop = !!item.stopAtTop;
@@ -152,6 +161,9 @@
         this._applyItemToUI?.(upcomingItem);
       }
 
+      this.updatePlanSetIndicator?.();
+      this.updateCurrentSetLabel?.();
+
       const lastEntry =
         completedEntry && Number.isFinite(completedEntry.restSec)
           ? completedEntry
@@ -170,6 +182,8 @@
       const nextLabel =
         upcomingItem?.name || (upcomingItem?.type === "exercise" ? "Exercise" : "Echo Mode");
       const nextSummary = upcomingItem ? this.describePlanItem(upcomingItem) : "";
+
+      this.ensureFullscreenPreference?.();
 
       if (reason === "echo-auto-stop" && upcomingItem) {
         const queueMessage =
@@ -282,6 +296,8 @@
       this._cancelRest = () => {
         this._clearRestState({ signalDone: false });
       };
+
+      this.onPlanRestStateChange?.();
 
       circle.classList.add("rest-active");
       circle.classList.remove("rest-paused");
@@ -465,7 +481,8 @@
         const total = Math.max(1, state.totalSec);
         const ratio = Math.min(1, Math.max(0, (total - state.remainingSec) / total));
         const dashOffset = circumference * (1 - ratio);
-        progress.setAttribute("stroke-dasharray", circumference.toFixed(3));
+        const dash = circumference.toFixed(3);
+        progress.setAttribute("stroke-dasharray", `${dash} ${dash}`);
         progress.setAttribute("stroke-dashoffset", dashOffset.toFixed(3));
       }
     },
@@ -599,6 +616,8 @@
       this._restState = null;
       this._cancelRest = null;
 
+      this.onPlanRestStateChange?.();
+
       if (signalDone && typeof state.onDone === "function") {
         if (reason === "complete" || reason === "skipped") {
           const baseMessage =
@@ -626,6 +645,8 @@
       }
 
       const { silent = false } = options;
+
+      const summary = this.finalizePlanSummary?.();
 
       if (typeof this._cancelRest === "function") {
         try {
@@ -656,6 +677,9 @@
       this.stopPlanElapsedTicker();
       this.updatePlanControlsState();
       this.updatePlanElapsedDisplay();
+      this.updatePlanSetIndicator?.();
+      this.updateCurrentSetLabel?.();
+      this.onPlanRestStateChange?.();
 
       const inlineHud = document.getElementById("planRestInline");
       if (inlineHud) {
@@ -664,6 +688,16 @@
 
       if (!silent) {
         this.addLogEntry("Workout plan complete. Great work!", "success");
+      }
+
+      if (!silent) {
+        if (summary && Array.isArray(summary.sets) && summary.sets.length) {
+          this.presentPlanSummary?.(summary);
+        } else {
+          this.hidePlanSummary?.();
+        }
+      } else {
+        this.hidePlanSummary?.();
       }
     },
 
@@ -693,13 +727,19 @@
           : "-";
         const modeName = ProgramModeNames?.[item.mode] || "Program";
         const cables = Number.isFinite(item.cables) ? item.cables : 2;
-        const reps = Number.isFinite(item.reps) ? item.reps : 0;
-        return `${modeName} • ${perCable} ${unit}/cable × ${cables} • ${reps} reps`;
+        const reps = Number(item.reps);
+        const unlimited = Boolean(item.justLift) || !Number.isFinite(reps) || reps <= 0;
+        const repsText = unlimited
+          ? "Unlimited reps"
+          : `${Math.max(0, reps)} reps`;
+        return `${modeName} • ${perCable} ${unit}/cable × ${cables} • ${repsText}`;
       }
       const levelName = EchoLevelNames?.[item.level] || "Echo";
       const eccentric = Number.isFinite(item.eccentricPct) ? item.eccentricPct : 100;
-      const target = Number.isFinite(item.targetReps) ? item.targetReps : 0;
-      return `${levelName} • ecc ${eccentric}% • target ${target} reps`;
+      const target = Number(item.targetReps);
+      const unlimited = Boolean(item.justLift) || !Number.isFinite(target) || target <= 0;
+      const repsText = unlimited ? "Unlimited reps" : `target ${Math.max(0, target)} reps`;
+      return `${levelName} • ecc ${eccentric}% • ${repsText}`;
     },
 
     formatDuration: function formatDuration(ms) {
@@ -890,7 +930,11 @@
 
       if (this._planSetInProgress) {
         try {
-          await this.stopWorkout();
+          this.addLogEntry("Skipping current set and moving forward.", "info");
+          await this.stopWorkout({ reason: "skipped", skipPlanAdvance: true });
+          if (!this._planSetInProgress) {
+            this._applyPlanNavigationTarget();
+          }
         } catch (error) {
           this.addLogEntry(`Unable to stop current set: ${error.message}`, "error");
         }
@@ -937,6 +981,10 @@
 
       this._activePlanEntry = null;
       this._planSetInProgress = false;
+
+      this.updatePlanSetIndicator?.();
+      this.updateCurrentSetLabel?.();
+      this.ensureFullscreenPreference?.();
 
       const runNext = () => {
         if (this.planPaused) {

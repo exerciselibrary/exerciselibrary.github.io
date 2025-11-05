@@ -217,6 +217,11 @@
                 margin-bottom: 20px;
                 box-shadow: 0 4px 20px var(--card-shadow);
                 color: var(--text-primary);
+                position: relative;
+            }
+
+            #liveStatsCard {
+                padding-bottom: 96px;
             }
 
             .live-card h2 {
@@ -810,9 +815,10 @@
                 stroke: #ffffff;
                 stroke-width: 6;
                 stroke-linecap: round;
-                stroke-dasharray: 339.292;
+                stroke-dasharray: 339.292 339.292;
                 stroke-dashoffset: 339.292;
                 transition: stroke-dashoffset 0.1s linear;
+                shape-rendering: geometricPrecision;
             }
 
             .rest-countdown-button {
@@ -886,6 +892,231 @@
                 display: block;
             }
 
+            .fullscreen-toggle {
+                position: fixed;
+                top: 82px;
+                left: 20px;
+                z-index: 1001;
+                width: 50px;
+                height: 50px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: none;
+                border-radius: 8px;
+                background: var(--card-bg);
+                color: var(--accent-color);
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                cursor: pointer;
+                transition: box-shadow 0.2s ease, color 0.2s ease,
+                    background 0.2s ease;
+            }
+
+            .fullscreen-toggle:hover,
+            .fullscreen-toggle:focus-visible {
+                box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+                color: var(--accent-contrast);
+                outline: none;
+            }
+
+            .fullscreen-toggle:active {
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            }
+
+            .fullscreen-toggle[aria-pressed="true"] {
+                color: var(--accent-contrast);
+            }
+
+            .fullscreen-toggle .bi {
+                font-size: 1.5rem;
+                line-height: 1;
+            }
+
+            .plan-set-indicator {
+                position: absolute;
+                left: 24px;
+                bottom: 24px;
+                background: color-mix(in oklab, var(--surface-subtle), transparent 15%);
+                border: 1px solid color-mix(in oklab, var(--accent-color), transparent 80%);
+                border-radius: 12px;
+                padding: 14px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                max-width: min(260px, 80%);
+                box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+                transition: opacity 0.2s ease, transform 0.2s ease;
+            }
+
+            .plan-set-indicator.is-hidden {
+                opacity: 0;
+                transform: translateY(8px);
+                pointer-events: none;
+            }
+
+            .plan-set-indicator__label {
+                font-size: 0.75em;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--text-muted);
+            }
+
+            .plan-set-indicator__name {
+                font-size: 1.05em;
+                font-weight: 700;
+                color: var(--text-primary);
+                line-height: 1.3;
+            }
+
+            .plan-set-indicator__details {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                font-size: 0.85em;
+                color: var(--text-secondary);
+            }
+
+            .plan-summary-overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(15, 22, 36, 0.65);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+                z-index: 1300;
+            }
+
+            .plan-summary-overlay.is-visible {
+                display: flex;
+            }
+
+            .plan-summary-dialog {
+                background: var(--card-bg);
+                border-radius: 16px;
+                width: min(640px, 100%);
+                max-height: 90vh;
+                overflow: auto;
+                padding: 28px 32px;
+                box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+                position: relative;
+                color: var(--text-primary);
+            }
+
+            .plan-summary-close {
+                position: absolute;
+                top: 14px;
+                right: 14px;
+                border: none;
+                background: var(--surface-subtle);
+                color: var(--text-muted);
+                width: 36px;
+                height: 36px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.1em;
+                cursor: pointer;
+                line-height: 1;
+                border-radius: 999px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                transition: background 0.2s ease, color 0.2s ease,
+                    box-shadow 0.2s ease;
+            }
+
+            .plan-summary-close:hover,
+            .plan-summary-close:focus-visible {
+                background: var(--accent-color);
+                color: #ffffff;
+                box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+                outline: none;
+            }
+
+            .plan-summary-title {
+                font-size: 1.5em;
+                margin-bottom: 6px;
+                color: var(--accent-color);
+                text-align: center;
+            }
+
+            .plan-summary-plan-name {
+                text-align: center;
+                color: var(--text-secondary);
+                margin-bottom: 20px;
+            }
+
+            .plan-summary-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .plan-summary-item {
+                border: 1px solid var(--section-border);
+                border-radius: 12px;
+                padding: 12px 16px;
+                background: var(--surface-subtle);
+                display: grid;
+                gap: 6px;
+            }
+
+            .plan-summary-item__header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .plan-summary-item__name {
+                font-weight: 700;
+                font-size: 1.05em;
+            }
+
+            .plan-summary-item__pr {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                color: #f7b731;
+                font-weight: 600;
+                font-size: 0.85em;
+            }
+
+            .plan-summary-item__meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                color: var(--text-secondary);
+                font-size: 0.85em;
+            }
+
+            .plan-summary-item__pr-details {
+                font-size: 0.85em;
+                color: var(--text-secondary);
+                line-height: 1.4;
+                margin-top: -2px;
+            }
+
+            .plan-summary-item__load {
+                font-weight: 600;
+                color: var(--text-primary);
+            }
+
+            .plan-summary-total {
+                margin-top: 20px;
+                padding-top: 16px;
+                border-top: 1px solid var(--section-border);
+                font-size: 1.05em;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            .plan-summary-next {
+                margin-top: 16px;
+                text-align: center;
+                color: var(--text-secondary);
+                font-size: 0.9em;
+            }
+
             .rest-countdown-summary strong {
                 display: block;
                 color: var(--text-primary);
@@ -954,7 +1185,7 @@
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                gap: 16px;
+                gap: 12px;
                 width: clamp(160px, 25vw, 220px);
             }
 
@@ -963,8 +1194,9 @@
                 flex-direction: column;
                 align-items: stretch;
                 justify-content: center;
-                gap: 16px;
-                padding: 12px 0;
+                gap: 14px;
+                padding: 4px 0 8px;
+                margin-top: -6px;
                 width: 100%;
             }
 
@@ -1438,6 +1670,26 @@
                 .stats-grid {
                     grid-template-columns: 1fr;
                 }
+
+                .fullscreen-toggle {
+                    top: 88px;
+                    left: 20px;
+                }
+
+                .plan-set-indicator {
+                    position: static;
+                    margin-top: 16px;
+                    width: 100%;
+                    max-width: none;
+                }
+
+                .plan-summary-dialog {
+                    padding: 24px;
+                }
+
+                #liveStatsCard {
+                    padding-bottom: 25px;
+                }
             }
 
             @media (min-width: 769px) {
@@ -1522,6 +1774,17 @@
         <!-- Mobile hamburger menu -->
         <button class="hamburger" id="hamburger" type="button" onclick="app.toggleSidebar()">
             <i class="bi bi-list" aria-hidden="true"></i>
+        </button>
+
+        <button
+            type="button"
+            class="fullscreen-toggle"
+            id="fullscreenToggle"
+            aria-pressed="false"
+            aria-label="Enter full screen"
+        >
+            <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+            <span class="sr-only">Enter full screen</span>
         </button>
 
         <!-- Overlay for mobile -->
@@ -2364,17 +2627,65 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
 
+                        <div
+                            id="planSetIndicator"
+                            class="plan-set-indicator is-hidden"
+                            aria-live="polite"
+                        >
+                            <div class="plan-set-indicator__label">Plan Progress</div>
+                            <div
+                                class="plan-set-indicator__name"
+                                id="planSetIndicatorName"
+                            >
+                                &nbsp;
+                            </div>
+                            <div class="plan-set-indicator__details">
+                                <span id="planSetIndicatorSet"></span>
+                                <span id="planSetIndicatorReps"></span>
+                            </div>
+                        </div>
+                        </div>
 
-                   
-	 <!-- Log card -->
+                        <!-- Log card -->
                     <div class="live-card">
                         <h2>Console Log</h2>
                         <div id="log"></div>
                     </div>
                 </div>
             </main>
+        </div>
+
+        <div
+            id="planSummaryOverlay"
+            class="plan-summary-overlay"
+            aria-hidden="true"
+        >
+            <div
+                class="plan-summary-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="planSummaryTitle"
+            >
+                <button
+                    type="button"
+                    class="plan-summary-close"
+                    id="planSummaryCloseBtn"
+                    aria-label="Close summary"
+                    title="Close summary"
+                >
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+                <h2 id="planSummaryTitle" class="plan-summary-title">
+                    Workout Summary
+                </h2>
+                <p id="planSummaryPlanName" class="plan-summary-plan-name"></p>
+                <div class="plan-summary-list" id="planSummaryList"></div>
+                <div class="plan-summary-total" id="planSummaryTotal"></div>
+                <p class="plan-summary-next">
+                    Ready for more? Click the Start Plan button in the left pane to begin again.
+                </p>
+            </div>
         </div>
 
         <!-- Dropbox SDK -->
