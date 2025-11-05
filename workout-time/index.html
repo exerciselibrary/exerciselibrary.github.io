@@ -483,7 +483,9 @@
 
             /* Sidebar toggle button */
             .hamburger {
-                display: block;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 position: fixed;
                 top: 20px;
                 left: 20px;
@@ -495,39 +497,14 @@
                 cursor: pointer;
                 box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
                 width: 50px;
-                transition: left 0.3s ease, box-shadow 0.2s ease;
+                height: 50px;
+                color: var(--accent-color);
+                transition: left 0.3s ease, box-shadow 0.2s ease, color 0.2s ease;
             }
 
-            .hamburger span {
-                display: block;
-                width: 25px;
-                height: 3px;
-                background: var(--accent-color);
-                margin: 5px 0;
-                border-radius: 2px;
-                transition: 0.3s;
-            }
-
-            .hamburger.is-collapsed span {
-                transform-origin: left center;
-            }
-
-            .hamburger.is-collapsed span:nth-child(1) {
-                transform: translate(7px, 6px) rotate(45deg);
-                width: 18px;
-                margin: 0;
-            }
-
-            .hamburger.is-collapsed span:nth-child(2) {
-                transform: translate(7px, -6px) rotate(-45deg);
-                width: 18px;
-                margin: 0;
-                opacity: 1;
-            }
-
-            .hamburger.is-collapsed span:nth-child(3) {
-                opacity: 0;
-                transform: none;
+            .hamburger .bi {
+                font-size: 1.5rem;
+                line-height: 1;
             }
 
             /* Form elements */
@@ -862,6 +839,16 @@
 
             .weight-adjuster-actions {
                 display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 16px;
+                padding: 12px 0;
+                width: 100%;
+            }
+
+            .weight-adjuster-action-buttons {
+                display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 12px;
@@ -930,22 +917,6 @@
             .plan-stop-btn [aria-hidden="true"] {
                 font-size: 1.4rem;
                 line-height: 1;
-            }
-
-            .plan-live-controls {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 12px;
-                margin-top: 18px;
-            }
-
-            .plan-live-main {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-wrap: wrap;
-                gap: 12px;
             }
 
             .plan-elapsed-timer {
@@ -1419,10 +1390,8 @@
     </head>
     <body>
         <!-- Mobile hamburger menu -->
-        <button class="hamburger" id="hamburger" onclick="app.toggleSidebar()">
-            <span></span>
-            <span></span>
-            <span></span>
+        <button class="hamburger" id="hamburger" type="button" onclick="app.toggleSidebar()">
+            <i class="bi bi-list" aria-hidden="true"></i>
         </button>
 
         <!-- Overlay for mobile -->
@@ -1954,27 +1923,39 @@
                                                 role="group"
                                                 aria-label="Workout controls"
                                             >
-                                                <button
-                                                    type="button"
-                                                    class="plan-pause-btn"
-                                                    id="planPauseBtn"
-                                                    onclick="app.togglePlanPause()"
-                                                    aria-pressed="false"
-                                                    aria-label="Pause plan"
-                                                >
-                                                    <i class="bi bi-pause-fill" aria-hidden="true"></i>
-                                                    <span class="sr-only">Pause plan</span>
-                                                </button>
-                                                <button
-                                                    id="stopBtn"
-                                                    type="button"
-                                                    class="plan-stop-btn"
-                                                    onclick="app.stopWorkout()"
-                                                    aria-label="Stop workout"
-                                                >
-                                                    <i class="bi bi-stop-fill" aria-hidden="true"></i>
-                                                    <span class="sr-only">Stop workout</span>
-                                                </button>
+                                                <div class="weight-adjuster-action-buttons">
+                                                    <button
+                                                        type="button"
+                                                        class="plan-pause-btn"
+                                                        id="planPauseBtn"
+                                                        onclick="app.togglePlanPause()"
+                                                        aria-pressed="false"
+                                                        aria-label="Pause plan"
+                                                    >
+                                                        <i class="bi bi-pause-fill" aria-hidden="true"></i>
+                                                        <span class="sr-only"
+                                                            >Pause plan</span
+                                                        >
+                                                    </button>
+                                                    <button
+                                                        id="stopBtn"
+                                                        type="button"
+                                                        class="plan-stop-btn"
+                                                        onclick="app.stopWorkout()"
+                                                        aria-label="Stop workout"
+                                                    >
+                                                        <i class="bi bi-stop-fill" aria-hidden="true"></i>
+                                                        <span class="sr-only"
+                                                            >Stop workout</span
+                                                        >
+                                                    </button>
+                                                </div>
+                                                <div
+                                                    id="planElapsedTimer"
+                                                    class="plan-elapsed-timer"
+                                                    role="timer"
+                                                    aria-live="off"
+                                                ></div>
                                             </div>
                                         </div>
                                     </div>
@@ -2049,16 +2030,6 @@
                                     </div>
                                 </div>
 
-                                <div class="plan-live-controls">
-                                    <div class="plan-live-main">
-                                        <div
-                                            id="planElapsedTimer"
-                                            class="plan-elapsed-timer"
-                                            role="timer"
-                                            aria-live="off"
-                                        ></div>
-                                    </div>
-                                </div>
                             </div>
                             <div class="bar-container">
                                 <div class="bar-label">Right Cable</div>

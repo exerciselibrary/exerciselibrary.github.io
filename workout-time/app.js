@@ -2173,13 +2173,19 @@ class VitruvianApp {
     const isDesktop = window.matchMedia("(min-width: 769px)").matches;
 
     let label;
+    let iconClass;
     if (isDesktop) {
-      toggleBtn.classList.toggle("is-collapsed", this.sidebarCollapsed);
       label = this.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar";
+      iconClass = this.sidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left";
     } else {
       const isOpen = sidebar?.classList.contains("open");
-      toggleBtn.classList.remove("is-collapsed");
       label = isOpen ? "Close sidebar" : "Open sidebar";
+      iconClass = isOpen ? "bi bi-x-lg" : "bi bi-list";
+    }
+
+    const icon = toggleBtn.querySelector("i");
+    if (icon && iconClass) {
+      icon.className = iconClass;
     }
 
     toggleBtn.setAttribute("aria-label", label);
