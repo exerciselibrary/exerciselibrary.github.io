@@ -438,12 +438,12 @@
             .personal-best-value {
                 font-size: 1.6em;
                 font-weight: 700;
-                color: #343a40;
+                color: var(--text-primary);
                 transition: color 0.3s ease;
             }
 
             .personal-best-value.highlight {
-                color: #2b8a3e;
+                color: var(--success-color);
             }
 
             .confetti-container {
@@ -852,23 +852,20 @@
             }
 
             .weight-adjuster-stack {
-                position: relative;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
+                gap: 16px;
                 width: clamp(160px, 25vw, 220px);
             }
 
             .weight-adjuster-actions {
-                position: absolute;
-                top: 0;
-                left: 50%;
-                transform: translate(-50%, -125%);
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 12px;
-                z-index: 2;
+                width: 100%;
             }
 
             .plan-pause-btn {
@@ -1915,6 +1912,44 @@
                                     <div class="plan-inline-center">
                                         <div class="weight-adjuster-stack">
                                             <div
+                                                class="personal-best-wrapper"
+                                                id="personalBestWrapper"
+                                            >
+                                                <div class="personal-best-label">
+                                                    Personal Best (Total)
+                                                </div>
+                                                <div
+                                                    class="personal-best-value"
+                                                    id="personalBestLoad"
+                                                >
+                                                    - <span class="stat-unit">kg</span>
+                                                </div>
+                                            </div>
+                                            <div class="weight-adjuster-circle" aria-live="polite">
+                                                <button
+                                                    type="button"
+                                                    class="weight-adjuster-segment increase"
+                                                    id="weightAdjusterIncrease"
+                                                    aria-label="Increase weight per cable"
+                                                >
+                                                    +
+                                                </button>
+                                                <div class="weight-adjuster-center">
+                                                    <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
+                                                        <span id="liveWeightValue">-</span>
+                                                        <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="weight-adjuster-segment decrease"
+                                                    id="weightAdjusterDecrease"
+                                                    aria-label="Decrease weight per cable"
+                                                >
+                                                    &minus;
+                                                </button>
+                                            </div>
+                                            <div
                                                 class="weight-adjuster-actions"
                                                 role="group"
                                                 aria-label="Workout controls"
@@ -1941,30 +1976,6 @@
                                                     <span class="sr-only">Stop workout</span>
                                                 </button>
                                             </div>
-                                            <div class="weight-adjuster-circle" aria-live="polite">
-                                                <button
-                                                    type="button"
-                                                    class="weight-adjuster-segment increase"
-                                                    id="weightAdjusterIncrease"
-                                                    aria-label="Increase weight per cable"
-                                                >
-                                                    +
-                                                </button>
-                                                <div class="weight-adjuster-center">
-                                                    <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
-                                                        <span id="liveWeightValue">-</span>
-                                                        <span class="stat-unit" id="liveWeightUnit">kg</span>
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    class="weight-adjuster-segment decrease"
-                                                    id="weightAdjusterDecrease"
-                                                    aria-label="Decrease weight per cable"
-                                                >
-                                                    &minus;
-                                                </button>
-                                            </div>
                                         </div>
                                     </div>
                                     <button
@@ -1977,21 +1988,6 @@
                                         <i class="bi bi-skip-forward-fill" aria-hidden="true"></i>
                                         <span class="sr-only">Next set</span>
                                     </button>
-                                </div>
-
-                                <div
-                                    class="personal-best-wrapper"
-                                    id="personalBestWrapper"
-                                >
-                                    <div class="personal-best-label">
-                                        Personal Best (Total)
-                                    </div>
-                                    <div
-                                        class="personal-best-value"
-                                        id="personalBestLoad"
-                                    >
-                                        - <span class="stat-unit">kg</span>
-                                    </div>
                                 </div>
 
                                 <!-- Auto-stop timer (Just Lift mode only) -->
