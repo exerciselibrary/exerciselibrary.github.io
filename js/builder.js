@@ -8,7 +8,8 @@ import {
   SHARE_ICON_HTML,
   SHARE_SUCCESS_HTML,
   SHARE_ERROR_HTML,
-  KG_PER_LB
+  KG_PER_LB,
+  LB_PER_KG
 } from './constants.js';
 import { state, els, setDragDidDrop, getDragDidDrop } from './context.js';
 import { niceName, formatWeight, convertWeightValue, createWorkbookXlsx } from './utils.js';
