@@ -4,6 +4,8 @@ const LB_PER_KG = 2.2046226218488;
 const KG_PER_LB = 1 / LB_PER_KG;
 const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
 
+const getPlanStorage = () => (typeof window !== "undefined" ? window.PlanStorage : null);
+
 class VitruvianApp {
   constructor() {
     this.device = new VitruvianDevice();
@@ -75,6 +77,8 @@ class VitruvianApp {
     this.planPauseActivityStart = null;
     this.planPauseLastSample = null;
     this._restState = null;
+
+    this._protocolWarningCache = new Set();
 
     this._hasPerformedInitialSync = false; // track if we've auto-synced once per session
     this._autoSyncInFlight = false;
@@ -3861,6 +3865,36 @@ class VitruvianApp {
     this.lastRepCounter = completeCounter;
   }
 
+  logConnectionFailure(error, phase = "connect") {
+    if (!error) {
+      this.addLogEntry(`[Device ${phase}] Unknown connection failure.`, "error");
+      return;
+    }
+
+    const name = error.name || "Error";
+    const message = error.message || "Unknown error";
+    const hints = [];
+
+    if (name === "NotFoundError") {
+      hints.push("No Vitruvian device detected. Ensure the trainer is powered on and nearby.");
+    } else if (name === "NotSupportedError") {
+      hints.push("This browser does not expose Web Bluetooth. Use a recent Chrome, Edge, or Opera build.");
+    } else if (name === "InvalidStateError") {
+      hints.push("The Bluetooth stack reported a busy adapter. Toggle Bluetooth or close other apps using the trainer.");
+    } else if (name === "SecurityError") {
+      hints.push("Grant Bluetooth permissions to this page and retry.");
+    } else if (name === "NetworkError") {
+      hints.push("Connection dropped mid-handshake. Move closer to the device and try again.");
+    }
+
+    if (typeof error?.code === "number" && error.code === 8) {
+      hints.push("Another application might already control the trainer.");
+    }
+
+    const hintText = hints.length ? ` Hint: ${hints.join(" ")}` : "";
+    this.addLogEntry(`[Device ${phase}] ${name}: ${message}.${hintText}`, "error");
+  }
+
   async connect() {
     try {
       // Check if Web Bluetooth is supported
@@ -3874,11 +3908,29 @@ class VitruvianApp {
       await this.device.connect();
       this.updateConnectionStatus(true);
 
+      const deviceName = this.device?.device?.name || "Vitruvian trainer";
+      this.addLogEntry(`Connected to ${deviceName}. Initialising protocol…`, "info");
+
       // Send initialization sequence
       await this.device.sendInit();
+
+      const missingCharacteristics = [];
+      if (!this.device.monitorChar) missingCharacteristics.push("monitor (0x0039)");
+      if (!this.device.propertyChar) missingCharacteristics.push("property (0x003f)");
+      if (!this.device.repNotifyChar) missingCharacteristics.push("rep notifications");
+
+      if (missingCharacteristics.length) {
+        const label = missingCharacteristics.join(", ");
+        this.addLogEntry(
+          `Protocol mismatch detected — missing ${label}. Update the trainer firmware and ensure the Workout Builder is up to date before retrying.`,
+          "error",
+        );
+      } else {
+        this.addLogEntry("Protocol handshake complete. Telemetry channels ready.", "success");
+      }
     } catch (error) {
       console.error("Connection error:", error);
-      this.addLogEntry(`Connection failed: ${error.message}`, "error");
+      this.logConnectionFailure(error, "connect");
       this.updateConnectionStatus(false);
     }
   }
@@ -3889,7 +3941,7 @@ class VitruvianApp {
       this.updateConnectionStatus(false);
     } catch (error) {
       console.error("Disconnect error:", error);
-      this.addLogEntry(`Disconnect failed: ${error.message}`, "error");
+      this.logConnectionFailure(error, "disconnect");
     }
   }
 
@@ -4703,18 +4755,275 @@ class VitruvianApp {
 
 
   /* =========================
+     PLAN — NORMALISATION
+     ========================= */
+
+  normalizePlanItemsForRunner(items, options = {}) {
+    const planName = typeof options.planName === "string" && options.planName.trim()
+      ? options.planName.trim()
+      : "Unnamed plan";
+    const context = options.context || "general";
+    const sourceItems = Array.isArray(items) ? items : [];
+    const sanitized = sourceItems.map((entry) => (entry && typeof entry === "object" ? { ...entry } : {}));
+    const warnings = [];
+    let modified = false;
+
+    const labelFor = (item, index) => {
+      if (item && typeof item.name === "string" && item.name.trim()) {
+        return item.name.trim();
+      }
+      return item?.type === "echo" ? `Echo block ${index + 1}` : `Exercise ${index + 1}`;
+    };
+
+    const record = (message, severity = "warning") => {
+      warnings.push({ message, severity });
+    };
+
+    const resolveProgramMode = (value) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        if (Object.prototype.hasOwnProperty.call(ProgramMode, trimmed)) {
+          return ProgramMode[trimmed];
+        }
+        const upper = trimmed.toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(ProgramMode, upper)) {
+          return ProgramMode[upper];
+        }
+        const numeric = Number.parseInt(trimmed, 10);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+      }
+      return null;
+    };
+
+    const resolveEchoLevel = (value) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        if (Object.prototype.hasOwnProperty.call(EchoLevel, trimmed)) {
+          return EchoLevel[trimmed];
+        }
+        const upper = trimmed.toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(EchoLevel, upper)) {
+          return EchoLevel[upper];
+        }
+        const numeric = Number.parseInt(trimmed, 10);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+      }
+      return null;
+    };
+
+    sanitized.forEach((item, index) => {
+      if (!item || typeof item !== "object") {
+        sanitized[index] = { type: "exercise", name: `Entry ${index + 1}` };
+        modified = true;
+        record(`Entry ${index + 1} is not recognised as a workout item. Using a placeholder exercise.`, "error");
+      }
+
+      const current = sanitized[index];
+      const originalType = current.type;
+      if (typeof current.type === "string") {
+        const lowered = current.type.toLowerCase();
+        if (lowered === "exercise" || lowered === "echo") {
+          if (current.type !== lowered) {
+            current.type = lowered;
+            modified = true;
+          }
+        } else {
+          current.type = "exercise";
+          modified = true;
+          record(`Plan entry "${labelFor(current, index)}" used an unknown type (${originalType}). Defaulted to an exercise block.`, "error");
+        }
+      } else {
+        current.type = "exercise";
+      }
+
+      if (current.type === "exercise") {
+        const label = labelFor(current, index);
+        const resolvedMode = resolveProgramMode(current.mode);
+        if (resolvedMode === null) {
+          record(`Exercise "${label}" is missing a numeric mode. Update the Workout Builder and re-sync.`, "error");
+        } else if (resolvedMode !== current.mode) {
+          current.mode = resolvedMode;
+          modified = true;
+          record(`Converted legacy mode data for "${label}".`, "info");
+        }
+
+        if (!Number.isFinite(current.perCableKg)) {
+          const parsed = Number.parseFloat(current.perCableKg);
+          if (Number.isFinite(parsed)) {
+            current.perCableKg = parsed;
+            modified = true;
+            record(`Normalised per-cable weight for "${label}".`, "info");
+          } else {
+            current.perCableKg = 0;
+            modified = true;
+            record(`Exercise "${label}" has an invalid per-cable weight.`, "error");
+          }
+        }
+
+        if (!Number.isFinite(current.reps)) {
+          const parsed = Number.parseInt(current.reps, 10);
+          if (Number.isFinite(parsed)) {
+            current.reps = parsed;
+            modified = true;
+          } else {
+            current.reps = 0;
+            modified = true;
+            record(`Exercise "${label}" is missing rep data. Defaulted to 0.`, "warning");
+          }
+        }
+
+        if (!Number.isFinite(current.sets) || current.sets <= 0) {
+          const parsed = Number.parseInt(current.sets, 10);
+          current.sets = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+          modified = true;
+        }
+
+        if (!Number.isFinite(current.restSec) || current.restSec < 0) {
+          const parsed = Number.parseInt(current.restSec, 10);
+          current.restSec = Number.isFinite(parsed) && parsed >= 0 ? parsed : 60;
+          modified = true;
+        }
+
+        if (typeof current.justLift !== "boolean") {
+          current.justLift = Boolean(current.justLift);
+          modified = true;
+        }
+
+        if (typeof current.stopAtTop !== "boolean") {
+          current.stopAtTop = Boolean(current.stopAtTop);
+          modified = true;
+        }
+
+        if (!Number.isFinite(current.progressionKg)) {
+          const parsed = Number.parseFloat(current.progressionKg);
+          if (Number.isFinite(parsed)) {
+            current.progressionKg = parsed;
+            modified = true;
+          } else {
+            current.progressionKg = 0;
+          }
+        }
+
+        if (!Number.isFinite(current.progressionPercent)) {
+          const parsed = Number.parseFloat(current.progressionPercent);
+          if (Number.isFinite(parsed)) {
+            current.progressionPercent = parsed;
+            modified = true;
+          } else {
+            current.progressionPercent = 0;
+          }
+        }
+
+        if (!Number.isFinite(current.cables) || current.cables <= 0) {
+          const parsed = Number.parseInt(current.cables, 10);
+          current.cables = Number.isFinite(parsed) && parsed > 0 ? parsed : 2;
+          modified = true;
+        }
+      } else if (current.type === "echo") {
+        const label = labelFor(current, index);
+        const resolvedLevel = resolveEchoLevel(current.level);
+        if (resolvedLevel === null) {
+          record(`Echo block "${label}" is missing a numeric level.`, "error");
+        } else if (resolvedLevel !== current.level) {
+          current.level = resolvedLevel;
+          modified = true;
+          record(`Converted legacy Echo level for "${label}".`, "info");
+        }
+
+        if (!Number.isFinite(current.eccentricPct)) {
+          const parsed = Number.parseInt(current.eccentricPct, 10);
+          if (Number.isFinite(parsed)) {
+            current.eccentricPct = parsed;
+            modified = true;
+          } else {
+            current.eccentricPct = 100;
+            modified = true;
+            record(`Echo block "${label}" missing eccentric percentage. Defaulted to 100%.`, "warning");
+          }
+        }
+
+        if (!Number.isFinite(current.targetReps)) {
+          const parsed = Number.parseInt(current.targetReps, 10);
+          current.targetReps = Number.isFinite(parsed) ? parsed : 0;
+          modified = true;
+        }
+
+        if (!Number.isFinite(current.sets) || current.sets <= 0) {
+          const parsed = Number.parseInt(current.sets, 10);
+          current.sets = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+          modified = true;
+        }
+
+        if (!Number.isFinite(current.restSec) || current.restSec < 0) {
+          const parsed = Number.parseInt(current.restSec, 10);
+          current.restSec = Number.isFinite(parsed) && parsed >= 0 ? parsed : 60;
+          modified = true;
+        }
+
+        if (typeof current.justLift !== "boolean") {
+          current.justLift = Boolean(current.justLift);
+          modified = true;
+        }
+      }
+    });
+
+    if (warnings.length) {
+      const seen = this._protocolWarningCache;
+      warnings.forEach(({ message, severity }) => {
+        const key = `${context}|${planName}|${message}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          this.addLogEntry(`[Plan "${planName}"] ${message}`, severity);
+        }
+      });
+    }
+
+    return { items: sanitized, modified };
+  }
+
+
+  /* =========================
      PLAN — PERSISTENCE
      ========================= */
 
-  plansKey() { return "vitruvian.plans.index"; }
-  planKey(name) { return `vitruvian.plan.${name}`; }
+  plansKey() {
+    const storage = getPlanStorage();
+    return storage?.PLAN_INDEX_KEY ?? "vitruvian.plans.index";
+  }
+  planKey(name) {
+    const storage = getPlanStorage();
+    if (storage?.getPlanStorageKey) {
+      return storage.getPlanStorageKey(name);
+    }
+    const trimmed = typeof name === "string" ? name.trim() : "";
+    return trimmed ? `vitruvian.plan.${trimmed}` : null;
+  }
   dropboxPlansKey() { return "vitruvian.plans.dropboxIndex"; }
 
   getAllPlanNames() {
+    const storage = getPlanStorage();
+    if (storage?.readLocalPlanIndex) {
+      return storage.readLocalPlanIndex();
+    }
+
     try {
       const raw = localStorage.getItem(this.plansKey());
       return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
 
   getDropboxPlanNames() {
@@ -4725,6 +5034,11 @@ class VitruvianApp {
   }
 
   setAllPlanNames(arr) {
+    const storage = getPlanStorage();
+    if (storage?.writeLocalPlanIndex) {
+      return storage.writeLocalPlanIndex(arr);
+    }
+
     const names = Array.isArray(arr) ? Array.from(new Set(arr)) : [];
     names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     try {
@@ -4747,8 +5061,24 @@ class VitruvianApp {
       throw new Error('Invalid plan payload');
     }
 
+    const normalization = this.normalizePlanItemsForRunner(items, {
+      planName: name,
+      context: 'builder-sync'
+    });
+    const payload = normalization.items;
+
     try {
-      localStorage.setItem(this.planKey(name), JSON.stringify(items));
+      const storage = getPlanStorage();
+      if (storage?.persistPlanLocally) {
+        storage.persistPlanLocally(name, payload);
+      } else {
+        const key = this.planKey(name);
+        if (!key) throw new Error('Invalid plan key');
+        localStorage.setItem(key, JSON.stringify(payload));
+        const names = new Set(this.getAllPlanNames());
+        names.add(name);
+        this.setAllPlanNames([...names]);
+      }
     } catch (error) {
       throw new Error('Unable to store plan locally');
     }
@@ -4798,12 +5128,30 @@ class VitruvianApp {
     const name = (nameInput?.value || "").trim();
     if (!name) { alert("Enter a plan name first."); return; }
     try {
-      localStorage.setItem(this.planKey(name), JSON.stringify(this.planItems));
-      const names = new Set(this.getAllPlanNames());
-      names.add(name);
-      this.setAllPlanNames([...names]);
+      let persistedName = name;
+      const storage = getPlanStorage();
+      const normalization = this.normalizePlanItemsForRunner(this.planItems, {
+        planName: name,
+        context: 'save-current'
+      });
+      const payload = normalization.items;
+      if (normalization.modified) {
+        this.planItems = payload;
+        this.renderPlanUI();
+      }
+      if (storage?.persistPlanLocally) {
+        const result = storage.persistPlanLocally(name, payload);
+        if (result?.name) persistedName = result.name;
+      } else {
+        const key = this.planKey(name);
+        if (!key) throw new Error("Invalid plan name");
+        localStorage.setItem(key, JSON.stringify(payload));
+        const names = new Set(this.getAllPlanNames());
+        names.add(name);
+        this.setAllPlanNames([...names]);
+      }
       this.refreshPlanSelectNames();
-      this.addLogEntry(`Saved plan "${name}" (${this.planItems.length} items)`, "success");
+      this.addLogEntry(`Saved plan "${persistedName}" (${this.planItems.length} items)`, "success");
     } catch (e) {
       alert(`Could not save plan: ${e.message}`);
       return;
@@ -4821,15 +5169,46 @@ class VitruvianApp {
     const sel = document.getElementById("planSelect");
     if (!sel || !sel.value) { alert("No saved plan selected."); return; }
     try {
-      let raw = localStorage.getItem(this.planKey(sel.value));
+      const key = this.planKey(sel.value);
+      if (!key) { alert("Saved plan not found."); return; }
+
+      let raw = localStorage.getItem(key);
 
       if (!raw && this.dropboxManager.isConnected) {
         await this.syncPlansFromDropbox({ silent: true });
-        raw = localStorage.getItem(this.planKey(sel.value));
+        raw = localStorage.getItem(key);
       }
 
-      if (!raw) { alert("Saved plan not found."); return; }
-      this.planItems = JSON.parse(raw) || [];
+      if (raw === null) { alert("Saved plan not found."); return; }
+
+      const storage = getPlanStorage();
+      const parsed = storage?.readPlanPayload
+        ? storage.readPlanPayload(sel.value)
+        : JSON.parse(raw) || [];
+
+      const normalization = this.normalizePlanItemsForRunner(parsed, {
+        planName: sel.value,
+        context: 'load-plan'
+      });
+      this.planItems = Array.isArray(normalization.items) ? normalization.items : [];
+
+      if (normalization.modified) {
+        try {
+          if (storage?.persistPlanLocally) {
+            const result = storage.persistPlanLocally(sel.value, this.planItems);
+            if (result?.name && sel.value !== result.name) {
+              this.refreshPlanSelectNames();
+              const select = document.getElementById("planSelect");
+              if (select) select.value = result.name;
+            }
+          } else {
+            localStorage.setItem(key, JSON.stringify(this.planItems));
+          }
+        } catch {
+          // Ignore persistence failures when normalising legacy data
+        }
+      }
+
       this.applyPlanUnitOverride(this.planItems);
       this.renderPlanUI();
       this.addLogEntry(`Loaded plan "${sel.value}"`, "success");
@@ -4859,8 +5238,14 @@ class VitruvianApp {
     }
 
     try {
-      localStorage.removeItem(this.planKey(name));
-      this.setAllPlanNames(remaining);
+      const storage = getPlanStorage();
+      if (storage?.removePlanLocally) {
+        storage.removePlanLocally(name);
+      } else {
+        const key = this.planKey(name);
+        if (key) localStorage.removeItem(key);
+        this.setAllPlanNames(remaining);
+      }
       this.refreshPlanSelectNames();
       this.addLogEntry(`Deleted plan "${name}"`, "info");
     } catch (e) {

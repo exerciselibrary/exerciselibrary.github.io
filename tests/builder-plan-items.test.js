@@ -201,3 +201,69 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
     state.builder.items = new Map(originalItems);
   }
 });
+
+test('buildPlanItems clamps progression percent and respects metric units', () => {
+  const originalWeightUnit = state.weightUnit;
+  const originalOrder = [...state.builder.order];
+  const originalItems = new Map(state.builder.items);
+
+  try {
+    state.weightUnit = 'KG';
+    state.builder.order = ['metric-exercise'];
+
+    state.builder.items = new Map([
+      [
+        'metric-exercise',
+        {
+          exercise: {
+            id: 'metric-exercise',
+            name: 'Metric Builder'
+          },
+          sets: [
+            {
+              mode: 'PUMP',
+              reps: '12',
+              weight: '30',
+              progression: '1.5',
+              progressionPercent: '450'
+            },
+            {
+              mode: 'OLD_SCHOOL',
+              reps: '8',
+              weight: '28',
+              progression: '',
+              progressionPercent: '-120'
+            },
+            {
+              mode: 'OLD_SCHOOL',
+              reps: '6',
+              weight: '24',
+              progression: 'not-a-number',
+              progressionPercent: 'n/a'
+            }
+          ]
+        }
+      ]
+    ]);
+
+    const planItems = buildPlanItems();
+    assert.equal(planItems.length, 3);
+
+    const [firstSet, secondSet, thirdSet] = planItems;
+
+    assert.equal(firstSet.progressionUnit, 'KG');
+    assert.equal(firstSet.progressionDisplay, '1.5');
+    assert.equal(firstSet.progressionKg, 1.5);
+    assert.equal(firstSet.progressionPercent, 400);
+
+    assert.equal(secondSet.progressionKg, 0);
+    assert.equal(secondSet.progressionPercent, -100);
+
+    assert.equal(thirdSet.progressionKg, 0);
+    assert.equal(thirdSet.progressionPercent, null);
+  } finally {
+    state.weightUnit = originalWeightUnit;
+    state.builder.order = originalOrder;
+    state.builder.items = originalItems;
+  }
+});

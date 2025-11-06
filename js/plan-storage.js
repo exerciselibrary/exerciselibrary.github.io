@@ -60,12 +60,18 @@ const parsePlanItems = (raw) => {
   }
 };
 
-const readPlanPayload = (name, storage = getStorage()) => {
+export const getPlanStorageKey = (name) => {
+  const trimmed = normalizePlanName(name);
+  return trimmed ? `${PLAN_STORAGE_PREFIX}${trimmed}` : null;
+};
+
+export const readPlanPayload = (name, storage = getStorage()) => {
   const target = getStorage(storage);
   if (!target) return [];
   const trimmed = normalizePlanName(name);
   if (!trimmed) return [];
-  const raw = target.getItem(`${PLAN_STORAGE_PREFIX}${trimmed}`);
+  const key = getPlanStorageKey(trimmed);
+  const raw = key ? target.getItem(key) : null;
   return parsePlanItems(raw);
 };
 
@@ -79,7 +85,9 @@ export const persistPlanLocally = (name, items, storage = getStorage()) => {
     throw new Error('Local storage is unavailable in this environment.');
   }
   try {
-    target.setItem(`${PLAN_STORAGE_PREFIX}${trimmed}`, JSON.stringify(Array.isArray(items) ? items : []));
+    const key = getPlanStorageKey(trimmed);
+    if (!key) throw new Error('Invalid plan key');
+    target.setItem(key, JSON.stringify(Array.isArray(items) ? items : []));
   } catch (error) {
     console.warn('Failed to store plan locally', error);
     throw new Error('Unable to store plan in local storage.');
@@ -93,7 +101,8 @@ export const removePlanLocally = (name, storage = getStorage()) => {
   const trimmed = normalizePlanName(name);
   if (!trimmed || !target) return;
   try {
-    target.removeItem(`${PLAN_STORAGE_PREFIX}${trimmed}`);
+    const key = getPlanStorageKey(trimmed);
+    if (key) target.removeItem(key);
   } catch (error) {
     console.warn('Failed to remove local plan', error);
   }
@@ -126,3 +135,19 @@ export const loadLocalPlanEntries = (storage = getStorage()) => {
 
   return entries;
 };
+
+// Expose helpers on window for non-module consumers (e.g., workout-time app)
+if (typeof window !== 'undefined') {
+  window.PlanStorage = Object.freeze({
+    PLAN_INDEX_KEY,
+    PLAN_STORAGE_PREFIX,
+    normalizePlanName,
+    readLocalPlanIndex,
+    writeLocalPlanIndex,
+    persistPlanLocally,
+    removePlanLocally,
+    loadLocalPlanEntries,
+    getPlanStorageKey,
+    readPlanPayload
+  });
+}
