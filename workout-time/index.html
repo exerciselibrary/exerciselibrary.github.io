@@ -1687,17 +1687,26 @@
                 }
 
                 .position-bars {
-                    flex-direction: column;
-                    align-items: center;
+                    flex-direction: row;
+                    flex-wrap: wrap;
+                    justify-content: center;
+                    align-items: flex-start;
                     height: auto;
                     padding: 16px;
-                    gap: 20px;
+                    gap: 16px;
                     margin: 24px 0 16px;
                 }
 
-                .bar-container {
+                .position-bars__center {
+                    order: 3;
                     width: 100%;
-                    max-width: 220px;
+                    align-items: center;
+                }
+
+                .bar-container {
+                    flex: 0 1 150px;
+                    width: auto;
+                    max-width: 160px;
                 }
 
                 .bar-wrapper {
@@ -1716,11 +1725,26 @@
                 }
 
                 .weight-adjuster-stack {
-                    width: min(280px, 100%);
+                    width: min(260px, 100%);
+                }
+
+                .weight-adjuster-circle {
+                    max-width: 200px;
                 }
 
                 .weight-adjuster-actions {
                     width: 100%;
+                }
+
+                .weight-adjuster-control-row {
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }
+
+                .plan-pause-btn,
+                .plan-stop-btn {
+                    width: 44px;
+                    height: 44px;
                 }
 
                 .time-range-selector {
@@ -1798,11 +1822,36 @@
 
                 .position-bars {
                     padding: 12px;
+                    gap: 12px;
                 }
 
                 .bar-wrapper {
                     height: 160px;
                     width: 40px;
+                }
+
+                .bar-container {
+                    flex-basis: 130px;
+                    max-width: 140px;
+                }
+
+                .weight-adjuster-circle {
+                    max-width: 180px;
+                }
+
+                .weight-adjuster-segment {
+                    font-size: 1.5em;
+                }
+
+                .weight-adjuster-center {
+                    font-size: 0.75em;
+                    padding: 16px;
+                }
+
+                .plan-pause-btn,
+                .plan-stop-btn {
+                    width: 40px;
+                    height: 40px;
                 }
 
                 .time-range-selector button,
