@@ -102,13 +102,19 @@ const handleDocumentClick = (event) => {
 applyFiltersDrawerState(isFiltersDrawerOpen());
 
 if (mobileFiltersQuery) {
-  mobileFiltersQuery.addEventListener('change', (evt) => {
+  const handleMobileFiltersChange = (evt) => {
     if (!evt.matches) {
       closeFiltersDrawer();
     } else {
       applyFiltersDrawerState(isFiltersDrawerOpen());
     }
-  });
+  };
+
+  if (typeof mobileFiltersQuery.addEventListener === 'function') {
+    mobileFiltersQuery.addEventListener('change', handleMobileFiltersChange);
+  } else if (typeof mobileFiltersQuery.addListener === 'function') {
+    mobileFiltersQuery.addListener(handleMobileFiltersChange);
+  }
 }
 
 const setLocalPlanCacheEntry = (name, items) => {
