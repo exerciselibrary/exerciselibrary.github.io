@@ -91,6 +91,10 @@ class VitruvianApp {
     this.selectedHistoryKey = null; // currently selected history entry key
     this.selectedHistoryIndex = null; // cache index for quick lookup
 
+    this.historyPage = 1;
+    this.historyPageSize = 5;
+    this._loadedPlanName = null;
+
     this._warmupCounterEl = null;
     this._workingCounterEl = null;
     this._planIndicatorEls = null;
@@ -104,6 +108,7 @@ class VitruvianApp {
     // initialize plan UI dropdown from storage and render once UI is ready
     setTimeout(() => {
       this.refreshPlanSelectNames();
+      this.setupPlanSelectAutoLoad();
       this.renderPlanUI();
       this.applySidebarCollapsedState();
       this.updatePlanControlsState();
@@ -1346,6 +1351,10 @@ class VitruvianApp {
         this.calculateTotalLoadPeakKg(workout);
       });
 
+      if (newCount > 0) {
+        this.setHistoryPage(1);
+      }
+
       this.updateHistoryDisplay();
 
       const message = newCount > 0
@@ -1552,6 +1561,7 @@ class VitruvianApp {
     }
 
     this.updateInputsForUnit();
+    this.renderPlanUI();
     this.renderLoadDisplays(this.currentSample);
     this.updateHistoryDisplay();
     this.applyUnitToChart();
@@ -2787,6 +2797,7 @@ class VitruvianApp {
       return null;
     }
     this.workoutHistory.unshift(normalized); // Add to beginning
+    this.setHistoryPage(1);
     this.updateHistoryDisplay();
     return normalized;
   }
@@ -2800,6 +2811,9 @@ class VitruvianApp {
     const workout = this.workoutHistory[index];
     const previousKey = this.selectedHistoryKey;
     const newKey = this.getWorkoutHistoryKey(workout);
+
+    const pageSize = Number(this.historyPageSize) > 0 ? this.historyPageSize : 5;
+    this.setHistoryPage(Math.floor(index / pageSize) + 1);
 
     this.selectedHistoryKey = newKey;
     this.selectedHistoryIndex = index;
@@ -2868,7 +2882,12 @@ class VitruvianApp {
     const historyList = document.getElementById("historyList");
     if (!historyList) return;
 
-    if (this.workoutHistory.length === 0) {
+    const totalItems = Array.isArray(this.workoutHistory) ? this.workoutHistory.length : 0;
+    const pageSize = Number(this.historyPageSize) > 0 ? this.historyPageSize : 5;
+    const totalPages = totalItems > 0 ? Math.ceil(totalItems / pageSize) : 0;
+
+    if (totalItems === 0) {
+      this.historyPage = 1;
       historyList.innerHTML = `
         <div style="color: #6c757d; font-size: 0.9em; text-align: center; padding: 20px;">
           No workouts completed yet
@@ -2876,14 +2895,28 @@ class VitruvianApp {
       `;
       this.selectedHistoryKey = null;
       this.selectedHistoryIndex = null;
+      this.updateHistoryPaginationControls(0);
       this.updateExportButtonLabel();
       return;
     }
 
+    const maxPages = Math.max(1, totalPages);
+    if (this.historyPage > maxPages) {
+      this.historyPage = maxPages;
+    }
+    if (this.historyPage < 1) {
+      this.historyPage = 1;
+    }
+
+    const startIndex = (this.historyPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalItems);
+    const pageItems = this.workoutHistory.slice(startIndex, endIndex);
+
     let matchedSelection = false;
 
-    historyList.innerHTML = this.workoutHistory
-      .map((workout, index) => {
+    historyList.innerHTML = pageItems
+      .map((workout, offset) => {
+        const index = startIndex + offset;
         const weightStr =
           workout.weightKg > 0
             ? `${this.formatWeightWithUnit(workout.weightKg)}`
@@ -2938,7 +2971,61 @@ class VitruvianApp {
       this.selectedHistoryIndex = null;
     }
 
+    this.updateHistoryPaginationControls(maxPages);
     this.updateExportButtonLabel();
+  }
+
+  updateHistoryPaginationControls(totalPages) {
+    const paginationEl = document.getElementById("historyPagination");
+    if (!paginationEl) {
+      return;
+    }
+
+    if (!Number.isFinite(totalPages) || totalPages <= 1) {
+      paginationEl.style.display = "none";
+      paginationEl.innerHTML = "";
+      return;
+    }
+
+    paginationEl.style.display = "flex";
+    const prevDisabledAttrs = this.historyPage <= 1 ? 'disabled aria-disabled="true"' : "";
+    const nextDisabledAttrs = this.historyPage >= totalPages ? 'disabled aria-disabled="true"' : "";
+
+    paginationEl.innerHTML = `
+      <button type="button" class="history-page-btn secondary" onclick="app.changeHistoryPage(-1)" ${prevDisabledAttrs} aria-label="Previous page">Prev</button>
+      <span class="history-pagination__label">Page ${this.historyPage} of ${totalPages}</span>
+      <button type="button" class="history-page-btn secondary" onclick="app.changeHistoryPage(1)" ${nextDisabledAttrs} aria-label="Next page">Next</button>
+    `;
+  }
+
+  getHistoryPageCount() {
+    if (!Array.isArray(this.workoutHistory) || this.workoutHistory.length === 0) {
+      return 0;
+    }
+    const pageSize = Number(this.historyPageSize) > 0 ? this.historyPageSize : 5;
+    return Math.ceil(this.workoutHistory.length / pageSize);
+  }
+
+  setHistoryPage(page) {
+    const totalPages = this.getHistoryPageCount();
+    if (totalPages === 0) {
+      const changed = this.historyPage !== 1;
+      this.historyPage = 1;
+      return changed;
+    }
+    const clamped = Math.min(Math.max(1, page), totalPages);
+    const changed = clamped !== this.historyPage;
+    this.historyPage = clamped;
+    return changed;
+  }
+
+  changeHistoryPage(delta) {
+    if (!Number.isFinite(delta) || delta === 0) {
+      return;
+    }
+    if (this.setHistoryPage(this.historyPage + delta)) {
+      this.updateHistoryDisplay();
+    }
   }
 
   getSelectedHistoryIndex() {
@@ -4765,6 +4852,26 @@ class VitruvianApp {
     this.addLogEntry(`Stored plan "${name}" from Workout Builder${dropboxNote}`, 'info');
   }
 
+  setupPlanSelectAutoLoad() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const sel = document.getElementById("planSelect");
+    if (!sel || sel.dataset.autoloadAttached === "true") {
+      return;
+    }
+
+    sel.addEventListener("change", () => {
+      if (!sel.value) {
+        return;
+      }
+      this.loadSelectedPlan({ silentIfMissing: true });
+    });
+
+    sel.dataset.autoloadAttached = "true";
+  }
+
   populatePlanSelect() {
     const sel = document.getElementById("planSelect");
     if (!sel) return;
@@ -4775,22 +4882,26 @@ class VitruvianApp {
       : `<option value="">(no saved plans)</option>`;
 
     if (names.length > 0) {
-      if (names.includes(previous)) {
-        sel.value = previous;
-      } else {
-        sel.value = names[0];
+      const nextValue = names.includes(previous) ? previous : names[0];
+      sel.value = nextValue;
+    } else {
+      sel.value = "";
+    }
+
+    this.setupPlanSelectAutoLoad();
+
+    const activeName = sel.value;
+    if (activeName) {
+      if (activeName !== this._loadedPlanName) {
+        this.loadSelectedPlan({ silentIfMissing: true, suppressLog: true });
       }
+    } else {
+      this._loadedPlanName = null;
     }
   }
 
   refreshPlanSelectNames() {
-    const sel = document.getElementById("planSelect");
-    if (!sel) return;
-    const current = sel.value;
     this.populatePlanSelect();
-    if (current && [...sel.options].some((opt) => opt.value === current)) {
-      sel.value = current;
-    }
   }
 
   async saveCurrentPlan() {
@@ -4817,24 +4928,50 @@ class VitruvianApp {
     }
   }
 
-  async loadSelectedPlan() {
+  async loadSelectedPlan(options = {}) {
+    const silentIfMissing = options?.silentIfMissing === true;
+    const suppressLog = options?.suppressLog === true;
     const sel = document.getElementById("planSelect");
-    if (!sel || !sel.value) { alert("No saved plan selected."); return; }
+    const planName = sel?.value;
+    if (!sel || !planName) {
+      if (!silentIfMissing) {
+        alert("No saved plan selected.");
+      }
+      return;
+    }
     try {
-      let raw = localStorage.getItem(this.planKey(sel.value));
+      let raw = localStorage.getItem(this.planKey(planName));
 
       if (!raw && this.dropboxManager.isConnected) {
         await this.syncPlansFromDropbox({ silent: true });
-        raw = localStorage.getItem(this.planKey(sel.value));
+        raw = localStorage.getItem(this.planKey(planName));
       }
 
-      if (!raw) { alert("Saved plan not found."); return; }
-      this.planItems = JSON.parse(raw) || [];
+      if (!raw) {
+        if (!silentIfMissing) {
+          alert("Saved plan not found.");
+        }
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        throw new Error(
+          `Saved plan "${planName}" could not be parsed: ${err.message}`,
+        );
+      }
+      this.planItems = Array.isArray(parsed) ? parsed : [];
       this.applyPlanUnitOverride(this.planItems);
       this.renderPlanUI();
-      this.addLogEntry(`Loaded plan "${sel.value}"`, "success");
+      this._loadedPlanName = planName;
+      if (!suppressLog) {
+        this.addLogEntry(`Loaded plan "${planName}"`, "success");
+      }
     } catch (e) {
-      alert(`Could not load plan: ${e.message}`);
+      if (!silentIfMissing) {
+        alert(`Could not load plan: ${e.message}`);
+      }
     }
   }
 

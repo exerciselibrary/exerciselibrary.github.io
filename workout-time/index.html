@@ -597,6 +597,27 @@
                 box-shadow: 0 5px 20px rgba(220, 53, 69, 0.35);
             }
 
+            .history-pagination {
+                display: none;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 12px;
+            }
+
+            .history-pagination .history-page-btn {
+                width: auto;
+                padding: 8px 18px;
+                margin-top: 0;
+            }
+
+            .history-pagination__label {
+                flex: 1;
+                text-align: center;
+                font-size: 0.9em;
+                color: var(--text-muted);
+            }
+
             .theme-toggle-btn {
                 display: inline-flex;
                 align-items: center;
@@ -1999,9 +2020,8 @@
                                 <input id="planNameInput" type="text" placeholder="Plan name (e.g., Push Day A)" />
                                 <button id="savePlanBtn" onclick="app.saveCurrentPlan()">Save Plan</button>
                             </div>
-                            <div style="display:grid; grid-template-columns: 1fr auto auto; gap:10px;">
+                            <div style="display:grid; grid-template-columns: 1fr auto; gap:10px;">
                                 <select id="planSelect"></select>
-                                <button class="secondary" id="loadPlanBtn" onclick="app.loadSelectedPlan()">Load</button>
                                 <button class="danger" id="deletePlanBtn" onclick="app.deleteSelectedPlan()">Delete</button>
                             </div>
                         </div>
@@ -2572,6 +2592,10 @@
                                         border-radius: 8px;
                                     "
                                 >
+                                    <div
+                                        id="historyPagination"
+                                        class="history-pagination"
+                                    ></div>
                                     <div
                                         id="historyList"
                                         style="
