@@ -2682,7 +2682,9 @@ class VitruvianApp {
         "sidebar-collapsed",
         isDesktop && this.sidebarCollapsed,
       );
-      if (isCompact || !sidebar.classList.contains("open")) {
+      if (isDesktop) {
+        document.body.classList.remove("sidebar-open");
+      } else if (!sidebar.classList.contains("open")) {
         document.body.classList.remove("sidebar-open");
       }
     }
