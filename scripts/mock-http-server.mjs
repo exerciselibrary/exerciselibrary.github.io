@@ -23,7 +23,15 @@ const server = http.createServer(async (req, res) => {
     const requestUrl = url.parse(req.url || '/');
     let pathname = decodeURIComponent(requestUrl.pathname || '/');
     if (pathname.endsWith('/')) pathname += 'index.html';
-    const filePath = path.join(root, pathname);
+
+    const sanitizedPath = pathname.replace(/^[/\\]+/, '');
+    const normalizedPath = path.normalize(sanitizedPath);
+
+    if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
+      throw new Error('Path outside root');
+    }
+
+    const filePath = path.join(root, normalizedPath);
     await stat(filePath);
     const data = await readFile(filePath);
     res.writeHead(200);
