@@ -1,6 +1,7 @@
 // Library view helpers: filters, search, and exercise card rendering.
 import { SHARE_ICON_HTML } from './constants.js';
 import { state, els, getSearchIndex } from './context.js';
+export { state } from './context.js';
 import { niceName, intersects, isSuperset, shuffleArray } from './utils.js';
 import { searchExercises } from './search.js';
 import {
