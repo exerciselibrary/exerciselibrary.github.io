@@ -36,7 +36,6 @@ body {
   align-items: start;
 }
 .sidebar { position: sticky; top: 16px; height: fit-content; }
-.sidebar-inner { display: grid; gap: 16px; }
 .content { min-width: 0; }
 
 @media (max-width: 900px) {
@@ -122,14 +121,6 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
-}
-.filters-toggle {
-  display: none;
-  align-items: center;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-size: 11px;
-  padding: 6px 14px;
 }
 .view-links {
   display: flex;
@@ -652,119 +643,3 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .modal-notice { padding-top: 8px; }
 
 /* Back to Top */
-
-@media (max-width: 640px) {
-  .container { padding: 20px 16px; }
-  .layout { display: block; }
-  .view-bar {
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-  }
-  .filters-toggle {
-    display: inline-flex;
-    background: #161d2c;
-    border-color: #233046;
-    padding: 6px 16px;
-  }
-  .view-links {
-    gap: 12px;
-    flex: 1;
-    justify-content: flex-end;
-  }
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: min(320px, 88vw);
-    max-width: 88vw;
-    transform: translateX(-110%);
-    transition: transform 220ms ease;
-    pointer-events: none;
-    z-index: 1001;
-  }
-  .sidebar-inner {
-    height: 100%;
-    overflow-y: auto;
-    padding: 24px 20px 32px;
-    background: var(--panel);
-    border-right: 1px solid #1f2535;
-    box-shadow: 0 18px 50px rgba(5, 8, 15, 0.55);
-    -webkit-overflow-scrolling: touch;
-  }
-  body.filters-open .sidebar {
-    transform: translateX(0);
-    pointer-events: auto;
-  }
-  body.filters-open {
-    overflow: hidden;
-  }
-  body.filters-open::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: rgba(6, 10, 18, 0.65);
-    z-index: 950;
-  }
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  .toolbar-left {
-    width: 100%;
-    display: grid;
-    gap: 8px;
-  }
-  .toolbar-left .btn {
-    width: 100%;
-  }
-  .toolbar #count {
-    justify-content: flex-start;
-  }
-  .builder-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-  .builder-actions {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  .builder-actions .btn.small,
-  .builder-actions .option {
-    width: 100%;
-  }
-  .builder-actions .option {
-    justify-content: flex-start;
-  }
-  .plan-name-input-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  .plan-name-input-row .btn.small {
-    width: 100%;
-  }
-  .schedule-fields {
-    grid-template-columns: 1fr;
-  }
-  .schedule-repeat {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .schedule-days {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .schedule-days button {
-    width: 100%;
-  }
-  .builder-bulk-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-}

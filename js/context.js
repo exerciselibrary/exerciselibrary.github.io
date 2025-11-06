@@ -72,8 +72,6 @@ export const els = {
   randomizeLibrary: document.getElementById('randomizeLibrary'),
   unitToggle: document.getElementById('unitToggle'),
   toggleBuilderFilter: document.getElementById('toggleBuilderFilter'),
-  filtersToggle: document.getElementById('filtersToggle'),
-  sidebar: document.getElementById('filtersSidebar'),
   grid: document.getElementById('exerciseGrid'),
   gridTitle: document.getElementById('gridTitle'),
   count: document.getElementById('count'),
