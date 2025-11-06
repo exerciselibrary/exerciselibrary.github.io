@@ -1,8 +1,13 @@
 {
-  "name": "exerciselibrary.github.io",
+  "name": "exercise-library",
   "version": "1.0.0",
   "type": "module",
+  "private": true,
   "scripts": {
-    "test": "node --test tests/**/*.test.js"
+    "dev": "npx http-server . -p 5173 -c-1",
+    "test": "node --test",
+    "lint": "npx eslint .",
+    "format": "npx prettier -w .",
+    "build": "echo \"Static site; no bundler\""
   }
 }
