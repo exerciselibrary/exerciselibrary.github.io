@@ -49,80 +49,35 @@ import {
 } from './library.js';
 import { persistState, loadPersistedState, applyWorkoutFromParam } from './storage.js';
 import { getActiveGrouping, applyGrouping } from './grouping.js';
+import {
+  PLAN_INDEX_KEY,
+  PLAN_STORAGE_PREFIX,
+  normalizePlanName,
+  persistPlanLocally,
+  removePlanLocally,
+  loadLocalPlanEntries
+} from './plan-storage.js';
 
 const dropboxManager = typeof DropboxManager !== 'undefined' ? new DropboxManager() : null;
 let dropboxInitialized = false;
 
 const planCache = new Map(); // name -> { source, items }
-const PLAN_INDEX_KEY = 'vitruvian.plans.index';
-const PLAN_STORAGE_PREFIX = 'vitruvian.plan.';
 
-const collectPlanNames = () => Array.from(new Set(planCache.keys())).sort((a, b) => a.localeCompare(b));
-
-const normalizePlanName = (name) => (typeof name === 'string' ? name.trim() : '');
-
-const readLocalPlanIndex = () => {
-  if (typeof window === 'undefined' || !window.localStorage) return [];
-  try {
-    const raw = window.localStorage.getItem(PLAN_INDEX_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(list)) return [];
-    return list
-      .map((entry) => normalizePlanName(entry))
-      .filter(Boolean);
-  } catch (error) {
-    console.warn('Failed to read plan index from local storage', error);
-    return [];
-  }
-};
-
-const writeLocalPlanIndex = (names) => {
-  if (typeof window === 'undefined' || !window.localStorage) return [];
-  const unique = Array.from(new Set(names.map(normalizePlanName).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' })
-  );
-  try {
-    window.localStorage.setItem(PLAN_INDEX_KEY, JSON.stringify(unique));
-  } catch (error) {
-    console.warn('Failed to write plan index to local storage', error);
-    throw new Error('Unable to update plan index in local storage.');
-  }
-  return unique;
-};
-
-const savePlanToLocal = (name, items) => {
+const setLocalPlanCacheEntry = (name, items) => {
   const trimmed = normalizePlanName(name);
-  if (!trimmed) {
-    throw new Error('Enter a plan name before saving.');
-  }
-  if (typeof window === 'undefined' || !window.localStorage) {
-    throw new Error('Local storage is unavailable in this environment.');
-  }
-  try {
-    window.localStorage.setItem(`${PLAN_STORAGE_PREFIX}${trimmed}`, JSON.stringify(items));
-  } catch (error) {
-    console.warn('Failed to store plan locally', error);
-    throw new Error('Unable to store plan in local storage.');
-  }
-  const updated = writeLocalPlanIndex([...readLocalPlanIndex(), trimmed]);
+  if (!trimmed) return;
   planCache.set(trimmed, { source: 'local', items: Array.isArray(items) ? items : [] });
-  return updated;
 };
 
-const deleteLocalPlan = (name) => {
+const removeLocalPlanCacheEntry = (name) => {
   const trimmed = normalizePlanName(name);
-  if (!trimmed || typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    window.localStorage.removeItem(`${PLAN_STORAGE_PREFIX}${trimmed}`);
-  } catch (error) {
-    console.warn('Failed to remove local plan', error);
-  }
-  const filtered = readLocalPlanIndex().filter((entry) => entry !== trimmed);
-  writeLocalPlanIndex(filtered);
-  if (planCache.has(trimmed) && planCache.get(trimmed).source === 'local') {
+  if (!trimmed) return;
+  const existing = planCache.get(trimmed);
+  if (existing && existing.source === 'local') {
     planCache.delete(trimmed);
   }
 };
+const collectPlanNames = () => Array.from(new Set(planCache.keys())).sort((a, b) => a.localeCompare(b));
 
 const clonePlanItems = (items) => JSON.parse(JSON.stringify(Array.isArray(items) ? items : []));
 
@@ -151,49 +106,11 @@ const loadLocalPlansIntoCache = () => {
       planCache.delete(name);
     }
   }
-  const names = [];
-  try {
-    const raw = window.localStorage.getItem(PLAN_INDEX_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    list.forEach((name) => {
-      if (typeof name !== 'string') return;
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      names.push(trimmed);
-      try {
-        const planRaw = window.localStorage.getItem(`${PLAN_STORAGE_PREFIX}${trimmed}`);
-        if (planRaw) {
-          const items = JSON.parse(planRaw);
-          planCache.set(trimmed, { source: 'local', items: Array.isArray(items) ? items : [] });
-        }
-      } catch (error) {
-        console.warn('Failed to parse local plan', error);
-      }
-    });
-  } catch (error) {
-    console.warn('Failed to read local plans index', error);
-  }
 
-  if (!names.length && typeof window !== 'undefined' && window.localStorage) {
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i);
-      if (!key || !key.startsWith(PLAN_STORAGE_PREFIX)) continue;
-      const planName = key.slice(PLAN_STORAGE_PREFIX.length).trim();
-      if (!planName || names.includes(planName)) continue;
-      names.push(planName);
-      try {
-        const planRaw = window.localStorage.getItem(key);
-        if (planRaw) {
-          const items = JSON.parse(planRaw);
-          planCache.set(planName, { source: 'local', items: Array.isArray(items) ? items : [] });
-        }
-      } catch (error) {
-        console.warn('Failed to parse local plan fallback', error);
-      }
-    }
-  }
-
-  return names;
+  const entries = loadLocalPlanEntries();
+  entries.forEach(({ name, items }) => {
+    setLocalPlanCacheEntry(name, items);
+  });
 };
 
 async function fetchDropboxPlans(options = {}) {
@@ -318,19 +235,22 @@ const handleSavePlanLocally = () => {
   }
 
   const planItems = clonePlanItems(items);
+  let savedName = null;
   try {
-    savePlanToLocal(desiredName, planItems);
+    ({ name: savedName } = persistPlanLocally(desiredName, planItems));
   } catch (error) {
     updateSyncStatus(error.message || 'Failed to save plan.', 'error');
     return;
   }
 
-  state.plan.selectedName = desiredName;
-  setPlanName(desiredName, { fromSelection: true });
+  const finalName = savedName || normalizePlanName(desiredName);
+  setLocalPlanCacheEntry(finalName, planItems);
+  state.plan.selectedName = finalName;
+  setPlanName(finalName, { fromSelection: true });
   refreshPlanNameOptions();
   renderSchedulePreview();
   flushPlanNameDebounce();
-  updateSyncStatus(`Saved plan "${desiredName}" locally.`, 'success');
+  updateSyncStatus(`Saved plan "${finalName}" locally.`, 'success');
 };
 
 const handleRenamePlan = async () => {
@@ -367,21 +287,22 @@ const handleRenamePlan = async () => {
     : null;
   const wasDropbox = existingEntry?.source === 'dropbox';
 
+  let savedName = null;
   try {
-    savePlanToLocal(desiredName, planItems);
+    ({ name: savedName } = persistPlanLocally(desiredName, planItems));
   } catch (error) {
     updateSyncStatus(error.message || 'Failed to create renamed plan.', 'error');
     return;
   }
 
-  deleteLocalPlan(previousName);
-  if (!wasDropbox && planCache.has(previousName)) {
-    planCache.delete(previousName);
-  }
+  const finalName = savedName || normalizePlanName(desiredName);
 
-  planCache.set(desiredName, { source: 'local', items: planItems });
-  state.plan.selectedName = desiredName;
-  setPlanName(desiredName, { fromSelection: true });
+  removePlanLocally(previousName);
+  removeLocalPlanCacheEntry(previousName);
+
+  setLocalPlanCacheEntry(finalName, planItems);
+  state.plan.selectedName = finalName;
+  setPlanName(finalName, { fromSelection: true });
   renderSchedulePreview();
   flushPlanNameDebounce();
 
@@ -391,11 +312,11 @@ const handleRenamePlan = async () => {
   if (wasDropbox) {
     if (dropboxManager && dropboxManager.isConnected) {
       try {
-        await dropboxManager.savePlan(desiredName, planItems);
+        await dropboxManager.savePlan(finalName, planItems);
         await dropboxManager.deletePlan(previousName);
         state.dropboxPlanNames = state.dropboxPlanNames
           .filter((name) => name !== previousName)
-          .concat(desiredName)
+          .concat(finalName)
           .sort((a, b) => a.localeCompare(b));
         dropboxRenamed = true;
       } catch (error) {
@@ -409,7 +330,7 @@ const handleRenamePlan = async () => {
   if (wasDropbox) {
     if (dropboxRenamed) {
       planCache.delete(previousName);
-      planCache.set(desiredName, { source: 'dropbox', items: planItems });
+      planCache.set(finalName, { source: 'dropbox', items: planItems });
     } else if (existingSnapshot) {
       planCache.set(previousName, existingSnapshot);
     }
@@ -418,9 +339,9 @@ const handleRenamePlan = async () => {
   refreshPlanNameOptions();
 
   if (dropboxMessage) {
-    updateSyncStatus(`Renamed locally to "${desiredName}", but ${dropboxMessage}`, 'error');
+    updateSyncStatus(`Renamed locally to "${finalName}", but ${dropboxMessage}`, 'error');
   } else {
-    updateSyncStatus(`Renamed plan to "${desiredName}".`, 'success');
+    updateSyncStatus(`Renamed plan to "${finalName}".`, 'success');
   }
 };
 
