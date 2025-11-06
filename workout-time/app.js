@@ -4956,8 +4956,10 @@ class VitruvianApp {
       let parsed;
       try {
         parsed = JSON.parse(raw);
-      } catch {
-        parsed = [];
+      } catch (err) {
+        throw new Error(
+          `Saved plan "${planName}" could not be parsed: ${err.message}`,
+        );
       }
       this.planItems = Array.isArray(parsed) ? parsed : [];
       this.applyPlanUnitOverride(this.planItems);
