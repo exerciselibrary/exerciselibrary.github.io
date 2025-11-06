@@ -63,6 +63,54 @@ let dropboxInitialized = false;
 
 const planCache = new Map(); // name -> { source, items }
 
+const FILTERS_OPEN_CLASS = 'filters-open';
+const mobileFiltersQuery =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 640px)')
+    : null;
+
+const isFiltersDrawerOpen = () => document.body.classList.contains(FILTERS_OPEN_CLASS);
+
+const applyFiltersDrawerState = (open) => {
+  document.body.classList.toggle(FILTERS_OPEN_CLASS, Boolean(open));
+  if (els.filtersToggle) {
+    els.filtersToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  if (els.sidebar) {
+    if (mobileFiltersQuery && mobileFiltersQuery.matches) {
+      els.sidebar.setAttribute('aria-hidden', open ? 'false' : 'true');
+    } else {
+      els.sidebar.removeAttribute('aria-hidden');
+    }
+  }
+  return Boolean(open);
+};
+
+const closeFiltersDrawer = () => applyFiltersDrawerState(false);
+
+const toggleFiltersDrawer = () => applyFiltersDrawerState(!isFiltersDrawerOpen());
+
+const handleDocumentClick = (event) => {
+  if (!isFiltersDrawerOpen()) return;
+  const target = event.target instanceof Node ? event.target : null;
+  if (!target) return;
+  if (els.sidebar && els.sidebar.contains(target)) return;
+  if (els.filtersToggle && els.filtersToggle.contains(target)) return;
+  closeFiltersDrawer();
+};
+
+applyFiltersDrawerState(isFiltersDrawerOpen());
+
+if (mobileFiltersQuery) {
+  mobileFiltersQuery.addEventListener('change', (evt) => {
+    if (!evt.matches) {
+      closeFiltersDrawer();
+    } else {
+      applyFiltersDrawerState(isFiltersDrawerOpen());
+    }
+  });
+}
+
 const setLocalPlanCacheEntry = (name, items) => {
   const trimmed = normalizePlanName(name);
   if (!trimmed) return;
@@ -459,10 +507,25 @@ function bindGlobalEvents() {
     persistState();
   });
 
-  els.tabLibrary.addEventListener('click', () => switchTab('library'));
-  els.tabBuilder.addEventListener('click', () => switchTab('builder'));
+  if (els.filtersToggle) {
+    els.filtersToggle.addEventListener('click', () => {
+      toggleFiltersDrawer();
+    });
+  }
+
+  document.addEventListener('click', handleDocumentClick);
+
+  els.tabLibrary.addEventListener('click', () => {
+    closeFiltersDrawer();
+    switchTab('library');
+  });
+  els.tabBuilder.addEventListener('click', () => {
+    closeFiltersDrawer();
+    switchTab('builder');
+  });
   if (els.tabWorkout) {
     els.tabWorkout.addEventListener('click', () => {
+      closeFiltersDrawer();
       window.location.href = 'workout-time/index.html';
     });
   }
@@ -579,6 +642,10 @@ function bindGlobalEvents() {
         closeModal();
         return;
       }
+      if (isFiltersDrawerOpen()) {
+        closeFiltersDrawer();
+        return;
+      }
       if (state.search) {
         state.search = '';
         els.searchInput.value = '';
@@ -594,6 +661,7 @@ function bindGlobalEvents() {
       persistState();
     } else if ((evt.key === 'b' || evt.key === 'B') && !typing) {
       evt.preventDefault();
+      closeFiltersDrawer();
       switchTab('builder');
     }
   });

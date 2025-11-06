@@ -17,57 +17,59 @@
     </header>
 
     <main class="container layout">
-      <aside class="sidebar">
-        <h2>Filters</h2>
-        <div class="search-sort">
-          <label>
-            Search
-            <div class="search-group">
-              <input id="searchInput" type="text" placeholder="Search exercises..." />
-              <button id="searchClear" class="btn subtle small" title="Clear search">Clear</button>
-            </div>
-          </label>
-        </div>
-        <div class="filters-sections">
-          <div class="filter-block">
-            <div class="block-head">
-              <span class="label">Muscle Groups</span>
-              <button id="clearMuscles" class="btn subtle" title="Clear muscle filter">Clear</button>
-            </div>
-            <div id="muscleFilters" class="btnrow"></div>
-            <div class="modebar" id="muscleModeBar" aria-hidden="true">
-              <span class="muted small">Match:</span>
-              <div class="seg" role="tablist" aria-label="Muscle group match mode">
-                <button id="muscleModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
-                <button id="muscleModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+      <aside id="filtersSidebar" class="sidebar">
+        <div class="sidebar-inner">
+          <h2>Filters</h2>
+          <div class="search-sort">
+            <label>
+              Search
+              <div class="search-group">
+                <input id="searchInput" type="text" placeholder="Search exercises..." />
+                <button id="searchClear" class="btn subtle small" title="Clear search">Clear</button>
+              </div>
+            </label>
+          </div>
+          <div class="filters-sections">
+            <div class="filter-block">
+              <div class="block-head">
+                <span class="label">Muscle Groups</span>
+                <button id="clearMuscles" class="btn subtle" title="Clear muscle filter">Clear</button>
+              </div>
+              <div id="muscleFilters" class="btnrow"></div>
+              <div class="modebar" id="muscleModeBar" aria-hidden="true">
+                <span class="muted small">Match:</span>
+                <div class="seg" role="tablist" aria-label="Muscle group match mode">
+                  <button id="muscleModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
+                  <button id="muscleModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="filter-block">
-            <div class="block-head">
-              <span class="label">Muscles</span>
-              <button id="clearSubMuscles" class="btn subtle" title="Clear specific muscles filter">Clear</button>
-            </div>
-            <div id="subMuscleFilters" class="btnrow"></div>
-            <div class="modebar" id="subMuscleModeBar" aria-hidden="true">
-              <span class="muted small">Match:</span>
-              <div class="seg" role="tablist" aria-label="Muscles match mode">
-                <button id="subMuscleModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
-                <button id="subMuscleModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+            <div class="filter-block">
+              <div class="block-head">
+                <span class="label">Muscles</span>
+                <button id="clearSubMuscles" class="btn subtle" title="Clear specific muscles filter">Clear</button>
+              </div>
+              <div id="subMuscleFilters" class="btnrow"></div>
+              <div class="modebar" id="subMuscleModeBar" aria-hidden="true">
+                <span class="muted small">Match:</span>
+                <div class="seg" role="tablist" aria-label="Muscles match mode">
+                  <button id="subMuscleModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
+                  <button id="subMuscleModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="filter-block">
-            <div class="block-head">
-              <span class="label">Equipment</span>
-              <button id="clearEquipment" class="btn subtle" title="Clear equipment filter">Clear</button>
-            </div>
-            <div id="equipmentFilters" class="btnrow"></div>
-            <div class="modebar" id="equipmentModeBar" aria-hidden="true">
-              <span class="muted small">Match:</span>
-              <div class="seg" role="tablist" aria-label="Equipment match mode">
-                <button id="equipmentModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
-                <button id="equipmentModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+            <div class="filter-block">
+              <div class="block-head">
+                <span class="label">Equipment</span>
+                <button id="clearEquipment" class="btn subtle" title="Clear equipment filter">Clear</button>
+              </div>
+              <div id="equipmentFilters" class="btnrow"></div>
+              <div class="modebar" id="equipmentModeBar" aria-hidden="true">
+                <span class="muted small">Match:</span>
+                <div class="seg" role="tablist" aria-label="Equipment match mode">
+                  <button id="equipmentModeOR" class="seg-btn active" role="tab" aria-selected="true" title="OR: match ANY selected">OR</button>
+                  <button id="equipmentModeAND" class="seg-btn" role="tab" aria-selected="false" title="AND: match ALL selected">AND</button>
+                </div>
               </div>
             </div>
           </div>
@@ -76,6 +78,15 @@
 
       <section class="content">
         <div class="view-bar">
+          <button
+            type="button"
+            id="filtersToggle"
+            class="btn filters-toggle"
+            aria-expanded="false"
+            aria-controls="filtersSidebar"
+          >
+            Filters
+          </button>
           <div class="view-links">
             <button type="button" id="tabLibrary" class="view-link active" data-target="libraryPanel">Exercise Library</button>
             <button type="button" id="tabBuilder" class="view-link" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
