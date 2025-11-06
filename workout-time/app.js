@@ -137,10 +137,20 @@ class VitruvianApp {
     this.updatePlanControlsState?.();
     this.updatePlanElapsedDisplay?.();
 
-    window.addEventListener("resize", () => {
+    const handleViewportChange = () => {
       this.applySidebarCollapsedState();
-    });
+    };
 
+    window.addEventListener("resize", handleViewportChange);
+
+    const orientationQuery = window.matchMedia("(orientation: portrait)");
+    if (typeof orientationQuery.addEventListener === "function") {
+      orientationQuery.addEventListener("change", handleViewportChange);
+    } else if (typeof orientationQuery.addListener === "function") {
+      orientationQuery.addListener(handleViewportChange);
+    }
+
+    handleViewportChange();
 
   }
   setupLogging() {
@@ -2180,7 +2190,7 @@ class VitruvianApp {
       return;
     }
 
-    const isDesktop = window.matchMedia("(min-width: 769px)").matches;
+    const isDesktop = this.isDesktopLayout();
 
     if (isDesktop) {
       this.sidebarCollapsed = !this.sidebarCollapsed;
@@ -2206,7 +2216,7 @@ class VitruvianApp {
       return;
     }
 
-    const isDesktop = window.matchMedia("(min-width: 769px)").matches;
+    const isDesktop = this.isDesktopLayout();
     if (isDesktop) {
       return;
     }
@@ -2658,12 +2668,24 @@ class VitruvianApp {
       return;
     }
 
-    const isDesktop = window.matchMedia("(min-width: 769px)").matches;
+    const isDesktop = this.isDesktopLayout();
+    const isCompact = this.isCompactLayout();
 
     if (isDesktop && this.sidebarCollapsed) {
       appContainer.classList.add("sidebar-collapsed");
     } else {
       appContainer.classList.remove("sidebar-collapsed");
+    }
+
+    if (isCompact) {
+      sidebar.classList.remove("open");
+      if (document.body) {
+        document.body.classList.remove("sidebar-open");
+      }
+    }
+
+    if (overlay) {
+      overlay.classList.remove("show");
     }
 
     if (document.body) {
@@ -2676,14 +2698,6 @@ class VitruvianApp {
       }
     }
 
-    if (!isDesktop) {
-      sidebar.classList.remove("open");
-    }
-
-    if (overlay) {
-      overlay.classList.remove("show");
-    }
-
     this.updateSidebarToggleVisual();
   }
 
@@ -2694,7 +2708,7 @@ class VitruvianApp {
     }
 
     const sidebar = document.getElementById("sidebar");
-    const isDesktop = window.matchMedia("(min-width: 769px)").matches;
+    const isDesktop = this.isDesktopLayout();
 
     let label;
     let iconClass;
@@ -2714,6 +2728,23 @@ class VitruvianApp {
 
     toggleBtn.setAttribute("aria-label", label);
     toggleBtn.title = label;
+  }
+
+  isPortraitTabletLayout() {
+    return window.matchMedia(
+      "(orientation: portrait) and (min-width: 769px) and (max-width: 1024px)",
+    ).matches;
+  }
+
+  isCompactLayout() {
+    return (
+      window.matchMedia("(max-width: 768px)").matches ||
+      this.isPortraitTabletLayout()
+    );
+  }
+
+  isDesktopLayout() {
+    return !this.isCompactLayout();
   }
 
   hidePRBanner() {
