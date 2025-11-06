@@ -123,7 +123,10 @@
             <div class="plan-name-field">
               <div class="plan-name-header">
                 <label for="planNameInput">Plan Name</label>
-                <button id="syncToDropbox" class="btn small primary" title="Sync workout plan to Dropbox">Sync to Dropbox</button>
+                <div class="plan-sync-controls">
+                  <button id="syncToDropbox" class="btn small primary" title="Sync workout plan to Dropbox">Sync to Dropbox</button>
+                  <div id="builderSyncStatus" class="builder-sync-status muted small" aria-live="polite"></div>
+                </div>
               </div>
               <div class="plan-name-input-row">
                 <input id="planNameInput" type="text" placeholder="Plan name (e.g., Push Day A)" />
@@ -168,7 +171,6 @@
             </div>
           </div>
           <div id="scheduleCalendar" class="schedule-calendar" aria-live="polite"></div>
-          <div id="builderSyncStatus" class="builder-sync-status muted small" aria-live="polite"></div>
 
           <div id="builderList" class="builder-list"></div>
         </div>
