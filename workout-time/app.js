@@ -2677,14 +2677,9 @@ class VitruvianApp {
       appContainer.classList.remove("sidebar-collapsed");
     }
 
-    if (document.body) {
-      document.body.classList.toggle(
-        "sidebar-collapsed",
-        isDesktop && this.sidebarCollapsed,
-      );
-      if (isDesktop) {
-        document.body.classList.remove("sidebar-open");
-      } else if (!sidebar.classList.contains("open")) {
+    if (isCompact) {
+      sidebar.classList.remove("open");
+      if (document.body) {
         document.body.classList.remove("sidebar-open");
       }
     }
@@ -2693,8 +2688,14 @@ class VitruvianApp {
       overlay.classList.remove("show");
     }
 
-    if (isCompact) {
-      sidebar.classList.remove("open");
+    if (document.body) {
+      document.body.classList.toggle(
+        "sidebar-collapsed",
+        isDesktop && this.sidebarCollapsed,
+      );
+      if (isDesktop || !sidebar.classList.contains("open")) {
+        document.body.classList.remove("sidebar-open");
+      }
     }
 
     this.updateSidebarToggleVisual();
