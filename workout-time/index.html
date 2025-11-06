@@ -129,6 +129,10 @@
                 transition: background 0.3s ease, color 0.3s ease;
             }
 
+            body.sidebar-open {
+                overflow: hidden;
+            }
+
             /* Layout */
             .app-container {
                 display: flex;
@@ -1640,39 +1644,106 @@
                 }
             }
 
-            /* Mobile styles */
-            @media (max-width: 768px) {
+            /* Mobile and portrait tablet styles */
+            @media (max-width: 768px), (max-width: 1024px) and (orientation: portrait) {
                 .sidebar {
                     position: fixed;
                     left: 0;
                     top: 0;
                     height: 100vh;
+                    width: min(360px, 85vw);
+                    max-width: 85vw;
                     transform: translateX(-100%);
+                    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
                 }
 
                 .sidebar.open {
                     transform: translateX(0);
                 }
 
+                .sidebar-header {
+                    padding: 24px 20px;
+                }
+
+                .sidebar-content {
+                    padding: 20px 18px 28px;
+                }
+
                 .hamburger {
-                    display: block;
+                    display: flex;
                 }
 
                 .main-content {
                     width: 100%;
+                    padding: 16px;
+                }
+
+                .live-card {
+                    padding: 20px;
+                }
+
+                .stat-card-grid {
+                    grid-template-columns: 1fr;
                 }
 
                 .position-bars {
-                    height: 200px;
+                    flex-direction: column;
+                    align-items: center;
+                    height: auto;
+                    padding: 16px;
+                    gap: 20px;
+                    margin: 24px 0 16px;
+                }
+
+                .bar-container {
+                    width: 100%;
+                    max-width: 220px;
                 }
 
                 .bar-wrapper {
-                    height: 150px;
-                    width: 40px;
+                    height: 180px;
+                    width: 46px;
                 }
 
-                .stats-grid {
+                .plan-inline-controls {
+                    flex-wrap: wrap;
+                    gap: 14px;
+                }
+
+                .plan-nav-btn {
+                    width: 42px;
+                    height: 42px;
+                }
+
+                .weight-adjuster-stack {
+                    width: min(280px, 100%);
+                }
+
+                .weight-adjuster-actions {
+                    width: 100%;
+                }
+
+                .time-range-selector {
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }
+
+                .time-range-selector button,
+                .time-range-selector .export-btn {
+                    flex: 1 1 calc(50% - 8px);
+                    min-width: 130px;
+                }
+
+                .plan-card__grid {
                     grid-template-columns: 1fr;
+                }
+
+                .plan-card__actions {
+                    justify-content: stretch;
+                }
+
+                .plan-card__actions .plan-card__action {
+                    flex: 1 1 calc(50% - 6px);
                 }
 
                 .plan-set-indicator {
@@ -1683,11 +1754,64 @@
                 }
 
                 .plan-summary-dialog {
-                    padding: 24px;
+                    width: min(520px, 92vw);
+                    padding: 24px 20px;
                 }
 
                 #liveStatsCard {
                     padding-bottom: 25px;
+                }
+            }
+
+            @media (max-width: 600px) {
+                .live-card {
+                    padding: 18px;
+                }
+
+                .time-range-selector button,
+                .time-range-selector .export-btn {
+                    flex: 1 1 calc(50% - 6px);
+                    min-width: 120px;
+                }
+
+                .plan-card__actions {
+                    flex-direction: column;
+                }
+
+                .plan-card__actions .plan-card__action {
+                    width: 100%;
+                }
+
+                .plan-section-actions {
+                    justify-content: center;
+                }
+            }
+
+            @media (max-width: 480px) {
+                .main-content {
+                    padding: 12px;
+                }
+
+                .live-card h2 {
+                    font-size: 1.2em;
+                }
+
+                .position-bars {
+                    padding: 12px;
+                }
+
+                .bar-wrapper {
+                    height: 160px;
+                    width: 40px;
+                }
+
+                .time-range-selector button,
+                .time-range-selector .export-btn {
+                    flex: 1 1 100%;
+                }
+
+                .plan-summary-dialog {
+                    padding: 20px 16px;
                 }
             }
 
