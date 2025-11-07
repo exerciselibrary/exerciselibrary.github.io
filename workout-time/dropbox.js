@@ -224,17 +224,56 @@ class DropboxManager {
     try {
       this.log("Loading workouts from Dropbox...", "info");
 
-      // List all files in /workouts folder
-      const response = await this.dbx.filesListFolder({ path: "/workouts" });
-      const files = response.result.entries.filter(
-        (entry) => entry[".tag"] === "file" && entry.name.endsWith(".json")
-      );
+      const maxWorkoutsToSync = 25;
+      const topFiles = [];
+      let totalFileCount = 0;
 
-      this.log(`Found ${files.length} workout files`, "info");
+      const considerEntries = (entries) => {
+        for (const entry of entries) {
+          if (entry[".tag"] === "file" && entry.name.endsWith(".json")) {
+            totalFileCount += 1;
+            topFiles.push(entry);
+          }
+        }
 
-      // Download and parse each workout
+        topFiles.sort((a, b) => {
+          const aTime = new Date(a.server_modified || a.client_modified || 0).getTime();
+          const bTime = new Date(b.server_modified || b.client_modified || 0).getTime();
+          return bTime - aTime;
+        });
+
+        if (topFiles.length > maxWorkoutsToSync) {
+          topFiles.length = maxWorkoutsToSync;
+        }
+      };
+
+      let response = await this.dbx.filesListFolder({ path: "/workouts" });
+      considerEntries(response.result.entries || []);
+      let cursor = response.result.cursor;
+
+      while (response.result.has_more) {
+        response = await this.dbx.filesListFolderContinue({ cursor });
+        cursor = response.result.cursor;
+        considerEntries(response.result.entries || []);
+      }
+
+      this.log(`Found ${totalFileCount} workout files`, "info");
+
+      if (totalFileCount > maxWorkoutsToSync) {
+        this.log(
+          `Limiting sync to the latest ${maxWorkoutsToSync} workouts`,
+          "info",
+        );
+      }
+
+      topFiles.sort((a, b) => {
+        const aTime = new Date(a.server_modified || a.client_modified || 0).getTime();
+        const bTime = new Date(b.server_modified || b.client_modified || 0).getTime();
+        return bTime - aTime;
+      });
+
       const workouts = [];
-      for (const file of files) {
+      for (const file of topFiles) {
         try {
           const downloadResponse = await this.dbx.filesDownload({ path: file.path_lower });
           const fileBlob = downloadResponse.result.fileBlob;
