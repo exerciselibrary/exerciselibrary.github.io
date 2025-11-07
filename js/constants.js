@@ -1,6 +1,7 @@
 // Centralized constants for the Exercise Library app.
 // Keeping these in one place makes it easier to tweak labels or limits
 // without digging through the feature code.
+import { KG_PER_LB as SHARED_KG_PER_LB, LB_PER_KG as SHARED_LB_PER_KG } from '../shared/weight-utils.js';
 
 export const MAX_CABLE_WEIGHT = 220;
 export const MAX_CABLE_WEIGHT_KG = Math.round(MAX_CABLE_WEIGHT * 0.45359237);
@@ -50,5 +51,5 @@ export const GROUPING_LABELS = {
   muscleGroups: 'muscle group'
 };
 
-export const KG_PER_LB = 0.45359237;
-export const LB_PER_KG = 1 / KG_PER_LB;
+export const KG_PER_LB = SHARED_KG_PER_LB;
+export const LB_PER_KG = SHARED_LB_PER_KG;

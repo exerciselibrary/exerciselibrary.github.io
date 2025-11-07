@@ -23,6 +23,7 @@ Code structure (new modular layout)
 - `js/builder.js` — workout builder UI, drag-and-drop ordering, export/print/share actions.
 - `js/grouping.js` — grouping helpers (by equipment, muscles, or muscle groups) shared by builder.
 - `js/storage.js` — localStorage persistence, deep-link encoding, and workout restoration.
+- `shared/weight-utils.js` — shared conversion helpers (kg/lb math) surfaced to both the Exercise Library and workout-time console.
 
 Each module is documented at the top to make it clear what part of the experience it owns. The builder and library modules also register a render callback so UI updates stay centralised in `main.js`.
 
@@ -35,9 +36,19 @@ Workout Time app structure
 
 Local tests
 
-- Tests live in `local-tests/` and are ignored by git so they never end up in commits.
-- `local-tests/builder.test.js` bootstraps a minimal DOM stub, exercises the builder metadata pipeline (`buildPlanSyncPayload` ➜ `loadPlanIntoBuilder`), and asserts that videos and set groupings survive a round trip. Run it with `node local-tests/builder.test.js`.
-- The script requires a Node runtime available on your PATH. If you are on Windows without Node, install it from https://nodejs.org/ and rerun the command.
+- Run `npm test` to execute the repo’s Node suite plus every `local-tests/*.test.js` file; the local portion auto-skips if the directory is missing. Use `npm run test:local` to run just the local harness.
+- Tests live in `local-tests/` and are ignored by git so they never end up in commits. Run them directly with `node <file>` if you want to target a single script.
+- `node local-tests/builder.test.js` bootstraps a DOM stub, exports the builder via `buildPlanSyncPayload`, then reloads it with `loadPlanIntoBuilder` to ensure sets, videos, and progression metadata round-trip correctly.
+- `node local-tests/search.test.js` covers the fuzzy search scoring pipeline (token bonuses, cached index reuse, and substring fallbacks).
+- `node local-tests/storage-sync.test.js` exercises `plan-storage.js` by faking `localStorage` to verify plan indexing, persistence, and deletion flows.
+- `node local-tests/progression.test.js` focuses on the progression math inside `buildPlanItems`, ensuring weight deltas convert and clamp consistently across unit toggles.
+- `node local-tests/plan-runner.test.js` asserts that the workout-time plan runner builds timelines correctly, renders set descriptions, and auto-resumes from telemetry when movement is detected during a pause.
+- Each script requires a Node runtime available on your PATH. Install it from https://nodejs.org/ if necessary.
+
+Quality checks
+
+- `npm run lint` walks every JS file with a focused rule set (no trailing whitespace, no `var`, and strict equality) so regressions get flagged in CI-friendly text output.
+- `npm run format` normalises line endings, trims trailing whitespace, and ensures newline-terminated text files, giving a lightweight formatter that works offline.
 
 What's included
 
