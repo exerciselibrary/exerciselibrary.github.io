@@ -99,6 +99,7 @@ class VitruvianApp {
     this.planPauseLastSample = null;
     this._restState = null;
     this._lastTargetSyncError = null;
+    this._lastWeightSyncError = null;
 
     this._hasPerformedInitialSync = false; // track if we've auto-synced once per session
     this._autoSyncInFlight = false;
@@ -631,6 +632,48 @@ class VitruvianApp {
     }
   }
 
+  async syncProgramWeight(nextPerCableKg, options = {}) {
+    const silent = !!options.repeat;
+
+    if (
+      !this.device ||
+      !this.device.isConnected ||
+      !this.currentWorkout ||
+      !this.currentProgramParams
+    ) {
+      return;
+    }
+
+    if (!Number.isFinite(nextPerCableKg)) {
+      return;
+    }
+
+    const clamped = Math.min(100, Math.max(0, nextPerCableKg));
+    const effectiveKg = clamped + 10;
+    const displayUnit = this.currentProgramParams.displayUnit || this.getUnitLabel();
+    const perCableDisplay = this.convertKgToDisplay(clamped, displayUnit);
+    const effectiveDisplay = this.convertKgToDisplay(effectiveKg, displayUnit);
+    const updatedParams = {
+      ...this.currentProgramParams,
+      perCableKg: clamped,
+      perCableDisplay,
+      effectiveKg,
+      effectiveDisplay,
+    };
+
+    try {
+      await this.device.updateProgramWeights(updatedParams, { silent });
+      this.currentProgramParams = updatedParams;
+      this._lastWeightSyncError = null;
+    } catch (error) {
+      const message = `Failed to sync target weight to device: ${error.message}`;
+      if (!silent || this._lastWeightSyncError !== message) {
+        this.addLogEntry(message, "error");
+        this._lastWeightSyncError = message;
+      }
+    }
+  }
+
   updateWorkingCounterControlsState() {
     const disabled = !this.currentWorkout;
     if (this._workingCounterDecreaseBtn) {
@@ -736,6 +779,7 @@ class VitruvianApp {
 
     this.updateLiveWeightDisplay();
     this.playWeightAdjustChirp(direction, options);
+    this.syncProgramWeight(nextKg, options);
 
     if (!options.repeat) {
       this.addLogEntry(
@@ -3795,6 +3839,7 @@ class VitruvianApp {
       this.resetRepCountersToEmpty();
       this.currentProgramParams = null;
       this._lastTargetSyncError = null;
+      this._lastWeightSyncError = null;
     }
 
     const summaryMessages = {
@@ -4745,6 +4790,7 @@ class VitruvianApp {
       await this.device.sendStopCommand();
       this.currentProgramParams = null;
       this._lastTargetSyncError = null;
+      this._lastWeightSyncError = null;
 
       let stopMessage = "Workout stopped by user";
       if (reason === "auto-stop") {
@@ -4880,6 +4926,7 @@ class VitruvianApp {
 
       this.currentProgramParams = { ...params };
       this._lastTargetSyncError = null;
+      this._lastWeightSyncError = null;
 
       await this.device.startProgram(params);
 
@@ -4951,6 +4998,8 @@ class VitruvianApp {
       this.isJustLiftMode = isJustLift;
       this.lastRepCounter = undefined;
       this.lastTopCounter = undefined;
+      this._lastTargetSyncError = null;
+      this._lastWeightSyncError = null;
 
       // Reset workout state and set current workout info
       this.warmupReps = 0;

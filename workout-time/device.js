@@ -326,8 +326,7 @@ class VitruvianDevice {
     this.startMonitorPolling();
   }
 
-  // Update the target reps for the currently running program
-  async updateProgramTargetReps(params, options = {}) {
+  async updateProgramParams(partialParams = {}, options = {}) {
     if (!this.isConnected) {
       throw new Error("Device not connected");
     }
@@ -338,26 +337,107 @@ class VitruvianDevice {
       throw new Error("No active program to update");
     }
 
-    const merged = { ...this.lastProgramParams, ...params };
+    const merged = { ...this.lastProgramParams, ...partialParams };
+    const payload = { ...merged };
 
-    if (merged.isJustLift) {
-      // Just Lift ignores the reps byte; nothing to update
-      return;
+    // Validate reps (unless Just Lift mode is active)
+    if (!payload.isJustLift) {
+      if (!Number.isFinite(payload.reps)) {
+        throw new Error("Invalid reps value");
+      }
+      payload.reps = Math.max(1, Math.min(100, Math.round(payload.reps)));
     }
 
-    if (!Number.isFinite(merged.reps)) {
-      throw new Error("Invalid reps value");
+    // Validate per-cable weight
+    if (!Number.isFinite(payload.perCableKg)) {
+      throw new Error("Invalid per-cable weight");
+    }
+    payload.perCableKg = Math.max(0, Math.min(100, payload.perCableKg));
+
+    // Effective weight defaults to +10 kg above per-cable
+    if (!Number.isFinite(payload.effectiveKg)) {
+      payload.effectiveKg = payload.perCableKg + 10;
     }
 
-    const clampedReps = Math.max(1, Math.min(100, Math.round(merged.reps)));
-    const payload = { ...merged, reps: clampedReps };
+    // Ensure display helpers are always numbers (used for logging/UI only)
+    if (!Number.isFinite(payload.perCableDisplay)) {
+      payload.perCableDisplay = payload.perCableKg;
+    }
+    if (!Number.isFinite(payload.effectiveDisplay)) {
+      payload.effectiveDisplay = payload.effectiveKg;
+    }
+
+    if (!Number.isFinite(payload.progressionKg)) {
+      payload.progressionKg = this.lastProgramParams.progressionKg || 0;
+    }
+
     const frame = buildProgramParams(payload);
     await this.writeWithResponse("Program params (update)", frame);
     this.lastProgramParams = payload;
 
-    if (!options.silent) {
-      this.log(`Program target reps updated to ${payload.reps}`, "info");
+    if (!options.silent && options.logMessage) {
+      this.log(options.logMessage, "info");
     }
+  }
+
+  // Update the target reps for the currently running program
+  async updateProgramTargetReps(params, options = {}) {
+    if (this.lastProgramParams?.isJustLift) {
+      // Just Lift ignores the reps byte; nothing to update
+      return;
+    }
+
+    const nextReps = Number.isFinite(params?.reps)
+      ? params.reps
+      : this.lastProgramParams?.reps;
+
+    if (!Number.isFinite(nextReps)) {
+      throw new Error("Invalid reps value");
+    }
+
+    const clampedReps = Math.max(1, Math.min(100, Math.round(nextReps)));
+    await this.updateProgramParams(
+      { ...params, reps: clampedReps },
+      {
+        ...options,
+        logMessage: `Program target reps updated to ${clampedReps}`,
+      },
+    );
+  }
+
+  // Update the active program's load (per-cable/effective weights)
+  async updateProgramWeights(params, options = {}) {
+    const nextPerCable = Number.isFinite(params?.perCableKg)
+      ? params.perCableKg
+      : this.lastProgramParams?.perCableKg;
+
+    if (!Number.isFinite(nextPerCable)) {
+      throw new Error("Invalid per-cable weight");
+    }
+
+    const clamped = Math.max(0, Math.min(100, nextPerCable));
+    const effectiveKg =
+      Number.isFinite(params?.effectiveKg) && params.effectiveKg > 0
+        ? params.effectiveKg
+        : clamped + 10;
+
+    await this.updateProgramParams(
+      {
+        ...params,
+        perCableKg: clamped,
+        effectiveKg,
+        perCableDisplay: Number.isFinite(params?.perCableDisplay)
+          ? params.perCableDisplay
+          : clamped,
+        effectiveDisplay: Number.isFinite(params?.effectiveDisplay)
+          ? params.effectiveDisplay
+          : effectiveKg,
+      },
+      {
+        ...options,
+        logMessage: `Program load updated to ${clamped.toFixed(1)} kg per cable`,
+      },
+    );
   }
 
   // Start Echo mode
