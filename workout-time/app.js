@@ -16,6 +16,7 @@ class VitruvianApp {
     this._weightAdjustDirection = 0; // Current hold direction
     this._weightHoldStartTime = null;
     this._weightHoldRepeats = 0;
+    this._workingTargetHoldTimer = null; // Interval handle for working reps hold
     this._audioContext = null; // Shared Web Audio context for UI cues
     this._audioUnlockEvents = ["pointerdown", "touchstart", "keydown", "mousedown"];
     this._boundAudioUnlock = null;
@@ -97,6 +98,9 @@ class VitruvianApp {
 
     this._warmupCounterEl = null;
     this._workingCounterEl = null;
+    this._workingCounterDecreaseBtn = null;
+    this._workingCounterIncreaseBtn = null;
+    this._workingCounterControlsBound = false;
     this._planIndicatorEls = null;
     this._planSummaryData = null;
     this._lastPlanSummary = null;
@@ -119,6 +123,9 @@ class VitruvianApp {
       this.updatePlanElapsedDisplay();
       this._warmupCounterEl = document.getElementById("warmupCounter");
       this._workingCounterEl = document.getElementById("workingCounter");
+      this._workingCounterDecreaseBtn = document.getElementById("workingCounterDecrease");
+      this._workingCounterIncreaseBtn = document.getElementById("workingCounterIncrease");
+      this.setupWorkingCounterControls();
       this._planIndicatorEls = {
         container: document.getElementById("planSetIndicator"),
         name: document.getElementById("planSetIndicatorName"),
@@ -409,6 +416,175 @@ class VitruvianApp {
     });
 
     this.updateLiveWeightDisplay();
+  }
+
+  setupWorkingCounterControls() {
+    if (this._workingCounterControlsBound) {
+      this.updateWorkingCounterControlsState();
+      return;
+    }
+
+    const decreaseBtn =
+      this._workingCounterDecreaseBtn ||
+      document.getElementById("workingCounterDecrease");
+    const increaseBtn =
+      this._workingCounterIncreaseBtn ||
+      document.getElementById("workingCounterIncrease");
+
+    this._workingCounterDecreaseBtn = decreaseBtn || null;
+    this._workingCounterIncreaseBtn = increaseBtn || null;
+
+    const bindHold = (button, direction) => {
+      if (!button) {
+        return;
+      }
+
+      const start = (event) => {
+        if (event && event.button !== undefined && event.button !== 0) {
+          return;
+        }
+        if (event) {
+          event.preventDefault();
+          if (
+            typeof event.pointerId === "number" &&
+            typeof button.setPointerCapture === "function"
+          ) {
+            try {
+              button.setPointerCapture(event.pointerId);
+            } catch (error) {
+              /* no-op */
+            }
+          }
+        }
+        this.startWorkingTargetHold(direction);
+      };
+
+      const stop = (event) => {
+        if (
+          event &&
+          typeof event.pointerId === "number" &&
+          typeof button.releasePointerCapture === "function"
+        ) {
+          try {
+            button.releasePointerCapture(event.pointerId);
+          } catch (error) {
+            /* no-op */
+          }
+        }
+        this.stopWorkingTargetHold();
+      };
+
+      button.addEventListener("pointerdown", start);
+      button.addEventListener("pointerup", stop);
+      button.addEventListener("pointerleave", stop);
+      button.addEventListener("pointercancel", stop);
+      button.addEventListener("lostpointercapture", stop);
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          this.adjustWorkingTarget(direction, { repeat: false });
+        }
+      });
+    };
+
+    bindHold(decreaseBtn, -1);
+    bindHold(increaseBtn, 1);
+
+    window.addEventListener("pointerup", () => {
+      this.stopWorkingTargetHold();
+    });
+
+    this._workingCounterControlsBound = true;
+    this.updateWorkingCounterControlsState();
+  }
+
+  startWorkingTargetHold(direction) {
+    if (!this.currentWorkout) {
+      return;
+    }
+
+    this.stopWorkingTargetHold();
+
+    this.adjustWorkingTarget(direction, { repeat: false });
+
+    const run = () => {
+      this._workingTargetHoldTimer = window.setTimeout(() => {
+        this.adjustWorkingTarget(direction, { repeat: true });
+        run();
+      }, 200);
+    };
+
+    this._workingTargetHoldTimer = window.setTimeout(run, 400);
+  }
+
+  stopWorkingTargetHold() {
+    if (this._workingTargetHoldTimer !== null) {
+      window.clearTimeout(this._workingTargetHoldTimer);
+      this._workingTargetHoldTimer = null;
+    }
+  }
+
+  adjustWorkingTarget(direction, options = {}) {
+    if (!this.currentWorkout) {
+      return null;
+    }
+
+    const step = Number(direction) > 0 ? 1 : -1;
+    if (step === 0) {
+      return null;
+    }
+
+    let nextTarget = Number.isFinite(this.targetReps) ? this.targetReps + step : step;
+    const maxTarget = 100;
+    const minimumTarget = this.isJustLiftMode ? 0 : 1;
+    const lowerBound = Math.max(minimumTarget, this.workingReps);
+
+    if (nextTarget > maxTarget) {
+      nextTarget = maxTarget;
+    }
+    if (nextTarget < lowerBound) {
+      nextTarget = lowerBound;
+    }
+
+    if (nextTarget === this.targetReps) {
+      return null;
+    }
+
+    this.targetReps = nextTarget;
+    if (this.currentWorkout && typeof this.currentWorkout === "object") {
+      this.currentWorkout.targetReps = nextTarget;
+    }
+
+    this.updateRepCounters();
+
+    if (!options.repeat) {
+      this.addLogEntry(
+        `Adjusted target working reps to ${this.targetReps}`,
+        "info",
+      );
+    }
+
+    return this.targetReps;
+  }
+
+  updateWorkingCounterControlsState() {
+    const disabled = !this.currentWorkout;
+    if (this._workingCounterDecreaseBtn) {
+      this._workingCounterDecreaseBtn.disabled = disabled;
+    }
+    if (this._workingCounterIncreaseBtn) {
+      this._workingCounterIncreaseBtn.disabled = disabled;
+    }
+  }
+
+  ensureWorkoutStartTime() {
+    if (
+      this.currentWorkout &&
+      !this.currentWorkout.startTime
+    ) {
+      this.currentWorkout.startTime = new Date();
+      this.addLogEntry("Workout timer started at first warmup rep", "info");
+    }
   }
 
   startLiveWeightHold(direction) {
@@ -2430,6 +2606,7 @@ class VitruvianApp {
     this.warmupReps = 0;
     this.workingReps = 0;
     this.currentWorkout = null;
+    this.stopWorkingTargetHold();
     this.updateLiveWeightDisplay();
     this.updatePersonalBestDisplay();
     this.topPositionsA = [];
@@ -2450,6 +2627,7 @@ class VitruvianApp {
     this.updateRepCounters();
     this.updateCurrentSetLabel();
     this.updatePlanSetIndicator();
+    this.updateWorkingCounterControlsState();
 
     // Hide auto-stop timer
     const autoStopTimer = document.getElementById("autoStopTimer");
@@ -3148,10 +3326,13 @@ class VitruvianApp {
       this.currentWorkout.endTime = endTime;
 
       // Extract movement data for this workout from chart history
-      const movementData = this.extractWorkoutMovementData(
-        this.currentWorkout.startTime,
-        endTime,
-      );
+      const movementData =
+        this.currentWorkout.startTime instanceof Date
+          ? this.extractWorkoutMovementData(
+              this.currentWorkout.startTime,
+              endTime,
+            )
+          : [];
 
       const workout = {
         mode: this.currentWorkout.mode,
@@ -3267,7 +3448,12 @@ class VitruvianApp {
 
   // Extract movement data for a specific time range from chart history
   extractWorkoutMovementData(startTime, endTime) {
-    if (!this.chartManager || !this.chartManager.loadHistory) {
+    if (
+      !this.chartManager ||
+      !this.chartManager.loadHistory ||
+      !(startTime instanceof Date) ||
+      !(endTime instanceof Date)
+    ) {
       return [];
     }
 
@@ -3998,6 +4184,7 @@ class VitruvianApp {
       }
 
       if (topDelta > 0) {
+        this.ensureWorkoutStartTime();
         // Reached top of range!
         this.addLogEntry(
           `TOP detected! Counter: ${this.lastTopCounter} -> ${topCounter}, pos=[${this.currentSample.posA}, ${this.currentSample.posB}]`,
@@ -4045,6 +4232,7 @@ class VitruvianApp {
     }
 
     if (delta > 0) {
+      this.ensureWorkoutStartTime();
       // Rep completed! Record bottom position
       this.addLogEntry(
         `BOTTOM detected! Counter: ${this.lastRepCounter} -> ${completeCounter}, pos=[${this.currentSample.posA}, ${this.currentSample.posB}]`,
@@ -4260,7 +4448,7 @@ class VitruvianApp {
         originalWeightKg: perCableKg,
         adjustedWeightKg: perCableKg,
         targetReps: reps,
-        startTime: new Date(),
+        startTime: null,
         warmupEndTime: null,
         endTime: null,
         setName: planItem?.name || null,
@@ -4269,6 +4457,7 @@ class VitruvianApp {
         setTotal: planItem?.sets ?? null,
         itemType: planItem?.type || "exercise",
       };
+      this.updateWorkingCounterControlsState();
       this.initializeCurrentWorkoutPersonalBest();
       this.updateRepCounters();
       this.updateLiveWeightDisplay();
@@ -4369,7 +4558,7 @@ class VitruvianApp {
         originalWeightKg: 0,
         adjustedWeightKg: 0,
         targetReps: targetReps,
-        startTime: new Date(),
+        startTime: null,
         warmupEndTime: null,
         endTime: null,
         setName: planItem?.name || null,
@@ -4378,6 +4567,7 @@ class VitruvianApp {
         setTotal: planItem?.sets ?? null,
         itemType: planItem?.type || "echo",
       };
+      this.updateWorkingCounterControlsState();
       this.initializeCurrentWorkoutPersonalBest();
       this.updateRepCounters();
       this.updateLiveWeightDisplay();

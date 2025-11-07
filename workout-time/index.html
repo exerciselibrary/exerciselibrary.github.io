@@ -262,6 +262,68 @@
                 color: var(--text-primary);
             }
 
+            .stat-card__value--with-controls {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+            }
+
+            .working-counter-display {
+                min-width: 3.5ch;
+                text-align: center;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .working-counter-button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 36px;
+                height: 36px;
+                border-radius: 999px;
+                border: 1px solid rgba(0, 0, 0, 0.15);
+                background: rgba(255, 255, 255, 0.8);
+                color: var(--working-value-color);
+                font-size: 1.4rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+            }
+
+            .working-counter-button:hover:not(:disabled),
+            .working-counter-button:focus-visible:not(:disabled) {
+                background: rgba(255, 255, 255, 1);
+                border-color: var(--working-label-color);
+                color: var(--working-label-color);
+                outline: none;
+            }
+
+            .working-counter-button:active:not(:disabled) {
+                background: rgba(255, 255, 255, 0.9);
+                transform: scale(0.96);
+            }
+
+            .working-counter-button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            body.dark-theme .working-counter-button {
+                background: rgba(15, 23, 42, 0.6);
+                border-color: rgba(143, 162, 255, 0.3);
+                color: var(--working-value-color);
+            }
+
+            body.dark-theme .working-counter-button:hover:not(:disabled),
+            body.dark-theme .working-counter-button:focus-visible:not(:disabled) {
+                background: rgba(15, 23, 42, 0.9);
+                border-color: var(--accent-color);
+                color: var(--accent-contrast);
+            }
+
             body.dark-theme .stat-card:not(.stat-card--warmup):not(.stat-card--working) {
                 background: #0f172a;
                 border-left-color: var(--accent-color);
@@ -2390,7 +2452,28 @@
                             </div>
                             <div class="stat-card stat-card--working">
                                 <div class="stat-card__label">Working Reps</div>
-                                <div class="stat-card__value" id="workingCounter">-/-</div>
+                                <div class="stat-card__value stat-card__value--with-controls">
+                                    <button
+                                        type="button"
+                                        class="working-counter-button working-counter-button--decrease"
+                                        id="workingCounterDecrease"
+                                        aria-label="Decrease target repetitions"
+                                    >
+                                        <span aria-hidden="true">&minus;</span>
+                                    </button>
+                                    <span
+                                        class="working-counter-display"
+                                        id="workingCounter"
+                                    >-/-</span>
+                                    <button
+                                        type="button"
+                                        class="working-counter-button working-counter-button--increase"
+                                        id="workingCounterIncrease"
+                                        aria-label="Increase target repetitions"
+                                    >
+                                        <span aria-hidden="true">+</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
