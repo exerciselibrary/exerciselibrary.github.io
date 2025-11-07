@@ -2541,13 +2541,12 @@
                     </div>
 
                     <!-- Program Mode Section -->
+                    <!--
                     <div class="section hidden" id="programSection">
                         <h2>Program Mode</h2>
 
                         <div class="form-group">
-                            <label for="mode" id="modeLabel"
-                                >Workout Mode:</label
-                            >
+                            <label for="mode" id="modeLabel">Workout Mode:</label>
                             <select id="mode">
                                 <option value="0">Old School</option>
                                 <option value="1">Pump</option>
@@ -2558,69 +2557,29 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="weight" id="weightLabel"
-                                >Weight per cable (kg):</label
-                            >
-                            <input
-                                type="number"
-                                id="weight"
-                                value="10"
-                                min="0"
-                                max="100"
-                                step="0.1"
-                            />
+                            <label for="weight" id="weightLabel">Weight per cable (kg):</label>
+                            <input type="number" id="weight" value="10" min="0" max="100" step="0.1" />
                         </div>
 
                         <div class="form-group">
-                            <label for="progression" id="progressionLabel"
-                                >Progression/Regression (kg per rep):</label
-                            >
-                            <input
-                                type="number"
-                                id="progression"
-                                value="0"
-                                min="-3"
-                                max="3"
-                                step="0.1"
-                            />
-                            <div
-                                id="progressionHint"
-                                style="
-                                    font-size: 0.75em;
-                                    color: var(--text-muted);
-                                    margin-top: 5px;
-                                "
-                            >
+                            <label for="progression" id="progressionLabel">Progression/Regression (kg per rep):</label>
+                            <input type="number" id="progression" value="0" min="-3" max="3" step="0.1" />
+                            <div id="progressionHint" style="font-size: 0.75em; color: var(--text-muted); margin-top: 5px;">
                                 +3 to -3 kg
                             </div>
                         </div>
 
                         <div
                             class="form-group"
-                            style="
-                                display: grid;
-                                grid-template-columns: 1fr 1fr;
-                                gap: 20px;
-                            "
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;"
                         >
                             <div>
                                 <label for="reps">Number of reps:</label>
-                                <input
-                                    type="number"
-                                    id="reps"
-                                    value="10"
-                                    min="1"
-                                    max="100"
-                                />
+                                <input type="number" id="reps" value="10" min="1" max="100" />
                             </div>
                             <div style="align-self: center">
                                 <label
-                                    style="
-                                        display: flex;
-                                        align-items: center;
-                                        gap: 8px;
-                                        margin-bottom: 5px;
-                                    "
+                                    style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;"
                                 >
                                     <input
                                         type="checkbox"
@@ -2630,16 +2589,8 @@
                                     />
                                     <span>Just Lift Mode</span>
                                 </label>
-                                <div
-                                    style="
-                                        font-size: 0.75em;
-                                        color: var(--text-muted);
-                                        margin-top: 0;
-                                        line-height: 1.3;
-                                    "
-                                >
-                                    Unlimited reps with auto-stop after 5s at
-                                    rest
+                                <div style="font-size: 0.75em; color: var(--text-muted); margin-top: 0; line-height: 1.3;">
+                                    Unlimited reps with auto-stop after 5s at rest
                                 </div>
                             </div>
                         </div>
@@ -2648,8 +2599,10 @@
                             Start Program
                         </button>
                     </div>
+                    -->
 
                     <!-- Echo Mode Section -->
+                    <!--
                     <div class="section hidden" id="echoSection">
                         <h2>Echo Mode</h2>
 
@@ -2665,51 +2618,21 @@
 
                         <div class="form-group">
                             <label for="eccentric">Eccentric Percentage:</label>
-                            <input
-                                type="number"
-                                id="eccentric"
-                                value="100"
-                                min="0"
-                                max="150"
-                                step="5"
-                            />
-                            <div
-                                style="
-                                    font-size: 0.75em;
-                                    color: var(--text-muted);
-                                    margin-top: 5px;
-                                "
-                            >
-                                Maximum: 150%
-                            </div>
+                            <input type="number" id="eccentric" value="100" min="0" max="150" step="5" />
+                            <div style="font-size: 0.75em; color: var(--text-muted); margin-top: 5px;">Maximum: 150%</div>
                         </div>
 
                         <div
                             class="form-group"
-                            style="
-                                display: grid;
-                                grid-template-columns: 1fr 1fr;
-                                gap: 20px;
-                            "
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;"
                         >
                             <div>
                                 <label for="targetReps">Number of Reps:</label>
-                                <input
-                                    type="number"
-                                    id="targetReps"
-                                    value="2"
-                                    min="0"
-                                    max="30"
-                                />
+                                <input type="number" id="targetReps" value="2" min="0" max="30" />
                             </div>
                             <div style="align-self: center">
                                 <label
-                                    style="
-                                        display: flex;
-                                        align-items: center;
-                                        gap: 8px;
-                                        margin-bottom: 5px;
-                                    "
+                                    style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;"
                                 >
                                     <input
                                         type="checkbox"
@@ -2719,22 +2642,15 @@
                                     />
                                     <span>Just Lift Mode</span>
                                 </label>
-                                <div
-                                    style="
-                                        font-size: 0.75em;
-                                        color: var(--text-muted);
-                                        margin-top: 0;
-                                        line-height: 1.3;
-                                    "
-                                >
-                                    Unlimited reps with auto-stop after 5s at
-                                    rest
+                                <div style="font-size: 0.75em; color: var(--text-muted); margin-top: 0; line-height: 1.3;">
+                                    Unlimited reps with auto-stop after 5s at rest
                                 </div>
                             </div>
                         </div>
 
                         <button onclick="app.startEcho()">Start Echo</button>
                     </div>
+                    -->
 
 
 <!-- Workout Plan Section -->
