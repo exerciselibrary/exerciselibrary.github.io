@@ -55,6 +55,7 @@ class VitruvianApp {
     this.targetReps = 0; // Target working reps
     this.workoutHistory = []; // Track completed workouts
     this.currentWorkout = null; // Current workout info
+    this.currentProgramParams = null; // Last program parameters sent to the device
     this.topPositionsA = []; // Rolling window of top positions for cable A
     this.bottomPositionsA = []; // Rolling window of bottom positions for cable A
     this.topPositionsB = []; // Rolling window of top positions for cable B
@@ -97,6 +98,7 @@ class VitruvianApp {
     this.planPauseActivityStart = null;
     this.planPauseLastSample = null;
     this._restState = null;
+    this._lastTargetSyncError = null;
 
     this._hasPerformedInitialSync = false; // track if we've auto-synced once per session
     this._autoSyncInFlight = false;
@@ -586,6 +588,8 @@ class VitruvianApp {
 
     this.updateRepCounters();
 
+    this.syncProgramTargetReps(nextTarget, options);
+
     if (!options.repeat) {
       this.addLogEntry(
         `Adjusted target working reps to ${this.targetReps}`,
@@ -594,6 +598,37 @@ class VitruvianApp {
     }
 
     return this.targetReps;
+  }
+
+  async syncProgramTargetReps(nextTarget, options = {}) {
+    const silent = !!options.repeat;
+
+    if (
+      !this.device ||
+      !this.device.isConnected ||
+      !this.currentWorkout ||
+      !this.currentProgramParams ||
+      this.isJustLiftMode
+    ) {
+      return;
+    }
+
+    if (!Number.isFinite(nextTarget) || nextTarget <= 0) {
+      return;
+    }
+
+    try {
+      const updatedParams = { ...this.currentProgramParams, reps: nextTarget };
+      await this.device.updateProgramTargetReps(updatedParams, { silent });
+      this.currentProgramParams = updatedParams;
+      this._lastTargetSyncError = null;
+    } catch (error) {
+      const message = `Failed to sync target reps to device: ${error.message}`;
+      if (!silent || this._lastTargetSyncError !== message) {
+        this.addLogEntry(message, "error");
+        this._lastTargetSyncError = message;
+      }
+    }
   }
 
   updateWorkingCounterControlsState() {
@@ -3758,6 +3793,8 @@ class VitruvianApp {
       }
 
       this.resetRepCountersToEmpty();
+      this.currentProgramParams = null;
+      this._lastTargetSyncError = null;
     }
 
     const summaryMessages = {
@@ -4706,6 +4743,8 @@ class VitruvianApp {
 
     try {
       await this.device.sendStopCommand();
+      this.currentProgramParams = null;
+      this._lastTargetSyncError = null;
 
       let stopMessage = "Workout stopped by user";
       if (reason === "auto-stop") {
@@ -4838,6 +4877,9 @@ class VitruvianApp {
 
       // Show auto-stop timer if Just Lift mode (suppressed for Echo workouts)
       this.updateAutoStopTimerVisibility(isJustLift);
+
+      this.currentProgramParams = { ...params };
+      this._lastTargetSyncError = null;
 
       await this.device.startProgram(params);
 
