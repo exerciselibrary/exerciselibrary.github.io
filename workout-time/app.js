@@ -24,6 +24,8 @@ const sharedConvertUnitToKg =
     ? sharedWeights.convertUnitToKg
     : fallbackConvertUnitToKg;
 const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
+const MIN_ACTIVE_CABLE_RANGE = 35; // minimum delta between red/green markers to treat a cable as engaged for load tracking
+const AUTO_STOP_RANGE_THRESHOLD = 50; // slightly higher buffer for safety before auto-stop logic activates
 
 class VitruvianApp {
   constructor() {
@@ -824,6 +826,8 @@ class VitruvianApp {
       return;
     }
 
+    const normalizedSample = this.normalizeSampleForDisplay(sample);
+
     const isEchoWorkout =
       this.currentWorkout &&
       (this.currentWorkout.itemType === "echo" ||
@@ -831,8 +835,8 @@ class VitruvianApp {
           this.currentWorkout.mode.toLowerCase().includes("echo")));
 
     if (isEchoWorkout) {
-      const loadA = Number(sample?.loadA);
-      const loadB = Number(sample?.loadB);
+      const loadA = Number(normalizedSample?.loadA);
+      const loadB = Number(normalizedSample?.loadB);
       const hasLoadSample = Number.isFinite(loadA) || Number.isFinite(loadB);
       const totalKg =
         (Number.isFinite(loadA) ? loadA : 0) +
@@ -2317,10 +2321,7 @@ class VitruvianApp {
     const decimals = this.getLoadDisplayDecimals();
     const unitLabel = this.getUnitLabel();
 
-    const safeSample = sample || {
-      loadA: 0,
-      loadB: 0,
-    };
+    const safeSample = this.normalizeSampleForDisplay(sample);
 
     const formatLoad = (kg) => {
       if (kg === null || kg === undefined || isNaN(kg)) {
@@ -2583,8 +2584,9 @@ class VitruvianApp {
     // Store current sample for auto-stop checking
     this.currentSample = sample;
 
-    const loadA = Number(sample?.loadA) || 0;
-    const loadB = Number(sample?.loadB) || 0;
+    const displaySample = this.normalizeSampleForDisplay(sample);
+    const loadA = Number(displaySample.loadA) || 0;
+    const loadB = Number(displaySample.loadB) || 0;
     const peakLoadKg = Math.max(loadA, loadB);
 
     if (
@@ -2617,8 +2619,8 @@ class VitruvianApp {
     }
 
     // Update numeric displays
-    this.renderLoadDisplays(sample);
-    this.updateLiveWeightDisplay(sample);
+    this.renderLoadDisplays(displaySample);
+    this.updateLiveWeightDisplay(displaySample);
 
     // Update position values
     document.getElementById("posAValue").textContent = sample.posA;
@@ -2648,9 +2650,9 @@ class VitruvianApp {
     }
 
     // Add data to chart
-    this.chartManager.addData(sample);
+    this.chartManager.addData(displaySample);
 
-    this.trackPlanPauseMovement(sample);
+    this.trackPlanPauseMovement(displaySample);
   }
 
   mixHexColors(colorA, colorB, ratio) {
@@ -3035,6 +3037,63 @@ class VitruvianApp {
     }
   }
 
+  getCableRange(cable) {
+    const min =
+      cable === "A" ? this.minRepPosA : this.minRepPosB;
+    const max =
+      cable === "A" ? this.maxRepPosA : this.maxRepPosB;
+
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return null;
+    }
+
+    return Math.abs(max - min);
+  }
+
+  isCableActiveForLoad(cable) {
+    const range = this.getCableRange(cable);
+    if (range === null) {
+      return null;
+    }
+    return range >= MIN_ACTIVE_CABLE_RANGE;
+  }
+
+  getCableLoadForSample(sample, cable) {
+    if (!sample) {
+      return 0;
+    }
+    const key = cable === "A" ? "loadA" : "loadB";
+    const raw = Number(sample?.[key]);
+    if (!Number.isFinite(raw)) {
+      return 0;
+    }
+
+    const active = this.isCableActiveForLoad(cable);
+    if (active === false) {
+      return 0;
+    }
+
+    return raw;
+  }
+
+  normalizeSampleForDisplay(sample = this.currentSample) {
+    if (!sample) {
+      return {
+        timestamp: new Date(),
+        loadA: 0,
+        loadB: 0,
+        posA: 0,
+        posB: 0,
+      };
+    }
+
+    return {
+      ...sample,
+      loadA: this.getCableLoadForSample(sample, "A"),
+      loadB: this.getCableLoadForSample(sample, "B"),
+    };
+  }
+
   resetRepCountersToEmpty() {
     this.warmupReps = 0;
     this.workingReps = 0;
@@ -3132,8 +3191,63 @@ class VitruvianApp {
       })
       .filter(Boolean);
 
+    this.applyCableActivationToMovementData(workout.movementData);
+
     this.calculateTotalLoadPeakKg(workout);
     return workout;
+  }
+
+  applyCableActivationToMovementData(points) {
+    if (!Array.isArray(points) || points.length === 0) {
+      return points || [];
+    }
+
+    const computeRange = (key) => {
+      let min = Infinity;
+      let max = -Infinity;
+
+      for (const point of points) {
+        if (!point) {
+          continue;
+        }
+        const value = Number(point[key]);
+        if (!Number.isFinite(value)) {
+          continue;
+        }
+        if (value < min) {
+          min = value;
+        }
+        if (value > max) {
+          max = value;
+        }
+      }
+
+      if (min === Infinity || max === -Infinity) {
+        return null;
+      }
+      return max - min;
+    };
+
+    const rangeA = computeRange("posA");
+    const rangeB = computeRange("posB");
+
+    if (rangeA !== null && rangeA < MIN_ACTIVE_CABLE_RANGE) {
+      points.forEach((point) => {
+        if (point) {
+          point.loadA = 0;
+        }
+      });
+    }
+
+    if (rangeB !== null && rangeB < MIN_ACTIVE_CABLE_RANGE) {
+      points.forEach((point) => {
+        if (point) {
+          point.loadB = 0;
+        }
+      });
+    }
+
+    return points;
   }
 
   calculateTotalLoadPeakKg(workout) {
@@ -4028,11 +4142,17 @@ class VitruvianApp {
       return;
     }
 
-    const rangeA = this.maxRepPosA - this.minRepPosA;
-    const rangeB = this.maxRepPosB - this.minRepPosB;
+    const rangeA =
+      Number.isFinite(this.maxRepPosA) && Number.isFinite(this.minRepPosA)
+        ? this.maxRepPosA - this.minRepPosA
+        : 0;
+    const rangeB =
+      Number.isFinite(this.maxRepPosB) && Number.isFinite(this.minRepPosB)
+        ? this.maxRepPosB - this.minRepPosB
+        : 0;
 
-    // Only check cables that have a meaningful range (> 50 units of movement)
-    const minRangeThreshold = 50;
+    // Only check cables that have a meaningful range
+    const minRangeThreshold = AUTO_STOP_RANGE_THRESHOLD;
     const checkCableA = rangeA > minRangeThreshold;
     const checkCableB = rangeB > minRangeThreshold;
 
