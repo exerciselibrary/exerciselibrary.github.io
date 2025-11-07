@@ -444,20 +444,316 @@
                 gap: 12px;
             }
 
-            .dropbox-status-box {
-                font-size: 0.8em;
-                color: var(--text-secondary);
-                margin-bottom: 15px;
-                padding: 8px;
-                background: var(--surface-subtle);
-                border-radius: 4px;
-            }
-
             .dropbox-status-note {
                 font-size: 0.8em;
                 color: var(--text-muted);
                 margin-top: 10px;
                 font-style: italic;
+            }
+
+            .connection-status-row {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin: 12px 0 0;
+                flex-wrap: wrap;
+            }
+
+            .connection-status-row .dbx-btn {
+                flex: 0 0 auto;
+            }
+
+            .connection-buttons {
+                display: flex;
+                flex-direction: column;
+                gap: 14px;
+                margin-top: 12px;
+            }
+
+            .connection-buttons > button {
+                width: auto;
+                flex: 1 1 auto;
+            }
+
+            @keyframes buttonPulse {
+                0% {
+                    box-shadow: 0 0 0 0 var(--pulse-color, rgba(102, 126, 234, 0.45));
+                }
+                70% {
+                    box-shadow: 0 0 0 16px rgba(102, 126, 234, 0);
+                }
+                100% {
+                    box-shadow: 0 0 0 0 rgba(102, 126, 234, 0);
+                }
+            }
+
+            .dbx-btn,
+            .device-btn {
+                --dbx-bg: color-mix(
+                    in oklab,
+                    var(--sidebar-bg),
+                    var(--sidebar-text) 5%
+                );
+                --dbx-fg: var(--sidebar-text);
+                --dbx-border: color-mix(
+                    in oklab,
+                    var(--sidebar-text),
+                    transparent 70%
+                );
+                --dbx-accent: var(--accent-color);
+                --dbx-ok: var(--success-color);
+                --dbx-muted: var(--text-muted);
+                --dbx-danger: var(--danger-color);
+                display: inline-flex;
+                align-items: center;
+                gap: 0.5rem;
+                border: 1px solid var(--dbx-border);
+                background: var(--dbx-bg);
+                color: var(--dbx-fg);
+                padding: 0.5rem 0.65rem;
+                border-radius: 999px;
+                font: 600 0.9rem/1 -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    Roboto, sans-serif;
+                cursor: pointer;
+                position: relative;
+                user-select: none;
+                flex: 1 1 260px;
+                transition:
+                    border-color 0.2s ease,
+                    background 0.2s ease,
+                    filter 0.2s ease;
+            }
+
+            body.dark-theme .dbx-btn,
+            body.dark-theme .device-btn {
+                --dbx-bg: color-mix(
+                    in oklab,
+                    var(--sidebar-bg),
+                    transparent 15%
+                );
+                --dbx-border: color-mix(
+                    in oklab,
+                    var(--text-primary),
+                    transparent 65%
+                );
+            }
+
+            .dbx-btn:hover,
+            .device-btn:hover {
+                filter: brightness(1.05);
+            }
+
+            .dbx-btn:focus-visible,
+            .device-btn:focus-visible {
+                outline: 2px solid var(--dbx-accent);
+                outline-offset: 2px;
+            }
+
+            .dbx-btn.dbx-state-connected,
+            .device-btn.device-state-connected {
+                border-color: color-mix(
+                    in oklab,
+                    var(--dbx-ok),
+                    transparent 50%
+                );
+            }
+
+            .dbx-icon,
+            .device-icon {
+                width: 18px;
+                height: 18px;
+                display: grid;
+            }
+
+            .dbx-icon > svg,
+            .device-icon > svg {
+                grid-area: 1 / 1;
+                display: none;
+            }
+
+            .dbx-text,
+            .device-text {
+                display: inline-grid;
+            }
+
+            .dbx-text > span,
+            .device-text > span {
+                grid-area: 1 / 1;
+                display: none;
+            }
+
+            .dbx-subtext,
+            .device-subtext {
+                display: block;
+                width: 100%;
+                font-size: 0.7rem;
+                color: var(--dbx-muted);
+                margin-top: 2px;
+                white-space: nowrap;
+            }
+
+            .dbx-subtext:empty,
+            .device-subtext:empty {
+                display: none;
+            }
+
+            .dbx-btn.dbx-state-connected .dbx-subtext {
+                color: color-mix(
+                    in oklab,
+                    var(--dbx-ok),
+                    var(--dbx-muted)
+                );
+            }
+
+            .device-btn.device-state-connected .device-subtext {
+                color: color-mix(
+                    in oklab,
+                    var(--dbx-ok),
+                    var(--dbx-muted)
+                );
+            }
+
+            .device-btn--pulse {
+                --pulse-color: color-mix(
+                    in oklab,
+                    var(--accent-color),
+                    transparent 30%
+                );
+                animation: buttonPulse 1.6s ease-in-out infinite;
+            }
+
+            .button-pulse:not(:disabled) {
+                --pulse-color: color-mix(
+                    in oklab,
+                    var(--accent-color),
+                    transparent 40%
+                );
+                animation: buttonPulse 1.8s ease-in-out infinite;
+            }
+
+            .button-pulse:disabled {
+                animation: none;
+            }
+
+            .dbx-sync {
+                display: none;
+                margin-left: 0.15rem;
+                padding: 0.28rem 0.55rem;
+                border-radius: 999px;
+                background: color-mix(
+                    in oklab,
+                    var(--sidebar-bg),
+                    var(--sidebar-text) 4%
+                );
+                border: 1px solid color-mix(
+                    in oklab,
+                    var(--sidebar-text),
+                    transparent 70%
+                );
+                color: var(--dbx-fg);
+                gap: 0.35rem;
+                align-items: center;
+                font-size: 0.8rem;
+                position: relative;
+                isolation: isolate;
+            }
+
+            .dbx-sync,
+            .dbx-sync * {
+                pointer-events: none;
+            }
+
+            .dbx-sync svg {
+                width: 16px;
+                height: 16px;
+            }
+
+            .device-btn-hold-arming {
+                border-color: var(--danger-color);
+                color: var(--danger-color);
+            }
+
+            .device-btn-hold-fired {
+                background: var(--danger-color);
+                color: #ffffff;
+                border-color: var(--danger-color);
+            }
+
+            .dbx-btn.dbx-sync-hold-arming .dbx-sync {
+                border-color: var(--dbx-danger);
+                color: var(--dbx-danger);
+            }
+
+            .dbx-btn.dbx-sync-hold-fired .dbx-sync {
+                background: var(--dbx-danger);
+                border-color: var(--dbx-danger);
+                color: #ffffff;
+            }
+
+            .dbx-btn.dbx-sync-busy .dbx-sync::after {
+                content: "";
+                position: absolute;
+                inset: -6px;
+                border-radius: 999px;
+                border: 2px solid color-mix(
+                    in oklab,
+                    var(--accent-color),
+                    transparent 15%
+                );
+                opacity: 0;
+                z-index: -1;
+                animation: dbx-sync-halo 1.4s ease-out infinite;
+            }
+
+            @keyframes dbx-sync-halo {
+                0% {
+                    opacity: 0.5;
+                    transform: scale(0.95);
+                }
+                70% {
+                    opacity: 0;
+                    transform: scale(1.35);
+                }
+                100% {
+                    opacity: 0;
+                    transform: scale(1.45);
+                }
+            }
+
+            .dbx-state-disconnected .icon-disconnected,
+            .dbx-state-disconnected .label-disconnected,
+            .device-state-disconnected .icon-disconnected,
+            .device-state-disconnected .label-disconnected {
+                display: inline;
+            }
+
+            .dbx-state-connecting .icon-connecting,
+            .dbx-state-connecting .label-connecting,
+            .device-state-connecting .icon-connecting,
+            .device-state-connecting .label-connecting {
+                display: inline;
+            }
+
+            .dbx-state-connected .icon-connected,
+            .dbx-state-connected .label-connected,
+            .device-state-connected .icon-connected,
+            .device-state-connected .label-connected {
+                display: inline;
+            }
+
+            .dbx-state-connected .dbx-sync {
+                display: inline-flex;
+                pointer-events: auto;
+            }
+
+            .dbx-state-connected .dbx-sync * {
+                pointer-events: auto;
+            }
+
+            @media (max-width: 480px) {
+                .dbx-sync-text {
+                    display: none;
+                }
             }
 
             .muted-note {
@@ -1388,6 +1684,24 @@
                 color: var(--status-connected-text);
             }
 
+            .status.connecting {
+                background: color-mix(
+                    in oklab,
+                    var(--accent-color),
+                    transparent 30%
+                );
+                color: var(--accent-color);
+            }
+
+            .status.disconnecting {
+                background: color-mix(
+                    in oklab,
+                    var(--danger-color),
+                    transparent 30%
+                );
+                color: var(--danger-color);
+            }
+
             /* Position bars */
             .position-bars {
                 position: relative;
@@ -2024,21 +2338,204 @@
                 <div class="sidebar-content">
                     <!-- Connection Section -->
                     <div class="section">
-                        <h2>Connection</h2>
-                        <div class="status disconnected" id="status">
-                            Disconnected
-                        </div>
-                        <div>
-                            <button id="connectBtn" onclick="app.connect()">
-                                Connect to Device
-                            </button>
+                        <h2>Connections</h2>
+                        <div class="connection-status-row">
                             <button
-                                id="disconnectBtn"
-                                class="secondary"
-                                onclick="app.disconnect()"
-                                disabled
+                                id="dropboxStatusButton"
+                                class="dbx-btn dbx-state-disconnected button-pulse"
+                                type="button"
+                                aria-live="polite"
+                                aria-pressed="false"
+                                aria-label="Connect to Dropbox"
                             >
-                                Disconnect
+                                <span class="dbx-icon" aria-hidden="true">
+                                    <svg
+                                        class="icon-disconnected"
+                                        viewBox="0 0 24 24"
+                                        width="18"
+                                        height="18"
+                                    >
+                                        <circle cx="12" cy="12" r="9" fill="#9aa3af"></circle>
+                                        <path
+                                            d="M8 12h8"
+                                            stroke="#ffffff"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                        ></path>
+                                    </svg>
+                                    <svg
+                                        class="icon-connecting"
+                                        viewBox="0 0 24 24"
+                                        width="18"
+                                        height="18"
+                                    >
+                                        <circle
+                                            cx="12"
+                                            cy="12"
+                                            r="9"
+                                            fill="none"
+                                            stroke="#3b82f6"
+                                            stroke-width="3"
+                                            opacity="0.25"
+                                        ></circle>
+                                        <path
+                                            d="M21 12a9 9 0 0 0-9-9"
+                                            fill="none"
+                                            stroke="#3b82f6"
+                                            stroke-width="3"
+                                            stroke-linecap="round"
+                                        >
+                                            <animateTransform
+                                                attributeName="transform"
+                                                type="rotate"
+                                                from="0 12 12"
+                                                to="360 12 12"
+                                                dur="0.8s"
+                                                repeatCount="indefinite"
+                                            ></animateTransform>
+                                        </path>
+                                    </svg>
+                                    <svg
+                                        class="icon-connected"
+                                        viewBox="0 0 24 24"
+                                        width="18"
+                                        height="18"
+                                    >
+                                        <circle cx="12" cy="12" r="9" fill="#10b981"></circle>
+                                        <path
+                                            d="M8 12l2.5 2.5L16 9"
+                                            fill="none"
+                                            stroke="#ffffff"
+                                            stroke-width="2.2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        ></path>
+                                    </svg>
+                                </span>
+                                <span class="dbx-text">
+                                    <span class="label-disconnected">Connect Dropbox</span>
+                                    <span class="label-connecting">Connecting…</span>
+                                    <span class="label-connected">Dropbox Connected</span>
+                                </span>
+                                <span
+                                    class="dbx-subtext"
+                                    id="dropboxButtonLastBackup"
+                                    aria-live="polite"
+                                ></span>
+                                <span
+                                    id="dropboxPillSync"
+                                    class="dbx-sync"
+                                    role="button"
+                                    tabindex="-1"
+                                    aria-label="Sync from Dropbox, hold to disconnect"
+                                    title="Tap to sync, hold to disconnect"
+                                >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path
+                                            d="M17 7l3 3-3 3"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        ></path>
+                                        <path
+                                            d="M20 10H10a4 4 0 1 0 4 6"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                        ></path>
+                                    </svg>
+                                    <span class="dbx-sync-text">Sync</span>
+                                </span>
+                            </button>
+                        </div>
+                        <div class="connection-buttons">
+                            <button
+                                id="deviceStatusButton"
+                                class="device-btn device-state-disconnected device-btn--pulse"
+                                type="button"
+                                aria-live="polite"
+                                aria-pressed="false"
+                                aria-label="Connect to Vitruvian device"
+                            >
+                                <span class="device-icon" aria-hidden="true">
+                                    <svg
+                                        class="icon-disconnected"
+                                        viewBox="0 0 24 24"
+                                        width="18"
+                                        height="18"
+                                    >
+                                        <circle cx="12" cy="12" r="9" fill="#9aa3af"></circle>
+                                        <path
+                                            d="M8 12h8"
+                                            stroke="#ffffff"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                        ></path>
+                                    </svg>
+                                    <svg
+                                        class="icon-connecting"
+                                        viewBox="0 0 24 24"
+                                        width="18"
+                                        height="18"
+                                    >
+                                        <circle
+                                            cx="12"
+                                            cy="12"
+                                            r="9"
+                                            fill="none"
+                                            stroke="#7c3aed"
+                                            stroke-width="3"
+                                            opacity="0.25"
+                                        ></circle>
+                                        <path
+                                            d="M21 12a9 9 0 0 0-9-9"
+                                            fill="none"
+                                            stroke="#7c3aed"
+                                            stroke-width="3"
+                                            stroke-linecap="round"
+                                        >
+                                            <animateTransform
+                                                attributeName="transform"
+                                                type="rotate"
+                                                from="0 12 12"
+                                                to="360 12 12"
+                                                dur="0.8s"
+                                                repeatCount="indefinite"
+                                            ></animateTransform>
+                                        </path>
+                                    </svg>
+                                    <svg
+                                        class="icon-connected"
+                                        viewBox="0 0 24 24"
+                                        width="18"
+                                        height="18"
+                                    >
+                                        <circle cx="12" cy="12" r="9" fill="#10b981"></circle>
+                                        <path
+                                            d="M8 12l2.5 2.5L16 9"
+                                            fill="none"
+                                            stroke="#ffffff"
+                                            stroke-width="2.2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        ></path>
+                                    </svg>
+                                </span>
+                                <span class="device-text">
+                                    <span class="label-disconnected">Connect to Device</span>
+                                    <span class="label-connecting">Connecting…</span>
+                                    <span class="label-connected">Vitruvian Connected</span>
+                                </span>
+                                <span
+                                    class="device-subtext"
+                                    id="deviceButtonSubtext"
+                                    aria-live="polite"
+                                >
+                                    Tap to connect your Vitruvian.
+                                </span>
                             </button>
                         </div>
                     </div>
@@ -2245,7 +2742,7 @@
                         <h2>Workout Plan</h2>
 
                         <div class="plan-section-actions">
-                            <button id="startPlanBtn" onclick="app.startPlan()">Start Plan</button>
+                            <button id="startPlanBtn" class="button-pulse" onclick="app.startPlan()">Start Plan</button>
                             <span id="planRestInline" class="plan-rest-inline"></span>
                         </div>
 
@@ -2353,7 +2850,7 @@
                     <!-- Dropbox Cloud Backup Section -->
                     <div class="section" id="dropboxSection">
                         <h2>
-                            Cloud Backup
+                            Additional Cloud Options
                             <span id="dropboxStatusBadge" style="
                                 display: inline-block;
                                 padding: 3px 8px;
@@ -2377,10 +2874,6 @@
                                 Connect your personal Dropbox account to automatically back up your workout history. Your data is stored in <strong>your</strong> Dropbox, and we have zero access to it.
                             </div>
 
-                            <button onclick="app.connectDropbox()">
-                                Connect Dropbox
-                            </button>
-
                             <div
                                 style="
                                     font-size: 0.75em;
@@ -2389,7 +2882,7 @@
                                     line-height: 1.3;
                                 "
                             >
-                                🔒 Privacy-first: Backups are saved to YOUR Dropbox account. We never have access to your data.
+                                Use the Dropbox button in the Connection panel to link instantly. 🔒 Privacy-first: Backups are saved to YOUR Dropbox account. We never have access to your data.
                             </div>
                         </div>
 
@@ -2398,32 +2891,9 @@
                                 Connected to Dropbox
                             </div>
 
-                            <div
-                                style="
-                                    font-size: 0.85em;
-                                    color: var(--text-muted);
-                                    line-height: 1.4;
-                                    margin-bottom: 10px;
-                                "
-                            >
-                                Your workouts are automatically saved to <code>/Apps/VitruvianWorkouts/workouts/</code> in your Dropbox.
-                            </div>
-
-                            <div id="dropboxLastBackup" class="dropbox-status-box">
-                                <!-- Last backup time will appear here -->
-                            </div>
-
                             <div style="display: flex; flex-direction: column; gap: 10px;">
-                                <button onclick="app.syncFromDropbox()">
-                                    Sync from Dropbox
-                                </button>
-
                                 <button class="secondary" onclick="app.requestExportAllToDropboxCSV()">
                                     Export All as CSV to Dropbox
-                                </button>
-
-                                <button class="danger" onclick="app.disconnectDropbox()">
-                                    Disconnect Dropbox
                                 </button>
                             </div>
 

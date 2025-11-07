@@ -100,6 +100,13 @@ class VitruvianApp {
 
     this._hasPerformedInitialSync = false; // track if we've auto-synced once per session
     this._autoSyncInFlight = false;
+    this._dropboxConnectInFlight = false;
+    this._dropboxSyncHoldTimer = null;
+    this._dropboxSyncHoldTriggered = false;
+    this._dropboxSyncBusyCount = 0;
+    this._deviceConnectInFlight = false;
+    this._deviceHoldTimer = null;
+    this._deviceHoldTriggered = false;
 
     this._personalBestHighlight = false; // track highlight state
     this._confettiActive = false; // prevent overlapping confetti bursts
@@ -160,6 +167,7 @@ class VitruvianApp {
     this.setupThemeToggle();
     this.setupLiveWeightAdjuster();
     this.setupDropbox();
+    this.setupDeviceButton();
     this.setupMessageBridge();
     this.setupScrollButtons();
     this.setupPlanSummaryOverlay();
@@ -801,6 +809,41 @@ class VitruvianApp {
       this.updateDropboxUI(isConnected);
     };
 
+    const dropboxButton = document.getElementById("dropboxStatusButton");
+    if (dropboxButton) {
+      dropboxButton.addEventListener("click", (event) => {
+        const syncTarget = event.target.closest(".dbx-sync");
+        if (syncTarget) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (this._dropboxSyncHoldTriggered) {
+            this._dropboxSyncHoldTriggered = false;
+            return;
+          }
+          this.handleDropboxQuickSync();
+          return;
+        }
+
+        this.handleDropboxConnectButton();
+      });
+
+      const syncSegment = dropboxButton.querySelector(".dbx-sync");
+      if (syncSegment) {
+        syncSegment.addEventListener("pointerdown", (event) => {
+          if (typeof event.button === "number" && event.button !== 0) {
+            return;
+          }
+          this.startDropboxSyncHold();
+        });
+        ["pointerup", "pointerleave", "pointercancel"].forEach((eventName) => {
+          syncSegment.addEventListener(eventName, () => this.cancelDropboxSyncHold());
+        });
+      }
+    }
+
+    this.setDropboxButtonState(this.dropboxManager.isConnected ? "connected" : "disconnected");
+    this.updateDropboxUI(this.dropboxManager.isConnected);
+
     // Initialize Dropbox (check for existing token or OAuth callback)
       this.dropboxManager
       .init()
@@ -812,6 +855,47 @@ class VitruvianApp {
       .catch((error) => {
         this.addLogEntry(`Dropbox initialization error: ${error.message}`, "error");
       });
+  }
+
+  setupDeviceButton() {
+    const button = document.getElementById("deviceStatusButton");
+    if (!button) {
+      return;
+    }
+
+    button.addEventListener("click", () => {
+      if (this._deviceHoldTriggered) {
+        this._deviceHoldTriggered = false;
+        return;
+      }
+
+      if (this.device?.isConnected || this._deviceConnectInFlight) {
+        return;
+      }
+
+      this.connect();
+    });
+
+    button.addEventListener("pointerdown", (event) => {
+      if (typeof event.button === "number" && event.button !== 0) {
+        return;
+      }
+      if (!this.device?.isConnected) {
+        return;
+      }
+      this.startDeviceHold();
+    });
+
+    ["pointerup", "pointerleave", "pointercancel"].forEach((eventName) => {
+      button.addEventListener(eventName, () => this.cancelDeviceHold());
+    });
+
+    this.setDeviceButtonState(this.device?.isConnected ? "connected" : "disconnected");
+    this.setDeviceButtonSubtext(
+      this.device?.isConnected
+        ? "Hold to disconnect."
+        : "Tap to connect your Vitruvian.",
+    );
   }
 
   setupMessageBridge() {
@@ -1403,6 +1487,13 @@ class VitruvianApp {
     const connectedDiv = document.getElementById("dropboxConnected");
     const statusBadge = document.getElementById("dropboxStatusBadge");
 
+    this.setDropboxButtonState(isConnected ? "connected" : "disconnected");
+    if (isConnected) {
+      this._dropboxConnectInFlight = false;
+    } else {
+      this.cancelDropboxSyncHold();
+    }
+
     if (isConnected) {
       if (notConnectedDiv) notConnectedDiv.style.display = "none";
       if (connectedDiv) connectedDiv.style.display = "block";
@@ -1430,9 +1521,165 @@ class VitruvianApp {
         statusBadge.style.color = "#6c757d";
       }
 
+      this.setDropboxButtonLastBackupText("Tap to connect Dropbox.");
+      this._dropboxSyncBusyCount = 0;
+      this.setDropboxSyncBusy(false);
       this._autoSyncInFlight = false;
       this._hasPerformedInitialSync = false;
     }
+  }
+
+  setDropboxButtonState(state = "disconnected") {
+    const button = document.getElementById("dropboxStatusButton");
+    if (!button) return;
+
+    const states = ["dbx-state-disconnected", "dbx-state-connecting", "dbx-state-connected"];
+    button.classList.remove(...states);
+    const nextClass = `dbx-state-${state}`;
+    if (states.includes(nextClass)) {
+      button.classList.add(nextClass);
+    } else {
+      button.classList.add("dbx-state-disconnected");
+    }
+
+    const ariaLabelMap = {
+      connected: "Dropbox connected. Use sync to pull workouts.",
+      connecting: "Connecting to Dropbox",
+      disconnected: "Connect to Dropbox",
+    };
+
+    button.setAttribute("aria-pressed", state === "connected" ? "true" : "false");
+    button.setAttribute("aria-label", ariaLabelMap[state] || "Dropbox status");
+    button.dataset.state = state;
+
+    if (state === "connected") {
+      button.classList.remove("button-pulse");
+    } else if (state === "disconnected") {
+      button.classList.add("button-pulse");
+    } else {
+      button.classList.remove("button-pulse");
+    }
+  }
+
+  setDropboxButtonLastBackupText(text = "") {
+    const subtext = document.getElementById("dropboxButtonLastBackup");
+    if (!subtext) return;
+    subtext.textContent = text;
+  }
+
+  setDropboxSyncBusy(isBusy) {
+    const button = document.getElementById("dropboxStatusButton");
+    const syncButton = document.getElementById("dropboxPillSync");
+    if (!button || !syncButton) {
+      return;
+    }
+
+    const defaultTitle = "Tap to sync, hold to disconnect";
+
+    if (isBusy) {
+      button.classList.add("dbx-sync-busy");
+      syncButton.setAttribute("aria-busy", "true");
+      syncButton.setAttribute("title", "Syncing from Dropbox…");
+    } else {
+      button.classList.remove("dbx-sync-busy");
+      syncButton.removeAttribute("aria-busy");
+      syncButton.setAttribute("title", defaultTitle);
+    }
+  }
+
+  beginDropboxSyncBusy() {
+    this._dropboxSyncBusyCount = (this._dropboxSyncBusyCount || 0) + 1;
+    this.setDropboxSyncBusy(true);
+  }
+
+  endDropboxSyncBusy() {
+    this._dropboxSyncBusyCount = Math.max(
+      0,
+      (this._dropboxSyncBusyCount || 0) - 1,
+    );
+    if (this._dropboxSyncBusyCount === 0) {
+      this.setDropboxSyncBusy(false);
+    }
+  }
+
+  setDeviceButtonState(state = "disconnected") {
+    const button = document.getElementById("deviceStatusButton");
+    if (!button) return;
+
+    const states = [
+      "device-state-disconnected",
+      "device-state-connecting",
+      "device-state-connected",
+    ];
+    button.classList.remove(...states);
+    const nextState = `device-state-${state}`;
+    if (states.includes(nextState)) {
+      button.classList.add(nextState);
+    } else {
+      button.classList.add("device-state-disconnected");
+    }
+
+    button.setAttribute("data-state", state);
+    button.setAttribute("aria-pressed", state === "connected" ? "true" : "false");
+
+    if (state === "connected") {
+      button.classList.remove("device-btn--pulse");
+      button.setAttribute("aria-label", "Vitruvian connected. Hold to disconnect.");
+    } else if (state === "connecting") {
+      button.classList.remove("device-btn--pulse");
+      button.setAttribute("aria-label", "Connecting to Vitruvian…");
+    } else {
+      button.classList.add("device-btn--pulse");
+      button.setAttribute("aria-label", "Connect to Vitruvian device");
+    }
+  }
+
+  setDeviceButtonSubtext(text = "") {
+    const subtext = document.getElementById("deviceButtonSubtext");
+    if (!subtext) return;
+    subtext.textContent = text;
+  }
+
+  startDeviceHold() {
+    if (this._deviceHoldTimer || this._deviceConnectInFlight) {
+      return;
+    }
+    if (!this.device?.isConnected) {
+      return;
+    }
+
+    const button = document.getElementById("deviceStatusButton");
+    if (!button) {
+      return;
+    }
+
+    button.classList.add("device-btn-hold-arming");
+    this._deviceHoldTimer = window.setTimeout(() => {
+      this._deviceHoldTimer = null;
+      button.classList.remove("device-btn-hold-arming");
+      button.classList.add("device-btn-hold-fired");
+      this._deviceHoldTriggered = true;
+      this.setDeviceButtonSubtext("Disconnecting…");
+      this.disconnect();
+      setTimeout(() => {
+        button.classList.remove("device-btn-hold-fired");
+      }, 900);
+      setTimeout(() => {
+        this._deviceHoldTriggered = false;
+      }, 1500);
+    }, 1500);
+  }
+
+  cancelDeviceHold() {
+    const button = document.getElementById("deviceStatusButton");
+    if (this._deviceHoldTimer) {
+      clearTimeout(this._deviceHoldTimer);
+      this._deviceHoldTimer = null;
+    }
+    if (button) {
+      button.classList.remove("device-btn-hold-arming", "device-btn-hold-fired");
+    }
+    this._deviceHoldTriggered = false;
   }
 
   scheduleAutoDropboxSync(reason = "auto") {
@@ -1455,18 +1702,17 @@ class VitruvianApp {
   }
 
   updateLastBackupDisplay() {
-    const lastBackupDiv = document.getElementById("dropboxLastBackup");
-    if (!lastBackupDiv) return;
+    if (!this.dropboxManager?.isConnected) {
+      return;
+    }
 
     const lastBackup = localStorage.getItem("vitruvian.dropbox.lastBackup");
     if (lastBackup) {
       const date = new Date(lastBackup);
       const timeAgo = this.getTimeAgo(date);
-      lastBackupDiv.innerHTML = `📁 Last backup: <strong>${timeAgo}</strong>`;
-      lastBackupDiv.style.display = "block";
+      this.setDropboxButtonLastBackupText(`📁 Last backup: ${timeAgo}.`);
     } else {
-      lastBackupDiv.innerHTML = `📁 No backups yet. Complete a workout to create your first backup.`;
-      lastBackupDiv.style.display = "block";
+      this.setDropboxButtonLastBackupText("📁 No backups yet.");
     }
   }
 
@@ -1481,6 +1727,83 @@ class VitruvianApp {
     return date.toLocaleDateString();
   }
 
+  handleDropboxConnectButton() {
+    if (this.dropboxManager?.isConnected) {
+      this.addLogEntry("Dropbox is already connected.", "info");
+      return;
+    }
+
+    if (this._dropboxConnectInFlight) {
+      return;
+    }
+
+    this._dropboxConnectInFlight = true;
+    this.setDropboxButtonState("connecting");
+
+    Promise.resolve(this.connectDropbox())
+      .catch(() => {
+        // Errors handled in connectDropbox; this ensures state resets
+      })
+      .finally(() => {
+        if (!this.dropboxManager?.isConnected) {
+          this.setDropboxButtonState("disconnected");
+        }
+        this._dropboxConnectInFlight = false;
+      });
+  }
+
+  handleDropboxQuickSync() {
+    this.cancelDropboxSyncHold();
+    if (!this.dropboxManager?.isConnected) {
+      alert("Connect to Dropbox first to sync workouts.");
+      return;
+    }
+
+    this.syncFromDropbox();
+  }
+
+  startDropboxSyncHold() {
+    if (!this.dropboxManager?.isConnected) {
+      return;
+    }
+
+    const button = document.getElementById("dropboxStatusButton");
+    if (!button) {
+      return;
+    }
+
+    this.cancelDropboxSyncHold();
+    button.classList.add("dbx-sync-hold-arming");
+
+    this._dropboxSyncHoldTimer = window.setTimeout(() => {
+      this._dropboxSyncHoldTimer = null;
+      button.classList.remove("dbx-sync-hold-arming");
+      button.classList.add("dbx-sync-hold-fired");
+      this._dropboxSyncHoldTriggered = true;
+      this.disconnectDropbox({ silent: true });
+      setTimeout(() => {
+        button.classList.remove("dbx-sync-hold-fired");
+      }, 800);
+      setTimeout(() => {
+        this._dropboxSyncHoldTriggered = false;
+      }, 1500);
+    }, 1500);
+  }
+
+  cancelDropboxSyncHold() {
+    const button = document.getElementById("dropboxStatusButton");
+    if (!button) {
+      return;
+    }
+
+    if (this._dropboxSyncHoldTimer) {
+      clearTimeout(this._dropboxSyncHoldTimer);
+      this._dropboxSyncHoldTimer = null;
+    }
+
+    button.classList.remove("dbx-sync-hold-arming");
+  }
+
   async connectDropbox() {
     try {
       await this.dropboxManager.connect();
@@ -1490,11 +1813,20 @@ class VitruvianApp {
     }
   }
 
-  disconnectDropbox() {
-    if (confirm("Are you sure you want to disconnect Dropbox? Your workout history will remain in your Dropbox, but new workouts won't be automatically backed up.")) {
-      this.dropboxManager.disconnect();
-      this.addLogEntry("Disconnected from Dropbox", "info");
+  disconnectDropbox(options = {}) {
+    const { silent = false } = options;
+    if (!silent) {
+      const confirmed = confirm("Are you sure you want to disconnect Dropbox? Your workout history will remain in your Dropbox, but new workouts won't be automatically backed up.");
+      if (!confirmed) {
+        return false;
+      }
     }
+
+    this.dropboxManager.disconnect();
+    this._dropboxSyncBusyCount = 0;
+    this.setDropboxSyncBusy(false);
+    this.addLogEntry("Disconnected from Dropbox", "info");
+    return true;
   }
 
   async syncFromDropbox(options = {}) {
@@ -1508,7 +1840,11 @@ class VitruvianApp {
       return;
     }
 
+    let busyEngaged = false;
     try {
+      this.beginDropboxSyncBusy();
+      busyEngaged = true;
+
       const statusDiv = document.getElementById("dropboxSyncStatus");
       if (statusDiv) {
         statusDiv.textContent = auto
@@ -1598,6 +1934,10 @@ class VitruvianApp {
         setTimeout(() => {
           if (statusDiv) statusDiv.textContent = "";
         }, 7000);
+      }
+    } finally {
+      if (busyEngaged) {
+        this.endDropboxSyncBusy();
       }
     }
   }
@@ -2136,26 +2476,25 @@ class VitruvianApp {
   }
 
   updateConnectionStatus(connected) {
-    const statusDiv = document.getElementById("status");
-    const connectBtn = document.getElementById("connectBtn");
-    const disconnectBtn = document.getElementById("disconnectBtn");
     const programSection = document.getElementById("programSection");
     const echoSection = document.getElementById("echoSection");
 
     if (connected) {
-      statusDiv.textContent = "Connected";
-      statusDiv.className = "status connected";
-      connectBtn.disabled = true;
-      disconnectBtn.disabled = false;
+      this.setDeviceButtonState("connected");
+      this.setDeviceButtonSubtext("Hold to disconnect.");
+      this.cancelDeviceHold();
   //KEEP PROGRAM HIDDEN    programSection.classList.remove("hidden");
   //KEEP ECHO HIDDEN    echoSection.classList.remove("hidden");
     } else {
-      statusDiv.textContent = "Disconnected";
-      statusDiv.className = "status disconnected";
-      connectBtn.disabled = false;
-      disconnectBtn.disabled = true;
-      programSection.classList.add("hidden");
-      echoSection.classList.add("hidden");
+      this.setDeviceButtonState("disconnected");
+      this.setDeviceButtonSubtext("Tap to connect your Vitruvian.");
+      this.cancelDeviceHold();
+      if (programSection) {
+        programSection.classList.add("hidden");
+      }
+      if (echoSection) {
+        echoSection.classList.add("hidden");
+      }
     }
 
     this.updateStopButtonState();
@@ -4312,15 +4651,23 @@ class VitruvianApp {
   }
 
   async connect() {
-    try {
-      // Check if Web Bluetooth is supported
-      if (!navigator.bluetooth) {
-        alert(
-          "Web Bluetooth is not supported in this browser. Please use Chrome, Edge, or Opera.",
-        );
-        return;
-      }
+    if (!navigator.bluetooth) {
+      alert(
+        "Web Bluetooth is not supported in this browser. Please use Chrome, Edge, or Opera.",
+      );
+      return;
+    }
 
+    if (this._deviceConnectInFlight || this.device?.isConnected) {
+      return;
+    }
+
+    this._deviceConnectInFlight = true;
+    this.cancelDeviceHold();
+    this.setDeviceButtonState("connecting");
+    this.setDeviceButtonSubtext("Grant Bluetooth permission to connect.");
+
+    try {
       await this.device.connect();
       this.updateConnectionStatus(true);
 
@@ -4330,16 +4677,27 @@ class VitruvianApp {
       console.error("Connection error:", error);
       this.addLogEntry(`Connection failed: ${error.message}`, "error");
       this.updateConnectionStatus(false);
+    } finally {
+      this._deviceConnectInFlight = false;
     }
   }
 
   async disconnect() {
     try {
+      this.cancelDeviceHold();
+      this.setDeviceButtonState("connecting");
+      this.setDeviceButtonSubtext("Disconnecting…");
       await this.device.disconnect();
       this.updateConnectionStatus(false);
     } catch (error) {
       console.error("Disconnect error:", error);
       this.addLogEntry(`Disconnect failed: ${error.message}`, "error");
+      if (this.device?.isConnected) {
+        this.setDeviceButtonState("connected");
+        this.setDeviceButtonSubtext("Hold to disconnect.");
+      } else {
+        this.updateConnectionStatus(false);
+      }
     }
   }
 
