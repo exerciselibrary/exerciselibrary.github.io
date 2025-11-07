@@ -2483,12 +2483,8 @@ class VitruvianApp {
       this.setDeviceButtonState("connected");
       this.setDeviceButtonSubtext("Hold to disconnect.");
       this.cancelDeviceHold();
-      if (programSection) {
-        programSection.classList.remove("hidden");
-      }
-      if (echoSection) {
-        echoSection.classList.remove("hidden");
-      }
+  //KEEP PROGRAM HIDDEN    programSection.classList.remove("hidden");
+  //KEEP ECHO HIDDEN    echoSection.classList.remove("hidden");
     } else {
       this.setDeviceButtonState("disconnected");
       this.setDeviceButtonSubtext("Tap to connect your Vitruvian.");
