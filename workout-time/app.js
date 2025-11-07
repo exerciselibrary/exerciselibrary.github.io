@@ -105,6 +105,10 @@ class VitruvianApp {
     this._planSummaryTotalEl = null;
     this._planSummaryPlanNameEl = null;
 
+    this._wakeLockSentinel = null;
+    this._boundWakeLockVisibilityChange = null;
+    this._boundWakeLockRelease = null;
+
     // initialize plan UI dropdown from storage and render once UI is ready
     setTimeout(() => {
       this.refreshPlanSelectNames();
@@ -132,6 +136,7 @@ class VitruvianApp {
     this.setupScrollButtons();
     this.setupPlanSummaryOverlay();
     this.setupAudioUnlockSupport();
+    this.setupWakeLock();
     this.resetRepCountersToEmpty();
     this.updateStopButtonState();
     this.updatePlanControlsState?.();
@@ -1758,7 +1763,9 @@ class VitruvianApp {
         hasIdentity &&
         typeof current.identityLabel === "string" &&
         current.identityLabel.length > 0;
-      const suffix = hasLabel ? ` (${current.identityLabel})` : " (Total)";
+      const suffix = hasLabel
+        ? ` (${current.identityLabel})`
+        : " (Per Cable)";
       labelEl.textContent = `Personal Best${suffix}`;
     }
 
@@ -1815,8 +1822,8 @@ class VitruvianApp {
     const priorBest = Number(this.currentWorkout?.priorBestTotalLoadKg) || 0;
     const formatted = this.formatWeightWithUnit(bestKg);
     const message = identityLabel
-      ? `New personal best for ${identityLabel}: ${formatted}`
-      : `New personal best: ${formatted}`;
+      ? `New personal best for ${identityLabel}: ${formatted} per cable`
+      : `New per-cable personal best: ${formatted}`;
     this.addLogEntry(`🎉 ${message}`, "success");
 
     if (priorBest > 0) {
@@ -1967,8 +1974,9 @@ class VitruvianApp {
     // Store current sample for auto-stop checking
     this.currentSample = sample;
 
-    const totalLoadKg =
-      (Number(sample?.loadA) || 0) + (Number(sample?.loadB) || 0);
+    const loadA = Number(sample?.loadA) || 0;
+    const loadB = Number(sample?.loadB) || 0;
+    const peakLoadKg = Math.max(loadA, loadB);
 
     if (
       this.currentWorkout &&
@@ -1978,7 +1986,7 @@ class VitruvianApp {
         Number(this.currentWorkout.priorBestTotalLoadKg) || 0;
       const previousPeak =
         Number(this.currentWorkout.livePeakTotalLoadKg) || 0;
-      const livePeak = totalLoadKg > previousPeak ? totalLoadKg : previousPeak;
+      const livePeak = peakLoadKg > previousPeak ? peakLoadKg : previousPeak;
       const celebrated =
         Number(this.currentWorkout.celebratedPersonalBestKg) || 0;
       const epsilon = 0.0001;
@@ -2522,26 +2530,39 @@ class VitruvianApp {
       return 0;
     }
 
-    const cached = Number(workout.totalLoadPeakKg);
-    if (Number.isFinite(cached) && cached > 0) {
-      return cached;
-    }
+    // Personal records track the heaviest load on any single cable during a set.
+    let peak = Number(workout.cablePeakKg);
+    if (!Number.isFinite(peak) || peak <= 0) {
+      peak = 0;
 
-    let peak = 0;
-    if (Array.isArray(workout.movementData) && workout.movementData.length > 0) {
-      for (const point of workout.movementData) {
-        const total =
-          (Number(point.loadA) || 0) + (Number(point.loadB) || 0);
-        if (total > peak) {
-          peak = total;
+      if (Array.isArray(workout.movementData) && workout.movementData.length > 0) {
+        for (const point of workout.movementData) {
+          const cablePeak = Math.max(
+            Number(point.loadA) || 0,
+            Number(point.loadB) || 0,
+          );
+          if (cablePeak > peak) {
+            peak = cablePeak;
+          }
+        }
+      }
+
+      if (peak <= 0) {
+        const fallbackWeights = [
+          Number(workout.weightKg),
+          Number(workout.adjustedWeightKg),
+          Number(workout.originalWeightKg),
+        ];
+        for (const value of fallbackWeights) {
+          if (Number.isFinite(value) && value > 0) {
+            peak = value;
+            break;
+          }
         }
       }
     }
 
-    if (peak <= 0 && Number.isFinite(workout.weightKg)) {
-      peak = Math.max(peak, workout.weightKg * 2);
-    }
-
+    workout.cablePeakKg = peak;
     workout.totalLoadPeakKg = peak;
     return peak;
   }
@@ -3659,6 +3680,114 @@ class VitruvianApp {
       return this._audioContext;
     } catch {
       return null;
+    }
+  }
+
+  setupWakeLock() {
+    if (typeof navigator === "undefined" || !navigator.wakeLock) {
+      return;
+    }
+
+    if (!this._boundWakeLockVisibilityChange) {
+      this._boundWakeLockVisibilityChange = () => {
+        if (typeof document === "undefined") {
+          return;
+        }
+        if (document.visibilityState === "visible") {
+          this.requestWakeLock({ silent: true });
+        } else {
+          this.releaseWakeLock({ silent: true });
+        }
+      };
+    }
+
+    if (typeof document !== "undefined") {
+      document.addEventListener(
+        "visibilitychange",
+        this._boundWakeLockVisibilityChange,
+        false,
+      );
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", () => {
+        this.requestWakeLock({ silent: true });
+      });
+      window.addEventListener("beforeunload", () => {
+        this.releaseWakeLock({ silent: true });
+      });
+      window.addEventListener("pagehide", () => {
+        this.releaseWakeLock({ silent: true });
+      });
+    }
+
+    this.requestWakeLock();
+  }
+
+  async requestWakeLock(options = {}) {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.wakeLock ||
+      (typeof document !== "undefined" && document.hidden)
+    ) {
+      return null;
+    }
+
+    if (this._wakeLockSentinel) {
+      return this._wakeLockSentinel;
+    }
+
+    try {
+      const sentinel = await navigator.wakeLock.request("screen");
+      this._wakeLockSentinel = sentinel;
+
+      if (!this._boundWakeLockRelease) {
+        this._boundWakeLockRelease = () => {
+          this._wakeLockSentinel = null;
+          if (typeof document !== "undefined" && !document.hidden) {
+            this.requestWakeLock({ silent: true }).catch(() => {});
+          }
+        };
+      }
+
+      sentinel.addEventListener("release", this._boundWakeLockRelease);
+      if (!options.silent) {
+        this.addLogEntry("Screen wake lock active", "info");
+      }
+      return sentinel;
+    } catch (error) {
+      if (!options.silent) {
+        this.addLogEntry(`Wake Lock request failed: ${error.message}`, "warning");
+      }
+      return null;
+    }
+  }
+
+  async releaseWakeLock(options = {}) {
+    if (!this._wakeLockSentinel) {
+      return;
+    }
+
+    try {
+      if (this._boundWakeLockRelease) {
+        this._wakeLockSentinel.removeEventListener(
+          "release",
+          this._boundWakeLockRelease,
+        );
+      }
+      await this._wakeLockSentinel.release();
+      if (!options.silent) {
+        this.addLogEntry("Screen wake lock released", "info");
+      }
+    } catch (error) {
+      if (!options.silent) {
+        this.addLogEntry(
+          `Failed to release wake lock: ${error.message}`,
+          "warning",
+        );
+      }
+    } finally {
+      this._wakeLockSentinel = null;
     }
   }
 
