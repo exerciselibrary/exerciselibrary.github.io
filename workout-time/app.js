@@ -1,7 +1,28 @@
 // app.js - Main application logic and UI management
 
-const LB_PER_KG = 2.2046226218488;
-const KG_PER_LB = 1 / LB_PER_KG;
+const sharedWeights = window.WeightUtils || {};
+const LB_PER_KG = sharedWeights.LB_PER_KG || 2.2046226218488;
+const KG_PER_LB = sharedWeights.KG_PER_LB || 1 / LB_PER_KG;
+const fallbackConvertKgToUnit = (kg, unit = "kg") => {
+  if (kg === null || kg === undefined || isNaN(kg)) {
+    return NaN;
+  }
+  return unit === "lb" ? kg * LB_PER_KG : kg;
+};
+const fallbackConvertUnitToKg = (value, unit = "kg") => {
+  if (value === null || value === undefined || isNaN(value)) {
+    return NaN;
+  }
+  return unit === "lb" ? value * KG_PER_LB : value;
+};
+const sharedConvertKgToUnit =
+  typeof sharedWeights.convertKgToUnit === "function"
+    ? sharedWeights.convertKgToUnit
+    : fallbackConvertKgToUnit;
+const sharedConvertUnitToKg =
+  typeof sharedWeights.convertUnitToKg === "function"
+    ? sharedWeights.convertUnitToKg
+    : fallbackConvertUnitToKg;
 const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
 
 class VitruvianApp {
@@ -1780,24 +1801,18 @@ class VitruvianApp {
     if (kg === null || kg === undefined || isNaN(kg)) {
       return NaN;
     }
-
-    if (unit === "lb") {
-      return kg * LB_PER_KG;
-    }
-
-    return kg;
+    const normalized = unit === "lb" ? "lb" : "kg";
+    const converted = sharedConvertKgToUnit(kg, normalized);
+    return Number.isFinite(converted) ? converted : NaN;
   }
 
   convertDisplayToKg(value, unit = this.weightUnit) {
     if (value === null || value === undefined || isNaN(value)) {
       return NaN;
     }
-
-    if (unit === "lb") {
-      return value * KG_PER_LB;
-    }
-
-    return value;
+    const normalized = unit === "lb" ? "lb" : "kg";
+    const converted = sharedConvertUnitToKg(value, normalized);
+    return Number.isFinite(converted) ? converted : NaN;
   }
 
   formatWeightValue(kg, decimals = this.getLoadDisplayDecimals()) {

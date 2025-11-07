@@ -1,4 +1,5 @@
 import { KG_PER_LB, LB_PER_KG } from './constants.js';
+import { convertKgToUnit, convertUnitToKg } from '../shared/weight-utils.js';
 import { normalizeMuscleName } from './muscles.js';
 
 // --- generic helpers -------------------------------------------------------
@@ -305,9 +306,11 @@ export const formatWeight = (value, unit) => {
 
 export const convertWeightValue = (value, from, to) => {
   if (!value && value !== 0) return '';
-  if (from === to) return formatWeight(value, to);
-  const num = parseFloat(value);
-  if (Number.isNaN(num)) return '';
-  const converted = from === 'LBS' ? num * KG_PER_LB : num * LB_PER_KG;
+  const normalizedFrom = from === 'LBS' ? 'lb' : 'kg';
+  const normalizedTo = to === 'LBS' ? 'lb' : 'kg';
+  const kgValue = convertUnitToKg(value, normalizedFrom);
+  if (Number.isNaN(kgValue)) return '';
+  const converted = convertKgToUnit(kgValue, normalizedTo);
+  if (!Number.isFinite(converted)) return '';
   return formatWeight(converted, to);
 };

@@ -10,7 +10,8 @@ This document orients automation and human collaborators to the structure, conve
 - `js/` — modular ES modules that power the exercise plan builder (`builder.js`, `context.js`, `library.js`, etc.).
   - `plan-storage.js` centralises workout plan persistence. Interact with localStorage through the helpers exposed here rather than reimplementing storage access.
 - `workout-time/` — standalone Vitruvian workout control UI (`index.html`, `app.js`, supporting assets).
-- `local-tests/` — lightweight Node-based test harness (currently `builder.test.js`).
+- `shared/weight-utils.js` — single source of truth for kg/lb conversions; also attaches itself to `window.WeightUtils` so the workout-time console can reuse the same math.
+- `local-tests/` — lightweight Node-based test harness (builder, search, storage-sync, progression, and plan-runner tests).
 
 ## Key Flows
 - The builder UI is data-driven: `js/context.js` initializes shared state; `js/builder.js` consumes that state to serialize plans. Keep mutations centralized in `context.js` helpers.
@@ -20,7 +21,8 @@ This document orients automation and human collaborators to the structure, conve
 
 ## Development Tips
 - Use `npx http-server .` or similar to preview pages locally. Both the root `index.html` and `workout-time/index.html` expect to run in a browser environment.
-- Run `node local-tests/builder.test.js` to sanity-check plan serialization and rebuilding logic after modifying builder modules.
+- Run `npm test` (or `npm run test:local`) to sanity-check plan serialization/build flows alongside the browser search + storage helpers after modifying builder modules.
+- Run `npm run lint` before sending PRs so any trailing whitespace, loose equality, or rogue `var` declarations are caught early; `npm run format` will normalise whitespace/newlines when you need automatic fixes.
 - Maintain accessibility: new UI components should include keyboard support and ARIA labelling consistent with existing markup.
 - After touching persistence or plan-index flows, update `plan-storage.js` first and adapt consumers (currently `js/main.js`) to avoid drift between cached plan state and saved plans.
 
@@ -28,8 +30,10 @@ This document orients automation and human collaborators to the structure, conve
 - When adding features, reflect changes in both the documentation and the relevant UI (root site vs. workout control panel) to keep experiences in sync.
 - Validate data contract changes against `exercise_dump.json` to avoid breaking the plan builder.
 - For styling adjustments, prefer editing `styles.css` or component-level `<style>` blocks; avoid inline styles unless scoped to dynamic states.
+- If any UI changes are made, take screenshots of new UI changes to ensure everything is working accordingly
+- Always run tests
 
 ## Outstanding Opportunities
-- Add automated linting (ESLint) and formatting to catch regressions early.
-- Expand the `local-tests` suite to cover additional modules (search, storage sync, progression calculations).
-- Consider extracting shared utilities between the root UI and `workout-time` into a common module to reduce duplication.
+- Wire the lint/test commands into CI (GitHub Actions or similar) so regressions are blocked automatically.
+- Expand the workout-time coverage to include the rest-countdown DOM updates and audio cues alongside the telemetry auto-resume logic.
+- Document the new shared weight utilities inside `workout-time/index.html` for future contributors and consider sharing additional helpers (e.g., unit labels, clamp logic) through the same module.

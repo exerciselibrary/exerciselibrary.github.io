@@ -5,9 +5,11 @@
   "private": true,
   "scripts": {
     "dev": "npx http-server . -p 5173 -c-1",
-    "test": "node --test",
-    "lint": "npx eslint .",
-    "format": "npx prettier -w .",
+    "test": "npm run test:unit && npm run test:local",
+    "test:unit": "node --test",
+    "test:local": "node scripts/run-local-tests.mjs",
+    "lint": "node scripts/run-eslint.mjs",
+    "format": "node scripts/run-prettier.mjs",
     "build": "echo \"Static site; no bundler\""
   }
 }
