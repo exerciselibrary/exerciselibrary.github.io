@@ -1664,14 +1664,12 @@ class VitruvianApp {
       setTimeout(() => {
         button.classList.remove("device-btn-hold-fired");
       }, 900);
-      setTimeout(() => {
-        this._deviceHoldTriggered = false;
-      }, 1500);
     }, 1500);
   }
 
   cancelDeviceHold() {
     const button = document.getElementById("deviceStatusButton");
+    const hadHoldTimer = Boolean(this._deviceHoldTimer);
     if (this._deviceHoldTimer) {
       clearTimeout(this._deviceHoldTimer);
       this._deviceHoldTimer = null;
@@ -1679,7 +1677,9 @@ class VitruvianApp {
     if (button) {
       button.classList.remove("device-btn-hold-arming", "device-btn-hold-fired");
     }
-    this._deviceHoldTriggered = false;
+    if (hadHoldTimer) {
+      this._deviceHoldTriggered = false;
+    }
   }
 
   scheduleAutoDropboxSync(reason = "auto") {
