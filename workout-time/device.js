@@ -37,6 +37,7 @@ class VitruvianDevice {
     this.monitorListeners = [];
     this.lastGoodPosA = 0;
     this.lastGoodPosB = 0;
+    this.lastProgramParams = null;
 
     // GATT operation queue to prevent "operation already in progress" errors
     this.gattQueue = [];
@@ -276,6 +277,7 @@ class VitruvianDevice {
     const cmd = buildInitCommand(); // Stop command is same as init command
     await this.writeWithResponse("Stop command", cmd);
     this.log("Workout stopped!", "success");
+    this.lastProgramParams = null;
   }
 
   // Start a workout program
@@ -317,10 +319,45 @@ class VitruvianDevice {
     this.log(`Sending program frame (96 bytes): ${bytesToHex(frame)}`, "info");
     await this.writeWithResponse("Program params", frame);
     this.log("Program started successfully!", "success");
+    this.lastProgramParams = { ...params };
 
     // Start property and monitor polling
     this.startPropertyPolling();
     this.startMonitorPolling();
+  }
+
+  // Update the target reps for the currently running program
+  async updateProgramTargetReps(params, options = {}) {
+    if (!this.isConnected) {
+      throw new Error("Device not connected");
+    }
+    if (!this.rxChar) {
+      throw new Error("Device RX characteristic unavailable");
+    }
+    if (!this.lastProgramParams) {
+      throw new Error("No active program to update");
+    }
+
+    const merged = { ...this.lastProgramParams, ...params };
+
+    if (merged.isJustLift) {
+      // Just Lift ignores the reps byte; nothing to update
+      return;
+    }
+
+    if (!Number.isFinite(merged.reps)) {
+      throw new Error("Invalid reps value");
+    }
+
+    const clampedReps = Math.max(1, Math.min(100, Math.round(merged.reps)));
+    const payload = { ...merged, reps: clampedReps };
+    const frame = buildProgramParams(payload);
+    await this.writeWithResponse("Program params (update)", frame);
+    this.lastProgramParams = payload;
+
+    if (!options.silent) {
+      this.log(`Program target reps updated to ${payload.reps}`, "info");
+    }
   }
 
   // Start Echo mode
