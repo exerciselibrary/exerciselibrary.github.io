@@ -26,6 +26,27 @@ const sharedConvertUnitToKg =
 const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
 const MIN_ACTIVE_CABLE_RANGE = 35; // minimum delta between red/green markers to treat a cable as engaged for load tracking
 const AUTO_STOP_RANGE_THRESHOLD = 50; // slightly higher buffer for safety before auto-stop logic activates
+const EXCEL_MAX_ROWS = 1048576;
+const PR_HIGHLIGHT_STYLE = {
+  fill: {
+    patternType: "solid",
+    fgColor: { rgb: "FFC6EFCE" }, // Excel "Good" style
+    bgColor: { rgb: "FFC6EFCE" },
+  },
+};
+const HEADER_STYLE = {
+  fill: {
+    patternType: "solid",
+    fgColor: { rgb: "FF1F4E78" },
+    bgColor: { rgb: "FF1F4E78" },
+  },
+  font: {
+    color: { rgb: "FFFFFFFF" },
+    bold: true,
+  },
+};
+const WORKOUT_TAB_COLOR = { rgb: "FF2E75B6" };
+const PR_TAB_COLOR = { rgb: "FFF1C232" };
 
 class VitruvianApp {
   constructor() {
@@ -1941,16 +1962,13 @@ class VitruvianApp {
       this.beginDropboxSyncBusy();
       busyEngaged = true;
 
-      const statusDiv = document.getElementById("dropboxSyncStatus");
-      if (statusDiv) {
-        statusDiv.textContent = auto
-          ? "Auto-syncing from Dropbox..."
-          : "Syncing...";
-      }
-
       this.addLogEntry(
         `${auto ? "Auto-syncing" : "Syncing"} workouts from Dropbox (reason: ${reason})...`,
         "info",
+      );
+      this.logDropboxConsole(
+        "Sync",
+        `${auto ? "Auto" : "Manual"} sync started (reason: ${reason})`,
       );
 
       // Ensure existing workouts are normalized before comparisons
@@ -2020,23 +2038,14 @@ class VitruvianApp {
       }
 
       this.addLogEntry(message, "success");
-      if (statusDiv) {
-        statusDiv.textContent = message;
-        setTimeout(() => {
-          if (statusDiv) statusDiv.textContent = "";
-        }, auto ? 3000 : 5000);
-      }
+      this.logDropboxConsole("Sync", message);
 
       this._hasPerformedInitialSync = true;
     } catch (error) {
       this.addLogEntry(`Failed to sync from Dropbox: ${error.message}`, "error");
-      const statusDiv = document.getElementById("dropboxSyncStatus");
-      if (statusDiv) {
-        statusDiv.textContent = `Error: ${error.message}`;
-        setTimeout(() => {
-          if (statusDiv) statusDiv.textContent = "";
-        }, 7000);
-      }
+      this.logDropboxConsole("Sync", `Failed: ${error.message}`, {
+        level: "error",
+      });
     } finally {
       if (busyEngaged) {
         this.endDropboxSyncBusy();
@@ -2107,11 +2116,11 @@ class VitruvianApp {
     }
   }
 
-  async exportAllToDropboxCSV(options = {}) {
+  async exportAllToDropboxExcel(options = {}) {
     const manual = options?.manual === true;
     if (!manual) {
       this.addLogEntry(
-        "Blocked non-manual request to export all workouts as CSV",
+        "Blocked non-manual request to export all workouts as Excel",
         "warning",
       );
       return;
@@ -2122,77 +2131,140 @@ class VitruvianApp {
       return;
     }
 
-    if (this.workoutHistory.length === 0) {
-      alert("No workouts to export");
-      return;
-    }
+    const updateStatus = (message, options = {}) => {
+      this.logDropboxConsole("Excel Export", message, options);
+      this.setDropboxStatus(`Excel Export: ${message}`.trim(), options);
+    };
 
     try {
-      const statusDiv = document.getElementById("dropboxSyncStatus");
-      if (statusDiv) statusDiv.textContent = "Exporting to CSV...";
+      updateStatus("Exporting: grabbing workouts...");
 
-      await this.dropboxManager.exportAllWorkoutsCSV(this.workoutHistory, {
-        unitLabel: this.getUnitLabel(),
-        personalRecords: this.getPersonalRecordsList(),
-        toDisplayFn: (kg) => this.convertKgToDisplay(kg),
+      const cloudWorkouts = await this.dropboxManager.loadWorkouts({
+        maxEntries: Infinity,
+      });
+      const normalized = cloudWorkouts
+        .map((workout) => this.normalizeWorkout(workout))
+        .filter(Boolean);
+
+      if (normalized.length === 0) {
+        alert("No workouts available in Dropbox to export");
+        if (statusDiv) statusDiv.textContent = "";
+        return;
+      }
+
+      this.annotateWorkoutsForExport(normalized);
+      updateStatus("Exporting: preparing workbook...");
+
+      await this.syncPersonalRecordsFromDropbox({ silent: true });
+      const personalRecords = this.getPersonalRecordsList();
+      const unitLabel = this.getUnitLabel();
+      const workoutRows = this.buildWorkoutDataRowsForExcel(
+        normalized,
+        unitLabel,
+      );
+      const prRows = this.buildPersonalRecordRowsForExcel(
+        personalRecords,
+        unitLabel,
+      );
+
+      const workoutSheetDefs = this.createWorkoutSheetDefs(workoutRows);
+      const prSheet = {
+        name: "PRs Current",
+        rows: prRows,
+        dateColumns: [1],
+      };
+      const workbookArray = this.buildExcelWorkbookArray({
+        sheets: [...workoutSheetDefs, prSheet],
       });
 
-      this.addLogEntry(`Exported ${this.workoutHistory.length} workouts to CSV in Dropbox`, "success");
-      if (statusDiv) {
-        statusDiv.textContent = "Export complete!";
-        setTimeout(() => { if (statusDiv) statusDiv.textContent = ""; }, 5000);
-      }
-    } catch (error) {
-      this.addLogEntry(`Failed to export CSV: ${error.message}`, "error");
-      alert(`Failed to export CSV: ${error.message}`);
-    }
-  }
+      const workbookData =
+        workbookArray instanceof ArrayBuffer
+          ? new Uint8Array(workbookArray)
+          : workbookArray;
+      const filename = `workout_history_${new Date().toISOString().split("T")[0]}.xlsx`;
+      updateStatus(`Exporting: uploading ${filename}...`);
+      await this.dropboxManager.exportExcelWorkbook(filename, workbookData);
 
-  requestExportAllToDropboxCSV() {
-    return this.exportAllToDropboxCSV({ manual: true });
-  }
-
-  async exportPersonalRecordsToDropboxCSV(options = {}) {
-    if (options?.manual !== true) {
       this.addLogEntry(
-        "Blocked non-manual request to export personal records CSV",
-        "warning",
+        `Exported ${normalized.length} workout${normalized.length === 1 ? "" : "s"} to Dropbox as ${filename}`,
+        "success",
       );
-      return;
+      updateStatus(`Export complete! Saved as ${filename} in Dropbox`, {
+        color: "#2f9e44",
+      });
+    } catch (error) {
+      this.addLogEntry(`Failed to export Excel: ${error.message}`, "error");
+      alert(`Failed to export Excel: ${error.message}`);
+      updateStatus(`Error: ${error.message}`);
     }
+  }
 
+  requestExportAllToDropboxExcel() {
+    return this.exportAllToDropboxExcel({ manual: true });
+  }
+
+  requestPersonalRecordsSync() {
+    return this.syncPersonalRecordsManual({ manual: true });
+  }
+
+  async syncPersonalRecordsManual(options = {}) {
     if (!this.dropboxManager.isConnected) {
       alert("Please connect to Dropbox first");
       return;
     }
 
-    const records = this.getPersonalRecordsList();
-    if (records.length === 0) {
-      alert("No personal records available to export yet");
+    const manual = options?.manual === true;
+    if (!manual) {
+      this.addLogEntry(
+        "Blocked non-manual request to sync personal records",
+        "warning",
+      );
       return;
     }
 
-    try {
-      await this.dropboxManager.exportPersonalRecordsCSV(
-        records,
-        this.getUnitLabel(),
-        (kg) => this.convertKgToDisplay(kg),
-      );
-      this.addLogEntry(
-        `Exported ${records.length} personal record${records.length === 1 ? "" : "s"} to Dropbox`,
-        "success",
-      );
-    } catch (error) {
-      this.addLogEntry(
-        `Failed to export personal records: ${error.message}`,
-        "error",
-      );
-      alert(`Failed to export personal records: ${error.message}`);
+    const confirmed = window.confirm(
+      "This will rebuild personal-records.json from your full workout history and upload it to Dropbox. This may take a moment. Continue?",
+    );
+    if (!confirmed) {
+      this.addLogEntry("Personal records sync cancelled", "info");
+      return;
     }
-  }
 
-  requestExportPersonalRecordsCSV() {
-    return this.exportPersonalRecordsToDropboxCSV({ manual: true });
+    const context = "Personal Records Sync";
+    const updateStatus = (message, opts = {}) => {
+      this.logDropboxConsole(context, message, opts);
+      this.setDropboxStatus(`${context}: ${message}`, opts);
+    };
+
+    try {
+      updateStatus("Downloading latest personal-records.json...");
+      await this.syncPersonalRecordsFromDropbox({ silent: true });
+
+      updateStatus("Downloading workouts from Dropbox...");
+      const cloudWorkouts = await this.dropboxManager.loadWorkouts({
+        maxEntries: Infinity,
+      });
+      const normalizedCloud = cloudWorkouts
+        .map((workout) => this.normalizeWorkout(workout))
+        .filter(Boolean);
+
+      updateStatus("Building personal records from full history...");
+      if (normalizedCloud.length > 0) {
+        this.buildPersonalRecordsFromWorkouts(normalizedCloud);
+      } else {
+        this.ensurePersonalRecordsFromHistory();
+      }
+
+      updateStatus("Uploading to Dropbox...");
+      await this.syncPersonalRecordsToDropbox({ force: true, silent: true });
+
+      updateStatus("Completed!", { color: "#2f9e44", preserveColor: true });
+      this.addLogEntry("Personal records synced to Dropbox", "success");
+    } catch (error) {
+      const message = `Failed to sync personal records: ${error.message}`;
+      this.addLogEntry(message, "error");
+      updateStatus(`Error: ${error.message}`, { color: "#c92a2a" });
+    }
   }
 
   setWeightUnit(unit, options = {}) {
@@ -3621,6 +3693,402 @@ class VitruvianApp {
       );
   }
 
+  annotateWorkoutsForExport(workouts) {
+    if (!Array.isArray(workouts) || workouts.length === 0) {
+      return;
+    }
+
+    const sorted = [...workouts].sort((a, b) => {
+      const timeA = this.getWorkoutTimestamp(a)?.getTime() || 0;
+      const timeB = this.getWorkoutTimestamp(b)?.getTime() || 0;
+      return timeA - timeB;
+    });
+
+    const bestByIdentity = new Map();
+    const epsilon = 0.0001;
+
+    for (const workout of sorted) {
+      const identity = this.getWorkoutIdentityInfo(workout);
+      if (!identity) {
+        workout._exportIsPR = false;
+        workout._exportIdentityLabel = null;
+        continue;
+      }
+
+      const peak = this.calculateTotalLoadPeakKg(workout);
+      const priorBest = bestByIdentity.get(identity.key) || 0;
+      const isPR = peak > priorBest + epsilon;
+      const nextBest = Math.max(priorBest, peak);
+      bestByIdentity.set(identity.key, nextBest);
+      workout._exportIsPR = isPR;
+      workout._exportIdentityLabel = identity.label;
+    }
+  }
+
+  buildWorkoutDataRowsForExcel(workouts, unitLabel) {
+    const header = [
+      "Workout Date",
+      "Plan Name",
+      "Exercise Name",
+      "Exercise ID",
+      "Mode",
+      "Set Name",
+      "Set Number",
+      "Set Total",
+      "Reps",
+      `Weight (${unitLabel})`,
+      `Planned Weight (${unitLabel})`,
+      `Total Load (${unitLabel})`,
+      `Peak Load (${unitLabel})`,
+      "Duration (seconds)",
+      "Movement Data Points",
+      "Is PR",
+    ];
+
+    const rows = [header];
+    const sorted = [...workouts].sort((a, b) => {
+      const timeA = this.getWorkoutTimestamp(a)?.getTime() || 0;
+      const timeB = this.getWorkoutTimestamp(b)?.getTime() || 0;
+      return timeA - timeB;
+    });
+
+    for (const workout of sorted) {
+      const timestamp = this.getWorkoutTimestamp(workout);
+      const exerciseName =
+        workout._exportIdentityLabel ||
+        workout.setName ||
+        workout.mode ||
+        "";
+      const weight = Number.isFinite(workout.weightKg)
+        ? this.formatWeightValue(workout.weightKg)
+        : "";
+      const plannedWeight = Number.isFinite(workout.plannedWeightKg)
+        ? this.formatWeightValue(workout.plannedWeightKg)
+        : "";
+      const peak = this.calculateTotalLoadPeakKg(workout);
+      const peakDisplay = Number.isFinite(peak)
+        ? this.formatWeightValue(peak)
+        : "";
+      let durationSeconds = "";
+      if (workout.startTime instanceof Date && workout.endTime instanceof Date) {
+        durationSeconds = Math.round(
+          (workout.endTime.getTime() - workout.startTime.getTime()) / 1000,
+        ).toString();
+      }
+      const movementPoints = Array.isArray(workout.movementData)
+        ? workout.movementData.length
+        : 0;
+      const isPR =
+        workout._exportIdentityLabel && workout._exportIsPR ? "Yes" : "No";
+      const planName = typeof workout.planName === "string" ? workout.planName : "";
+      const exerciseId = this.getWorkoutExerciseId(workout) || "";
+      const totalLoadKg = this.deriveTotalLoadKg(workout);
+      const totalLoadDisplay = Number.isFinite(totalLoadKg)
+        ? this.formatWeightValue(totalLoadKg)
+        : "";
+
+      rows.push([
+        timestamp instanceof Date ? new Date(timestamp) : "",
+        planName,
+        exerciseName,
+        exerciseId,
+        workout.mode || "",
+        workout.setName || "",
+        workout.setNumber !== undefined && workout.setNumber !== null
+          ? String(workout.setNumber)
+          : "",
+        workout.setTotal !== undefined && workout.setTotal !== null
+          ? String(workout.setTotal)
+          : "",
+        Number.isFinite(workout.reps) ? String(workout.reps) : "",
+        weight,
+        plannedWeight,
+        totalLoadDisplay,
+        peakDisplay,
+        durationSeconds,
+        String(movementPoints),
+        workout._exportIdentityLabel ? isPR : "",
+      ]);
+    }
+
+    return rows;
+  }
+
+  buildPersonalRecordRowsForExcel(records, unitLabel) {
+    const header = ["Exercise", "Timestamp", `Weight (${unitLabel})`];
+    const rows = [header];
+    if (!Array.isArray(records) || records.length === 0) {
+      return rows;
+    }
+    for (const record of records) {
+      const weightDisplay = Number.isFinite(record.weightKg)
+        ? this.formatWeightValue(record.weightKg)
+        : "";
+      const timestampValue =
+        record.timestamp && !Number.isNaN(new Date(record.timestamp).getTime())
+          ? new Date(record.timestamp)
+          : "";
+      rows.push([
+        record.label || record.key || "",
+        timestampValue,
+        weightDisplay,
+      ]);
+    }
+    return rows;
+  }
+
+  createWorkoutSheetDefs(rows) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const header = safeRows[0] || [];
+    const totalRows = safeRows.length;
+    const dateColumns = [0];
+    const prColumnIndex =
+      header.findIndex((value) => value === "Is PR");
+    const highlightColumns =
+      prColumnIndex >= 0
+        ? [
+            {
+              index: prColumnIndex,
+              match: (value) => value === "Yes",
+              style: PR_HIGHLIGHT_STYLE,
+            },
+          ]
+        : [];
+
+    if (totalRows === 0) {
+      return [
+        {
+          name: "Workout Data",
+          rows: [],
+          dateColumns,
+          highlightColumns,
+        },
+      ];
+    }
+
+    if (totalRows <= EXCEL_MAX_ROWS) {
+      return [
+        {
+          name: "Workout Data",
+          rows: safeRows,
+          dateColumns,
+          highlightColumns,
+        },
+      ];
+    }
+
+    const dataPerSheet = EXCEL_MAX_ROWS - 1;
+    const sheets = [];
+    let offset = 1;
+    while (offset < totalRows) {
+      const chunk = safeRows.slice(offset, offset + dataPerSheet);
+      sheets.push({
+        name: "",
+        rows: [header, ...chunk],
+        dateColumns,
+        highlightColumns,
+      });
+      offset += dataPerSheet;
+    }
+
+    sheets.forEach((sheet, index) => {
+      sheet.name = `Workout Data ${index + 1}`;
+    });
+    return sheets;
+  }
+
+  buildExcelWorkbookArray({ sheets }) {
+    const xlsx = typeof window !== "undefined" ? window.XLSX : null;
+    if (!xlsx || typeof xlsx.utils !== "object") {
+      throw new Error("SheetJS XLSX library is not available");
+    }
+
+    const workbook = xlsx.utils.book_new();
+    const sheetDefs = Array.isArray(sheets) ? sheets : [];
+
+    sheetDefs.forEach((sheet) => {
+      const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+      const dateColumns = Array.isArray(sheet.dateColumns)
+        ? sheet.dateColumns
+        : [];
+      const highlightColumns = Array.isArray(sheet.highlightColumns)
+        ? sheet.highlightColumns
+        : [];
+      const sheetName = this.sanitizeWorksheetName(sheet.name || "Sheet");
+      const worksheet = this.buildSheetJsWorksheet(
+        rows,
+        dateColumns,
+        highlightColumns,
+      );
+      xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
+      if (sheetName.toLowerCase().startsWith("workout data")) {
+        worksheet["!tabColor"] = WORKOUT_TAB_COLOR;
+      } else if (sheetName.toLowerCase().includes("pr")) {
+        worksheet["!tabColor"] = PR_TAB_COLOR;
+      }
+    });
+
+    return xlsx.write(workbook, { bookType: "xlsx", type: "array" });
+  }
+
+  buildSheetJsWorksheet(rows, dateColumns = [], highlightColumns = []) {
+    const xlsx = typeof window !== "undefined" ? window.XLSX : null;
+    if (!xlsx || typeof xlsx.utils !== "object") {
+      throw new Error("SheetJS XLSX library is not available");
+    }
+
+    const worksheet = xlsx.utils.aoa_to_sheet(rows);
+    this.applyDateFormattingToSheet(worksheet, rows, dateColumns);
+    this.applyHeaderStylesToSheet(worksheet, rows);
+    this.applyHighlightingToSheet(worksheet, rows, highlightColumns);
+    this.autosizeWorksheetColumns(worksheet, rows);
+    return worksheet;
+  }
+
+  applyDateFormattingToSheet(worksheet, rows, dateColumns = []) {
+    const xlsx = typeof window !== "undefined" ? window.XLSX : null;
+    if (!xlsx || typeof xlsx.utils !== "object") {
+      return;
+    }
+    dateColumns.forEach((columnIndex) => {
+      if (!Number.isInteger(columnIndex) || columnIndex < 0) {
+        return;
+      }
+      for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+        const value = rows[rowIndex]?.[columnIndex];
+        if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+          continue;
+        }
+        const cellRef = xlsx.utils.encode_cell({ r: rowIndex, c: columnIndex });
+        const cell = worksheet[cellRef];
+        if (!cell) {
+          continue;
+        }
+        cell.t = "d";
+        cell.v = value;
+        if (cell.w) {
+          delete cell.w;
+        }
+        cell.z = "yyyy-mm-dd hh:mm:ss";
+      }
+    });
+  }
+
+  applyHeaderStylesToSheet(worksheet, rows) {
+    const xlsx = typeof window !== "undefined" ? window.XLSX : null;
+    if (!xlsx || typeof xlsx.utils !== "object") {
+      return;
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return;
+    }
+    const header = rows[0];
+    if (!Array.isArray(header)) {
+      return;
+    }
+    header.forEach((_, columnIndex) => {
+      const cellRef = xlsx.utils.encode_cell({ r: 0, c: columnIndex });
+      const cell = worksheet[cellRef];
+      if (!cell) {
+        return;
+      }
+      cell.s = { ...(cell.s || {}), ...HEADER_STYLE };
+    });
+  }
+
+  applyHighlightingToSheet(worksheet, rows, highlightColumns = []) {
+    const xlsx = typeof window !== "undefined" ? window.XLSX : null;
+    if (!xlsx || typeof xlsx.utils !== "object") {
+      return;
+    }
+    const highlightDefs = Array.isArray(highlightColumns)
+      ? highlightColumns
+      : [];
+    highlightDefs.forEach((def) => {
+      const columnIndex = Number(def?.index);
+      if (!Number.isInteger(columnIndex) || columnIndex < 0) {
+        return;
+      }
+      const match =
+        typeof def.match === "function" ? def.match : (value) => Boolean(value);
+      const style = def.style || PR_HIGHLIGHT_STYLE;
+      for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+        const value = rows[rowIndex]?.[columnIndex];
+        if (!match(value)) {
+          continue;
+        }
+        const cellRef = xlsx.utils.encode_cell({ r: rowIndex, c: columnIndex });
+        const cell = worksheet[cellRef];
+        if (!cell) {
+          continue;
+        }
+        cell.s = { ...(cell.s || {}), ...style };
+      }
+    });
+  }
+
+  autosizeWorksheetColumns(worksheet, rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return;
+    }
+    const columnCount = rows.reduce(
+      (max, row) =>
+        Array.isArray(row) ? Math.max(max, row.length) : max,
+      0,
+    );
+    if (columnCount === 0) {
+      return;
+    }
+    const colWidths = new Array(columnCount).fill(10);
+    rows.forEach((row) => {
+      if (!Array.isArray(row)) {
+        return;
+      }
+      row.forEach((value, columnIndex) => {
+        const length = this.getCellDisplayLength(value);
+        colWidths[columnIndex] = Math.max(colWidths[columnIndex], length + 2);
+      });
+    });
+    worksheet["!cols"] = colWidths.map((wch) => ({
+      wch: Math.min(Math.max(wch, 12), 60),
+    }));
+  }
+
+  getCellDisplayLength(value) {
+    if (value instanceof Date) {
+      return 19;
+    }
+    if (value === null || value === undefined) {
+      return 0;
+    }
+    if (typeof value === "number") {
+      return value.toString().length;
+    }
+    return String(value).length;
+  }
+
+  sanitizeWorksheetName(name) {
+    if (typeof name !== "string" || name.trim().length === 0) {
+      return "Sheet";
+    }
+    const cleaned = name
+      .replace(/[\\/*?:\[\]]/g, " ")
+      .trim()
+      .slice(0, 31);
+    return cleaned.length > 0 ? cleaned : "Sheet";
+  }
+
+  escapeExcelValue(value) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
   getPersonalRecord(key) {
     if (!key || !this.personalRecords) {
       return null;
@@ -3837,6 +4305,66 @@ class VitruvianApp {
     }
 
     return updated;
+  }
+
+  buildPersonalRecordsFromWorkouts(workouts = []) {
+    if (!Array.isArray(workouts) || workouts.length === 0) {
+      return false;
+    }
+
+    const epsilon = 0.0001;
+    const nextRecords = {};
+
+    for (const workout of workouts) {
+      const identity = this.getWorkoutIdentityInfo(workout);
+      if (!identity) {
+        continue;
+      }
+
+      const peakKg = this.calculateTotalLoadPeakKg(workout);
+      if (!Number.isFinite(peakKg) || peakKg <= 0) {
+        continue;
+      }
+
+      const timestamp = this.getWorkoutTimestamp(workout);
+      const isoTimestamp = timestamp instanceof Date
+        ? timestamp.toISOString()
+        : new Date(timestamp || Date.now()).toISOString();
+
+      const existing = nextRecords[identity.key];
+      if (!existing) {
+        nextRecords[identity.key] = {
+          key: identity.key,
+          label: identity.label,
+          weightKg: peakKg,
+          timestamp: isoTimestamp,
+        };
+        continue;
+      }
+
+      const delta = peakKg - existing.weightKg;
+      const timestampMs = new Date(isoTimestamp).getTime();
+      const existingMs = existing.timestamp
+        ? new Date(existing.timestamp).getTime()
+        : 0;
+
+      if (
+        delta > epsilon ||
+        (Math.abs(delta) <= epsilon && timestampMs > existingMs)
+      ) {
+        nextRecords[identity.key] = {
+          key: identity.key,
+          label: identity.label,
+          weightKg: peakKg,
+          timestamp: isoTimestamp,
+        };
+      }
+    }
+
+    this.personalRecords = nextRecords;
+    this._personalRecordsDirty = true;
+    this.savePersonalRecordsCache();
+    return true;
   }
 
   async syncPersonalRecordsFromDropbox(options = {}) {
@@ -5607,6 +6135,16 @@ class VitruvianApp {
         this.planActive && planIndex !== null
           ? this.planItems?.[planIndex] || null
           : null;
+      const activePlanName = this.planActive ? this.getActivePlanDisplayName() : null;
+      const planName =
+        typeof activePlanName === "string" && activePlanName.trim().length > 0
+          ? activePlanName.trim()
+          : null;
+      const planExerciseId = this.getPlanExerciseId(planItem);
+      const cableCount = this.getPlanCableCount(planItem);
+      const totalLoadKg = Number.isFinite(perCableKg)
+        ? perCableKg * cableCount
+        : null;
 
       this.currentWorkout = {
         mode: modeName || "Program",
@@ -5622,6 +6160,10 @@ class VitruvianApp {
           this.planActive && planItem ? this.planCursor?.set ?? null : null,
         setTotal: planItem?.sets ?? null,
         itemType: planItem?.type || "exercise",
+        planName,
+        exerciseId: planExerciseId,
+        cableCount,
+        totalLoadKg,
       };
       this.updateWorkingCounterControlsState();
       this.initializeCurrentWorkoutPersonalBest();
@@ -5723,6 +6265,18 @@ class VitruvianApp {
         this.planActive && planIndex !== null
           ? this.planItems?.[planIndex] || null
           : null;
+      const activePlanName = this.planActive ? this.getActivePlanDisplayName() : null;
+      const planName =
+        typeof activePlanName === "string" && activePlanName.trim().length > 0
+          ? activePlanName.trim()
+          : null;
+      const planExerciseId = this.getPlanExerciseId(planItem);
+      const cableCount = this.getPlanCableCount(planItem);
+      const plannedPerCableKg = Number(planItem?.perCableKg);
+      const totalLoadKg =
+        Number.isFinite(plannedPerCableKg) && plannedPerCableKg > 0
+          ? plannedPerCableKg * cableCount
+          : null;
 
       this.currentWorkout = {
         mode: modeName,
@@ -5738,6 +6292,10 @@ class VitruvianApp {
           this.planActive && planItem ? this.planCursor?.set ?? null : null,
         setTotal: planItem?.sets ?? null,
         itemType: planItem?.type || "echo",
+        planName,
+        exerciseId: planExerciseId,
+        cableCount,
+        totalLoadKg,
       };
       this.updateWorkingCounterControlsState();
       this.initializeCurrentWorkoutPersonalBest();
@@ -5881,6 +6439,109 @@ class VitruvianApp {
     this.updateLiveWeightDisplay();
     this.updatePlanSetIndicator();
     this.updateCurrentSetLabel();
+  }
+
+  setDropboxStatus(message, options = {}) {
+    const statusDiv = document.getElementById("dropboxSyncStatus");
+    if (!statusDiv) {
+      return;
+    }
+    statusDiv.textContent = message;
+    if (options.color) {
+      statusDiv.style.color = options.color;
+    } else if (!options.preserveColor) {
+      statusDiv.style.color = "";
+    }
+  }
+
+  logDropboxConsole(context, message, options = {}) {
+    const prefix = `[WorkoutTime][Dropbox][${context}]`;
+    const { level = "info" } = options;
+    const output = `${prefix} ${message}`;
+    if (level === "error") {
+      console.error(output);
+    } else {
+      console.log(output);
+    }
+  }
+
+  getPlanExerciseId(planItem) {
+    if (!planItem || typeof planItem !== "object") {
+      return null;
+    }
+
+    const candidate =
+      typeof planItem.exerciseId === "string"
+        ? planItem.exerciseId
+        : typeof planItem.id === "string"
+          ? planItem.id
+          : planItem.builderMeta?.exerciseId;
+
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+
+    return null;
+  }
+
+  getPlanCableCount(planItem) {
+    const raw = Number(planItem?.cables);
+    if (Number.isFinite(raw) && raw >= 1) {
+      return Math.min(2, Math.max(1, raw));
+    }
+    return 2;
+  }
+
+  getWorkoutExerciseId(workout) {
+    if (!workout || typeof workout !== "object") {
+      return null;
+    }
+    const candidate =
+      workout.exerciseId ||
+      workout.planExerciseId ||
+      workout.builderMeta?.exerciseId ||
+      null;
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+    return null;
+  }
+
+  extractCableCountFromWorkout(workout) {
+    if (!workout || typeof workout !== "object") {
+      return null;
+    }
+    const sources = [
+      workout.cableCount,
+      workout.cables,
+      workout.builderMeta?.cables,
+    ];
+    for (const source of sources) {
+      const value = Number(source);
+      if (Number.isFinite(value) && value > 0) {
+        return Math.min(2, Math.max(1, value));
+      }
+    }
+    return 2;
+  }
+
+  deriveTotalLoadKg(workout) {
+    if (!workout || typeof workout !== "object") {
+      return null;
+    }
+    const stored = Number(workout.totalLoadKg);
+    if (Number.isFinite(stored) && stored > 0) {
+      return stored;
+    }
+    const perCableKg = Number(workout.weightKg);
+    if (!Number.isFinite(perCableKg) || perCableKg <= 0) {
+      return null;
+    }
+    const cables = this.extractCableCountFromWorkout(workout);
+    if (!Number.isFinite(cables) || cables <= 0) {
+      return null;
+    }
+    return perCableKg * cables;
   }
 
   inferPlanWeightUnit(items) {
@@ -6804,17 +7465,26 @@ class VitruvianApp {
 
 }
 
-// Create global app instance
-const app = new VitruvianApp();
 if (typeof window !== "undefined") {
-  window.app = app;
+  window.VitruvianApp = VitruvianApp;
 }
 
-// Log startup message
-app.addLogEntry("Vitruvian Web Control Ready", "success");
-app.addLogEntry('Click "Connect to Device" to begin', "info");
-app.addLogEntry("", "info");
-app.addLogEntry("Requirements:", "info");
-app.addLogEntry("- Chrome, Edge, or Opera browser", "info");
-app.addLogEntry("- HTTPS connection (or localhost)", "info");
-app.addLogEntry("- Bluetooth enabled on your device", "info");
+const shouldAutoInit =
+  typeof window === "undefined" ||
+  window.__VITRUVIAN_DISABLE_AUTO_INIT !== true;
+
+let app = null;
+if (shouldAutoInit) {
+  app = new VitruvianApp();
+  if (typeof window !== "undefined") {
+    window.app = app;
+  }
+
+  app.addLogEntry("Vitruvian Web Control Ready", "success");
+  app.addLogEntry('Click "Connect to Device" to begin', "info");
+  app.addLogEntry("", "info");
+  app.addLogEntry("Requirements:", "info");
+  app.addLogEntry("- Chrome, Edge, or Opera browser", "info");
+  app.addLogEntry("- HTTPS connection (or localhost)", "info");
+  app.addLogEntry("- Bluetooth enabled on your device", "info");
+}
