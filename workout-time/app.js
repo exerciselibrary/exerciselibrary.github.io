@@ -2148,7 +2148,7 @@ class VitruvianApp {
 
       if (normalized.length === 0) {
         alert("No workouts available in Dropbox to export");
-        if (statusDiv) statusDiv.textContent = "";
+        this.setDropboxStatus("");
         return;
       }
 
