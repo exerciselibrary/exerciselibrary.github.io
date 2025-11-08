@@ -5246,10 +5246,11 @@ class VitruvianApp {
       return;
     }
 
+    this.stopAtTop = !!item.stopAtTop;
+
     const stopAtTopCheckbox = document.getElementById("stopAtTopCheckbox");
     if (stopAtTopCheckbox) {
-      stopAtTopCheckbox.checked = !!item.stopAtTop;
-      this.stopAtTop = !!item.stopAtTop;
+      stopAtTopCheckbox.checked = this.stopAtTop;
     }
 
     if (item.type === "exercise") {
