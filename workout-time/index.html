@@ -2879,8 +2879,11 @@
                             </div>
 
                             <div style="display: flex; flex-direction: column; gap: 10px;">
-                                <button class="secondary" onclick="app.requestExportAllToDropboxCSV()">
-                                    Export All as CSV to Dropbox
+                                <button class="secondary" onclick="app.requestExportAllToDropboxExcel()">
+                                    Export All as Excel to Dropbox
+                                </button>
+                                <button class="secondary" onclick="app.requestPersonalRecordsSync()">
+                                    Rebuild PRs to Dropbox
                                 </button>
                             </div>
 
@@ -3406,6 +3409,7 @@
         <script src="chart.js"></script>
         <script src="dropbox.js"></script>
         <script src="plan-runner.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
         <script src="app.js"></script>
     </body>
 </html>

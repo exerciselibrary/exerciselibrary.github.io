@@ -215,8 +215,8 @@ class DropboxManager {
     }
   }
 
-  // Load all workouts from Dropbox
-  async loadWorkouts() {
+  // Load workouts from Dropbox. By default returns latest 25, but maxEntries can override.
+  async loadWorkouts(options = {}) {
     if (!this.isConnected) {
       throw new Error("Not connected to Dropbox");
     }
@@ -224,7 +224,14 @@ class DropboxManager {
     try {
       this.log("Loading workouts from Dropbox...", "info");
 
-      const maxWorkoutsToSync = 25;
+      const requestedMax =
+        typeof options.maxEntries === "number"
+          ? options.maxEntries
+          : options.maxEntries === Infinity
+            ? Infinity
+            : 25;
+      const enforceLimit = Number.isFinite(requestedMax);
+      const maxWorkoutsToSync = enforceLimit ? requestedMax : Infinity;
       const topFiles = [];
       let totalFileCount = 0;
 
@@ -242,7 +249,7 @@ class DropboxManager {
           return bTime - aTime;
         });
 
-        if (topFiles.length > maxWorkoutsToSync) {
+        if (enforceLimit && topFiles.length > maxWorkoutsToSync) {
           topFiles.length = maxWorkoutsToSync;
         }
       };
@@ -259,7 +266,7 @@ class DropboxManager {
 
       this.log(`Found ${totalFileCount} workout files`, "info");
 
-      if (totalFileCount > maxWorkoutsToSync) {
+      if (enforceLimit && totalFileCount > maxWorkoutsToSync) {
         this.log(
           `Limiting sync to the latest ${maxWorkoutsToSync} workouts`,
           "info",
@@ -319,6 +326,10 @@ class DropboxManager {
     return "/plans/plans.json";
   }
 
+  personalRecordsPath() {
+    return "/personal-records.json";
+  }
+
   async loadPlansIndex() {
     if (!this.isConnected) {
       throw new Error("Not connected to Dropbox");
@@ -365,6 +376,60 @@ class DropboxManager {
       mode: { ".tag": "overwrite" },
     });
 
+    return true;
+  }
+
+  async loadPersonalRecords() {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Dropbox");
+    }
+
+    try {
+      const response = await this.dbx.filesDownload({ path: this.personalRecordsPath() });
+      const fileBlob = response.result.fileBlob;
+      const text = await fileBlob.text();
+      const data = JSON.parse(text);
+
+      const records = Array.isArray(data?.records) ? data.records : [];
+      return {
+        version: data?.version ?? 1,
+        updatedAt: data?.updatedAt ?? null,
+        records,
+      };
+    } catch (error) {
+      const summary = error?.error?.error_summary || "";
+      if (summary.includes("path/not_found/")) {
+        this.log("Personal records file not found in Dropbox; starting fresh", "info");
+        return { version: 1, updatedAt: null, records: [] };
+      }
+
+      this.log(`Failed to load personal records: ${error.message}`, "error");
+      throw error;
+    }
+  }
+
+  async savePersonalRecords(recordsPayload = {}) {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Dropbox");
+    }
+
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      records: Array.isArray(recordsPayload.records)
+        ? recordsPayload.records
+        : Array.isArray(recordsPayload)
+          ? recordsPayload
+          : [],
+    };
+
+    await this.dbx.filesUpload({
+      path: this.personalRecordsPath(),
+      contents: JSON.stringify(payload, null, 2),
+      mode: { ".tag": "overwrite" },
+    });
+
+    this.log(`Saved ${payload.records.length} personal record(s)`, "success");
     return true;
   }
 
@@ -430,49 +495,22 @@ class DropboxManager {
     }
   }
 
-  // Export all workouts as a single CSV file
-  async exportAllWorkoutsCSV(workouts, unitLabel = "kg") {
+  async exportExcelWorkbook(filename, contents) {
     if (!this.isConnected) {
       throw new Error("Not connected to Dropbox");
     }
 
     try {
-      // Build CSV content
-      let csv = `Workout Date,Mode,Weight (${unitLabel}),Reps,Set Name,Set Number,Duration (seconds)\n`;
-
-      for (const workout of workouts) {
-        const date = (workout.timestamp || workout.endTime || new Date()).toISOString();
-        const mode = workout.mode || "Unknown";
-        const weight = workout.weightKg || 0;
-        const reps = workout.reps || 0;
-        const setName = workout.setName || "";
-        const setNumber =
-          workout.setNumber !== undefined && workout.setNumber !== null
-            ? workout.setNumber
-            : "";
-
-        // Calculate duration
-        let duration = "";
-        if (workout.startTime && workout.endTime) {
-          const durationMs = new Date(workout.endTime).getTime() - new Date(workout.startTime).getTime();
-          duration = Math.round(durationMs / 1000);
-        }
-
-        csv += `${date},"${mode}",${weight},${reps},"${setName}","${setNumber}",${duration}\n`;
-      }
-
-      // Upload to Dropbox
-      const filename = `workout_history_${new Date().toISOString().split("T")[0]}.csv`;
       await this.dbx.filesUpload({
         path: `/${filename}`,
-        contents: csv,
+        contents,
         mode: { ".tag": "overwrite" },
       });
 
-      this.log(`Exported ${workouts.length} workouts to ${filename}`, "success");
+      this.log(`Exported Excel workbook: ${filename}`, "success");
       return true;
     } catch (error) {
-      this.log(`Failed to export CSV: ${error.message}`, "error");
+      this.log(`Failed to export Excel workbook: ${error.message}`, "error");
       throw error;
     }
   }
