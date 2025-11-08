@@ -128,6 +128,8 @@ class VitruvianApp {
     this.historyPage = 1;
     this.historyPageSize = 5;
     this._loadedPlanName = null;
+    this._preferredPlanSelection = null;
+    this._planNameCollator = null;
 
     this._warmupCounterEl = null;
     this._workingCounterEl = null;
@@ -2196,6 +2198,7 @@ class VitruvianApp {
     }
 
     this.updateInputsForUnit();
+    this.handlePlanUnitPreferenceChange();
     this.renderPlanUI();
     this.renderLoadDisplays(this.currentSample);
     this.updateHistoryDisplay();
@@ -2208,16 +2211,28 @@ class VitruvianApp {
     return this.weightUnit === "lb" ? "lb" : "kg";
   }
 
+  getFriendlyUnitLabel(unit = this.weightUnit) {
+    return unit === "lb" ? "pounds" : "kilograms";
+  }
+
   getLoadDisplayDecimals() {
-    return this.weightUnit === "lb" ? 1 : 1;
+    return this.getLoadDisplayDecimalsForUnit(this.weightUnit);
+  }
+
+  getLoadDisplayDecimalsForUnit(unit) {
+    return unit === "lb" ? 1 : 1;
   }
 
   getWeightInputDecimals() {
-    return this.weightUnit === "lb" ? 1 : 1;
+    return this.getLoadDisplayDecimalsForUnit(this.weightUnit);
   }
 
   getProgressionInputDecimals() {
-    return this.weightUnit === "lb" ? 1 : 1;
+    return this.getProgressionDisplayDecimalsForUnit(this.weightUnit);
+  }
+
+  getProgressionDisplayDecimalsForUnit(unit) {
+    return unit === "lb" ? 1 : 1;
   }
 
   convertKgToDisplay(kg, unit = this.weightUnit) {
@@ -4907,6 +4922,10 @@ class VitruvianApp {
     const { reason = "user", complete = true, skipPlanAdvance = false } = options;
 
     try {
+      if (this.device) {
+        this.device.stopPropertyPolling?.();
+        this.device.stopMonitorPolling?.();
+      }
       await this.device.sendStopCommand();
       this.currentProgramParams = null;
       this._lastTargetSyncError = null;
@@ -5352,24 +5371,6 @@ class VitruvianApp {
     return null;
   }
 
-  applyPlanUnitOverride(items) {
-    const inferred = this.inferPlanWeightUnit(items);
-    if (!inferred || inferred === this.weightUnit) {
-      return;
-    }
-
-    const previous = this.weightUnit;
-    this.setWeightUnit(inferred, {
-      previousUnit: previous,
-      force: true,
-      skipSave: true,
-    });
-
-    const friendly = inferred === "lb" ? "pounds" : "kilograms";
-    this.addLogEntry(`Display units updated to match plan (${friendly}).`, "info");
-  }
-
-
   /* =========================
      PLAN — UI RENDER
      ========================= */
@@ -5531,6 +5532,17 @@ class VitruvianApp {
     }
   }
 
+  syncPlanNameInputTo(value) {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const input = document.getElementById("planNameInput");
+    if (!input) {
+      return;
+    }
+    input.value = value || "";
+  }
+
   /* =========================
      PLAN — UI ACTIONS
      ========================= */
@@ -5655,6 +5667,34 @@ class VitruvianApp {
     this.planItems[index].progressionKg = Math.max(-3, Math.min(3, kg));
   }
 
+  handlePlanUnitPreferenceChange() {
+    if (!Array.isArray(this.planItems) || this.planItems.length === 0) {
+      return;
+    }
+
+    const planName = this._loadedPlanName;
+    const changed = this.ensurePlanItemsRepresentUnit(this.planItems, this.weightUnit);
+
+    if (!changed) {
+      return;
+    }
+
+    if (planName) {
+      this.savePlanLocally(planName, this.planItems);
+      if (this.dropboxManager?.isConnected) {
+        this.syncPlanToDropbox(planName, this.planItems, {
+          silent: true,
+          suppressError: true,
+        });
+      }
+      const friendly = this.getFriendlyUnitLabel();
+      this.addLogEntry(
+        `Plan "${planName}" converted to ${friendly} to match your preference.`,
+        "info",
+      );
+    }
+  }
+
   startPlan() {
     return window.PlanRunnerPrototype.startPlan.call(this);
   }
@@ -5727,6 +5767,208 @@ class VitruvianApp {
      PLAN — PERSISTENCE
      ========================= */
 
+  getTodayMidnightUtcMs() {
+    const now = new Date();
+    return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  getPlanNameCollator() {
+    if (!this._planNameCollator && typeof Intl !== "undefined" && typeof Intl.Collator === "function") {
+      this._planNameCollator = new Intl.Collator(undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    }
+    return this._planNameCollator;
+  }
+
+  comparePlanNames(a, b) {
+    const collator = this.getPlanNameCollator();
+    if (collator) {
+      const result = collator.compare(a || "", b || "");
+      if (result !== 0) {
+        return result;
+      }
+    }
+    return (a || "").localeCompare(b || "");
+  }
+
+  parsePlanDateFromName(name) {
+    if (typeof name !== "string") {
+      return null;
+    }
+    const trimmed = name.trim();
+    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})\b/);
+    if (!match) {
+      return null;
+    }
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+      return null;
+    }
+    const dateMs = Date.UTC(year, month - 1, day);
+    if (!Number.isFinite(dateMs)) {
+      return null;
+    }
+    const remainder = trimmed.slice(match[0].length).trim();
+    return { name: trimmed, dateMs, remainder };
+  }
+
+  selectPlanNameForToday(names) {
+    if (!Array.isArray(names) || names.length === 0) {
+      return null;
+    }
+
+    const entries = names
+      .map((planName) => {
+        const parsed = this.parsePlanDateFromName(planName);
+        return parsed ? { name: planName, parsed } : null;
+      })
+      .filter(Boolean);
+
+    if (!entries.length) {
+      const sorted = [...names].sort((a, b) => this.comparePlanNames(a, b));
+      return sorted[0] || null;
+    }
+
+    const todayMs = this.getTodayMidnightUtcMs();
+    const pastOrToday = entries.filter((entry) => entry.parsed.dateMs <= todayMs);
+    const pool = pastOrToday.length ? pastOrToday : entries;
+
+    pool.sort((a, b) => {
+      if (pastOrToday.length) {
+        if (a.parsed.dateMs !== b.parsed.dateMs) {
+          return b.parsed.dateMs - a.parsed.dateMs;
+        }
+      } else if (a.parsed.dateMs !== b.parsed.dateMs) {
+        return a.parsed.dateMs - b.parsed.dateMs;
+      }
+      return this.comparePlanNames(a.name, b.name);
+    });
+
+    return pool[0]?.name || null;
+  }
+
+  ensurePlanItemSetData(item) {
+    if (!item || typeof item !== "object") {
+      return null;
+    }
+    if (!item.builderMeta || typeof item.builderMeta !== "object") {
+      item.builderMeta = {};
+    }
+    if (!item.builderMeta.setData || typeof item.builderMeta.setData !== "object") {
+      item.builderMeta.setData = {};
+    }
+    return item.builderMeta.setData;
+  }
+
+  ensurePlanItemsRepresentUnit(items, unit) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return false;
+    }
+
+    const normalizedUnit = unit === "lb" ? "lb" : "kg";
+    const weightDecimals = this.getLoadDisplayDecimalsForUnit(normalizedUnit);
+    const progressionDecimals = this.getProgressionDisplayDecimalsForUnit(normalizedUnit);
+    const unitLabel = normalizedUnit === "lb" ? "LBS" : "KG";
+    let mutated = false;
+
+    for (const item of items) {
+      if (!item || typeof item !== "object" || item.type !== "exercise") {
+        continue;
+      }
+
+      const perCableKg = Number(item.perCableKg);
+      if (Number.isFinite(perCableKg)) {
+        const displayValue = this.convertKgToDisplay(perCableKg, normalizedUnit);
+        if (Number.isFinite(displayValue)) {
+          const formatted = displayValue.toFixed(weightDecimals);
+          const setData = this.ensurePlanItemSetData(item);
+
+          if (setData.weight !== formatted) {
+            setData.weight = formatted;
+            mutated = true;
+          }
+          if (setData.weightUnit !== unitLabel) {
+            setData.weightUnit = unitLabel;
+            mutated = true;
+          }
+        }
+      }
+
+      const progressionKg = Number(item.progressionKg);
+      let formattedProgression = "";
+      if (Number.isFinite(progressionKg)) {
+        const progressionDisplay = this.convertKgToDisplay(progressionKg, normalizedUnit);
+        if (Number.isFinite(progressionDisplay)) {
+          formattedProgression = progressionDisplay.toFixed(progressionDecimals);
+        }
+      }
+
+      if (item.progressionDisplay !== formattedProgression) {
+        item.progressionDisplay = formattedProgression;
+        mutated = true;
+      }
+      if (item.progressionUnit !== unitLabel) {
+        item.progressionUnit = unitLabel;
+        mutated = true;
+      }
+
+      const setData = this.ensurePlanItemSetData(item);
+      if (setData.progression !== formattedProgression) {
+        setData.progression = formattedProgression;
+        mutated = true;
+      }
+      if (setData.progressionUnit !== unitLabel) {
+        setData.progressionUnit = unitLabel;
+        mutated = true;
+      }
+    }
+
+    return mutated;
+  }
+
+  savePlanLocally(name, items) {
+    if (!name) {
+      return false;
+    }
+    try {
+      localStorage.setItem(this.planKey(name), JSON.stringify(items ?? []));
+      return true;
+    } catch (error) {
+      this.addLogEntry(`Failed to save plan "${name}" locally: ${error.message}`, "error");
+      return false;
+    }
+  }
+
+  async syncPlanToDropbox(name, items, options = {}) {
+    if (!this.dropboxManager?.isConnected || !name) {
+      return;
+    }
+
+    const payload = JSON.parse(JSON.stringify(items ?? []));
+
+    try {
+      await this.dropboxManager.savePlan(name, payload);
+      const remoteNames = new Set(this.getDropboxPlanNames());
+      remoteNames.add(name);
+      this.setDropboxPlanNames([...remoteNames]);
+      if (!options.silent) {
+        this.addLogEntry(`Plan "${name}" synced to Dropbox`, "success");
+      }
+    } catch (error) {
+      this.addLogEntry(
+        `Failed to sync plan "${name}" to Dropbox: ${error.message}`,
+        "error",
+      );
+      if (!options.suppressError) {
+        throw error;
+      }
+    }
+  }
+
   plansKey() { return "vitruvian.plans.index"; }
   planKey(name) { return `vitruvian.plan.${name}`; }
   dropboxPlansKey() { return "vitruvian.plans.dropboxIndex"; }
@@ -5779,11 +6021,7 @@ class VitruvianApp {
     this.setAllPlanNames([...names]);
     this.refreshPlanSelectNames();
 
-    const dropboxNote =
-      this.dropboxManager && this.dropboxManager.isConnected
-        ? ' (Dropbox plan sync disabled in Workout Time)'
-        : '';
-    this.addLogEntry(`Stored plan "${name}" from Workout Builder${dropboxNote}`, 'info');
+    this.addLogEntry(`Stored plan "${name}" from Workout Builder`, 'info');
   }
 
   setupPlanSelectAutoLoad() {
@@ -5816,7 +6054,14 @@ class VitruvianApp {
       : `<option value="">(no saved plans)</option>`;
 
     if (names.length > 0) {
-      const nextValue = names.includes(previous) ? previous : names[0];
+      let nextValue = "";
+      if (previous && names.includes(previous)) {
+        nextValue = previous;
+      } else if (this._preferredPlanSelection && names.includes(this._preferredPlanSelection)) {
+        nextValue = this._preferredPlanSelection;
+      } else {
+        nextValue = this.selectPlanNameForToday(names) || names[0];
+      }
       sel.value = nextValue;
     } else {
       sel.value = "";
@@ -5825,12 +6070,14 @@ class VitruvianApp {
     this.setupPlanSelectAutoLoad();
 
     const activeName = sel.value;
+    this._preferredPlanSelection = activeName || null;
     if (activeName) {
       if (activeName !== this._loadedPlanName) {
         this.loadSelectedPlan({ silentIfMissing: true, suppressLog: true });
       }
     } else {
       this._loadedPlanName = null;
+      this.syncPlanNameInputTo("");
     }
   }
 
@@ -5842,23 +6089,38 @@ class VitruvianApp {
     const nameInput = document.getElementById("planNameInput");
     const name = (nameInput?.value || "").trim();
     if (!name) { alert("Enter a plan name first."); return; }
+    const normalized = this.ensurePlanItemsRepresentUnit(this.planItems, this.weightUnit);
+    if (normalized) {
+      this.addLogEntry(
+        `Normalized plan data to ${this.getFriendlyUnitLabel()} before saving.`,
+        "info",
+      );
+    }
     try {
-      localStorage.setItem(this.planKey(name), JSON.stringify(this.planItems));
+      const saved = this.savePlanLocally(name, this.planItems);
+      if (!saved) {
+        alert("Could not save plan locally. See logs for details.");
+        return;
+      }
       const names = new Set(this.getAllPlanNames());
       names.add(name);
       this.setAllPlanNames([...names]);
       this.refreshPlanSelectNames();
       this.addLogEntry(`Saved plan "${name}" (${this.planItems.length} items)`, "success");
+      this._loadedPlanName = name;
+      this._preferredPlanSelection = name;
+      this.syncPlanNameInputTo(name);
     } catch (e) {
       alert(`Could not save plan: ${e.message}`);
       return;
     }
 
-    if (this.dropboxManager.isConnected) {
-      this.addLogEntry(
-        `Dropbox plan sync is disabled in Workout Time; "${name}" was saved locally only.`,
-        "info",
-      );
+    if (this.dropboxManager?.isConnected) {
+      try {
+        await this.syncPlanToDropbox(name, this.planItems);
+      } catch (error) {
+        alert(`Plan saved locally, but Dropbox sync failed: ${error.message}`);
+      }
     }
   }
 
@@ -5896,9 +6158,32 @@ class VitruvianApp {
         );
       }
       this.planItems = Array.isArray(parsed) ? parsed : [];
-      this.applyPlanUnitOverride(this.planItems);
+      const inferredUnit = this.inferPlanWeightUnit(this.planItems);
+      const normalized = this.ensurePlanItemsRepresentUnit(this.planItems, this.weightUnit);
+      if (normalized) {
+        this.savePlanLocally(planName, this.planItems);
+        if (this.dropboxManager?.isConnected) {
+          this.syncPlanToDropbox(planName, this.planItems, {
+            silent: true,
+            suppressError: true,
+          });
+        }
+        if (inferredUnit && inferredUnit !== this.weightUnit) {
+          this.addLogEntry(
+            `Converted plan units from ${this.getFriendlyUnitLabel(inferredUnit)} to ${this.getFriendlyUnitLabel()}.`,
+            "info",
+          );
+        } else {
+          this.addLogEntry(
+            `Normalized plan units to ${this.getFriendlyUnitLabel()}.`,
+            "info",
+          );
+        }
+      }
       this.renderPlanUI();
       this._loadedPlanName = planName;
+      this._preferredPlanSelection = planName;
+      this.syncPlanNameInputTo(planName);
       if (!suppressLog) {
         this.addLogEntry(`Loaded plan "${planName}"`, "success");
       }
@@ -5922,11 +6207,19 @@ class VitruvianApp {
     const currentNames = this.getAllPlanNames();
     const remaining = currentNames.filter((n) => n !== name);
 
-    if (this.dropboxManager.isConnected) {
-      this.addLogEntry(
-        `Dropbox plan sync is disabled in Workout Time; remote plan "${name}" was not deleted.`,
-        "info",
-      );
+    if (this.dropboxManager?.isConnected) {
+      try {
+        await this.dropboxManager.deletePlan(name);
+        const remainingRemote = new Set(this.getDropboxPlanNames());
+        remainingRemote.delete(name);
+        this.setDropboxPlanNames([...remainingRemote]);
+        this.addLogEntry(`Deleted plan "${name}" from Dropbox`, "info");
+      } catch (error) {
+        this.addLogEntry(
+          `Failed to delete plan "${name}" from Dropbox: ${error.message}`,
+          "error",
+        );
+      }
     }
 
     try {
