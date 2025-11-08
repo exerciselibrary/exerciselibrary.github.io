@@ -56,6 +56,12 @@ class VitruvianApp {
     this.warmupTarget = 3; // Default warmup target
     this.targetReps = 0; // Target working reps
     this.workoutHistory = []; // Track completed workouts
+    this.personalRecords = this.loadPersonalRecordsCache();
+    this._pendingPersonalRecordCandidate = null;
+    this._personalRecordsDirty = false;
+    this._personalRecordsSyncInFlight = false;
+    this._pendingPersonalRecordsDropboxSync = false;
+    this._personalRecordsForceSync = false;
     this.currentWorkout = null; // Current workout info
     this.currentProgramParams = null; // Last program parameters sent to the device
     this.topPositionsA = []; // Rolling window of top positions for cable A
@@ -892,6 +898,11 @@ class VitruvianApp {
     // Handle connection state changes
     this.dropboxManager.onConnectionChange = (isConnected) => {
       this.updateDropboxUI(isConnected);
+      if (isConnected && (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync)) {
+        this.syncPersonalRecordsToDropbox({ reason: "connection-change", silent: true }).catch(() => {
+          /* already logged inside syncPersonalRecordsToDropbox */
+        });
+      }
     };
 
     const dropboxButton = document.getElementById("dropboxStatusButton");
@@ -1995,6 +2006,12 @@ class VitruvianApp {
         : "No new workouts found in Dropbox";
 
       await this.syncPlansFromDropbox({ silent: auto });
+      await this.syncPersonalRecordsFromDropbox({ silent: auto });
+
+      const backfilled = this.ensurePersonalRecordsFromHistory();
+      if (backfilled) {
+        this.queuePersonalRecordsDropboxSync("history-backfill");
+      }
 
       // Update last backup display to show sync time
       if (normalizedCloud.length > 0) {
@@ -2114,7 +2131,11 @@ class VitruvianApp {
       const statusDiv = document.getElementById("dropboxSyncStatus");
       if (statusDiv) statusDiv.textContent = "Exporting to CSV...";
 
-      await this.dropboxManager.exportAllWorkoutsCSV(this.workoutHistory, this.getUnitLabel());
+      await this.dropboxManager.exportAllWorkoutsCSV(this.workoutHistory, {
+        unitLabel: this.getUnitLabel(),
+        personalRecords: this.getPersonalRecordsList(),
+        toDisplayFn: (kg) => this.convertKgToDisplay(kg),
+      });
 
       this.addLogEntry(`Exported ${this.workoutHistory.length} workouts to CSV in Dropbox`, "success");
       if (statusDiv) {
@@ -2129,6 +2150,49 @@ class VitruvianApp {
 
   requestExportAllToDropboxCSV() {
     return this.exportAllToDropboxCSV({ manual: true });
+  }
+
+  async exportPersonalRecordsToDropboxCSV(options = {}) {
+    if (options?.manual !== true) {
+      this.addLogEntry(
+        "Blocked non-manual request to export personal records CSV",
+        "warning",
+      );
+      return;
+    }
+
+    if (!this.dropboxManager.isConnected) {
+      alert("Please connect to Dropbox first");
+      return;
+    }
+
+    const records = this.getPersonalRecordsList();
+    if (records.length === 0) {
+      alert("No personal records available to export yet");
+      return;
+    }
+
+    try {
+      await this.dropboxManager.exportPersonalRecordsCSV(
+        records,
+        this.getUnitLabel(),
+        (kg) => this.convertKgToDisplay(kg),
+      );
+      this.addLogEntry(
+        `Exported ${records.length} personal record${records.length === 1 ? "" : "s"} to Dropbox`,
+        "success",
+      );
+    } catch (error) {
+      this.addLogEntry(
+        `Failed to export personal records: ${error.message}`,
+        "error",
+      );
+      alert(`Failed to export personal records: ${error.message}`);
+    }
+  }
+
+  requestExportPersonalRecordsCSV() {
+    return this.exportPersonalRecordsToDropboxCSV({ manual: true });
   }
 
   setWeightUnit(unit, options = {}) {
@@ -2205,6 +2269,10 @@ class VitruvianApp {
     this.applyUnitToChart();
     this.updatePersonalBestDisplay();
     this.updatePositionBarColors(this.currentSample);
+
+    this.syncPersonalRecordsToDropbox({ reason: "unit-change", force: true, silent: true }).catch(() => {
+      /* errors handled inside syncPersonalRecordsToDropbox */
+    });
   }
 
   getUnitLabel() {
@@ -2441,6 +2509,8 @@ class VitruvianApp {
         this.currentWorkout.celebratedPersonalBestKg = bestKg;
       }
     }
+
+    this.trackPersonalRecordCandidate(bestKg);
 
     this.setPersonalBestHighlight(true);
     this.updatePersonalBestDisplay();
@@ -3113,6 +3183,7 @@ class VitruvianApp {
     this.warmupReps = 0;
     this.workingReps = 0;
     this.currentWorkout = null;
+    this.clearPersonalRecordCandidate();
     this.stopWorkingTargetHold();
     this.updateLiveWeightDisplay();
     this.updatePersonalBestDisplay();
@@ -3312,6 +3383,45 @@ class VitruvianApp {
       return 0;
     }
 
+    const record = this.getPersonalRecord(identity.key);
+    const excludeWorkout = options.excludeWorkout || null;
+
+    if (excludeWorkout) {
+      if (record && Number.isFinite(record.weightKg)) {
+        const recordTimestamp = record.timestamp
+          ? new Date(record.timestamp).getTime()
+          : null;
+        const workoutTimestamp = this.getWorkoutTimestamp(excludeWorkout);
+        const workoutTime = workoutTimestamp ? workoutTimestamp.getTime() : null;
+        const epsilon = 0.0001;
+        const workoutPeak = this.calculateTotalLoadPeakKg(excludeWorkout);
+
+        const isSameWorkout =
+          recordTimestamp !== null &&
+          workoutTime !== null &&
+          Math.abs(recordTimestamp - workoutTime) < 2000 &&
+          Math.abs(workoutPeak - record.weightKg) <= epsilon;
+
+        if (!isSameWorkout) {
+          return record.weightKg;
+        }
+      }
+
+      return this.getHistoricalBestLoadKg(identity, options);
+    }
+
+    if (record && Number.isFinite(record.weightKg)) {
+      return record.weightKg;
+    }
+
+    return this.getHistoricalBestLoadKg(identity, options);
+  }
+
+  getHistoricalBestLoadKg(identity, options = {}) {
+    if (!identity || typeof identity.key !== "string") {
+      return 0;
+    }
+
     const excludeWorkout = options.excludeWorkout || null;
     let best = 0;
 
@@ -3398,6 +3508,459 @@ class VitruvianApp {
       null;
 
     return timestamp ? timestamp.getTime() : null;
+  }
+
+  getWorkoutTimestamp(workout) {
+    if (!workout || typeof workout !== "object") {
+      return null;
+    }
+
+    const candidates = [workout.endTime, workout.timestamp, workout.startTime];
+    for (const candidate of candidates) {
+      if (candidate instanceof Date && !Number.isNaN(candidate.getTime())) {
+        return candidate;
+      }
+      if (typeof candidate === "string" && candidate.length > 0) {
+        const parsed = new Date(candidate);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  loadPersonalRecordsCache() {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return {};
+    }
+
+    try {
+      const raw = window.localStorage.getItem("vitruvian.personalRecords");
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      const entries = Array.isArray(parsed)
+        ? parsed
+        : Object.keys(parsed || {}).map((key) => ({ key, ...(parsed[key] || {}) }));
+
+      const records = {};
+      for (const entry of entries) {
+        const normalized = this.normalizePersonalRecord(entry);
+        if (normalized) {
+          records[normalized.key] = normalized;
+        }
+      }
+      return records;
+    } catch {
+      return {};
+    }
+  }
+
+  savePersonalRecordsCache() {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        "vitruvian.personalRecords",
+        JSON.stringify(this.personalRecords || {}),
+      );
+    } catch {
+      // Ignore persistence errors (e.g., private browsing)
+    }
+  }
+
+  normalizePersonalRecord(record) {
+    if (!record || typeof record !== "object") {
+      return null;
+    }
+
+    const key =
+      typeof record.key === "string" && record.key.trim().length > 0
+        ? record.key.trim()
+        : null;
+    if (!key) {
+      return null;
+    }
+
+    const weightKg = Number(record.weightKg);
+    if (!Number.isFinite(weightKg) || weightKg <= 0) {
+      return null;
+    }
+
+    const label =
+      typeof record.label === "string" && record.label.trim().length > 0
+        ? record.label.trim()
+        : key;
+
+    const timestampValue = record.timestamp || record.updatedAt || null;
+    let timestamp = null;
+    if (timestampValue) {
+      const date =
+        timestampValue instanceof Date
+          ? timestampValue
+          : new Date(timestampValue);
+      if (!Number.isNaN(date.getTime())) {
+        timestamp = date.toISOString();
+      }
+    }
+
+    return { key, label, weightKg, timestamp };
+  }
+
+  getPersonalRecordsList() {
+    const source = this.personalRecords || {};
+    return Object.values(source)
+      .map((record) => ({ ...record }))
+      .sort((a, b) =>
+        a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+      );
+  }
+
+  getPersonalRecord(key) {
+    if (!key || !this.personalRecords) {
+      return null;
+    }
+    return this.personalRecords[key] || null;
+  }
+
+  clearPersonalRecordCandidate() {
+    this._pendingPersonalRecordCandidate = null;
+  }
+
+  trackPersonalRecordCandidate(weightKg, timestamp = new Date()) {
+    if (
+      !this.currentWorkout ||
+      !this.currentWorkout.identityKey ||
+      !Number.isFinite(weightKg) ||
+      weightKg <= 0
+    ) {
+      return;
+    }
+
+    const key = this.currentWorkout.identityKey;
+    const label = this.currentWorkout.identityLabel || key;
+    const isoTimestamp =
+      timestamp instanceof Date
+        ? timestamp.toISOString()
+        : new Date(timestamp || Date.now()).toISOString();
+
+    const epsilon = 0.0001;
+    const existing = this._pendingPersonalRecordCandidate;
+    if (existing && existing.identityKey === key) {
+      if (weightKg > existing.weightKg + epsilon) {
+        existing.weightKg = weightKg;
+      }
+      existing.timestamp = isoTimestamp;
+      return;
+    }
+
+    this._pendingPersonalRecordCandidate = {
+      identityKey: key,
+      identityLabel: label,
+      weightKg,
+      timestamp: isoTimestamp,
+    };
+  }
+
+  finalizePersonalRecordForWorkout(workout, options = {}) {
+    if (!workout || options.skipped) {
+      this.clearPersonalRecordCandidate();
+      return false;
+    }
+
+    const identity = this.getWorkoutIdentityInfo(workout);
+    if (!identity) {
+      this.clearPersonalRecordCandidate();
+      return false;
+    }
+
+    const candidate = this._pendingPersonalRecordCandidate;
+    const matchesCandidate =
+      candidate && candidate.identityKey === identity.key;
+    const workoutPeakKg = this.calculateTotalLoadPeakKg(workout);
+    const targetWeightKg = matchesCandidate
+      ? Math.max(workoutPeakKg, Number(candidate.weightKg) || 0)
+      : workoutPeakKg;
+    const timestamp =
+      (matchesCandidate && candidate.timestamp) ||
+      this.getWorkoutTimestamp(workout) ||
+      new Date();
+
+    const updated = this.applyPersonalRecordCandidate(
+      identity,
+      targetWeightKg,
+      timestamp,
+      { reason: options.reason || "workout-complete" },
+    );
+
+    this.clearPersonalRecordCandidate();
+    return updated;
+  }
+
+  applyPersonalRecordCandidate(identity, weightKg, timestamp, options = {}) {
+    if (
+      !identity ||
+      typeof identity.key !== "string" ||
+      !Number.isFinite(weightKg) ||
+      weightKg <= 0
+    ) {
+      return false;
+    }
+
+    const key = identity.key;
+    const label = identity.label || key;
+    const isoTimestamp = (() => {
+      if (timestamp instanceof Date && !Number.isNaN(timestamp.getTime())) {
+        return timestamp.toISOString();
+      }
+      if (typeof timestamp === "string" && timestamp.length > 0) {
+        const parsed = new Date(timestamp);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed.toISOString();
+        }
+      }
+      return new Date().toISOString();
+    })();
+
+    const epsilon = 0.0001;
+    const existing = this.personalRecords?.[key];
+    let shouldUpdate = false;
+
+    if (!existing) {
+      shouldUpdate = true;
+    } else {
+      const weightDelta = weightKg - existing.weightKg;
+      if (weightDelta > epsilon) {
+        shouldUpdate = true;
+      } else if (Math.abs(weightDelta) <= epsilon) {
+        const previousTime = existing.timestamp
+          ? new Date(existing.timestamp).getTime()
+          : 0;
+        const candidateTime = isoTimestamp
+          ? new Date(isoTimestamp).getTime()
+          : Date.now();
+        if (candidateTime > previousTime) {
+          shouldUpdate = true;
+        }
+      }
+    }
+
+    if (!shouldUpdate) {
+      return false;
+    }
+
+    if (!this.personalRecords) {
+      this.personalRecords = {};
+    }
+
+    this.personalRecords[key] = {
+      key,
+      label,
+      weightKg,
+      timestamp: isoTimestamp,
+    };
+
+    if (!options.skipCacheSave) {
+      this.savePersonalRecordsCache();
+    }
+
+    if (!options.skipDirtyFlag) {
+      this._personalRecordsDirty = true;
+    }
+
+    if (!options.skipDropboxSync) {
+      this.queuePersonalRecordsDropboxSync(options.reason || "personal-record-update");
+    }
+
+    return true;
+  }
+
+  ensurePersonalRecordsFromHistory() {
+    if (!Array.isArray(this.workoutHistory) || this.workoutHistory.length === 0) {
+      return false;
+    }
+
+    const bestByIdentity = new Map();
+    const epsilon = 0.0001;
+
+    for (const workout of this.workoutHistory) {
+      const identity = this.getWorkoutIdentityInfo(workout);
+      if (!identity) {
+        continue;
+      }
+
+      const peakKg = this.calculateTotalLoadPeakKg(workout);
+      if (!Number.isFinite(peakKg) || peakKg <= 0) {
+        continue;
+      }
+
+      const timestamp = this.getWorkoutTimestamp(workout);
+      const existing = bestByIdentity.get(identity.key);
+      if (!existing) {
+        bestByIdentity.set(identity.key, { identity, weightKg: peakKg, timestamp });
+        continue;
+      }
+
+      const delta = peakKg - existing.weightKg;
+      const tsMs = timestamp instanceof Date ? timestamp.getTime() : 0;
+      const existingMs =
+        existing.timestamp instanceof Date ? existing.timestamp.getTime() : 0;
+
+      if (delta > epsilon || (Math.abs(delta) <= epsilon && tsMs > existingMs)) {
+        bestByIdentity.set(identity.key, { identity, weightKg: peakKg, timestamp });
+      }
+    }
+
+    let updated = false;
+    for (const entry of bestByIdentity.values()) {
+      const applied = this.applyPersonalRecordCandidate(
+        entry.identity,
+        entry.weightKg,
+        entry.timestamp,
+        {
+          skipDropboxSync: true,
+          skipCacheSave: true,
+        },
+      );
+      if (applied) {
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      this.savePersonalRecordsCache();
+    }
+
+    return updated;
+  }
+
+  async syncPersonalRecordsFromDropbox(options = {}) {
+    if (!this.dropboxManager?.isConnected) {
+      return;
+    }
+
+    try {
+      const payload = await this.dropboxManager.loadPersonalRecords();
+      const records = Array.isArray(payload?.records) ? payload.records : [];
+      let merged = false;
+
+      for (const entry of records) {
+        const normalized = this.normalizePersonalRecord(entry);
+        if (!normalized) {
+          continue;
+        }
+
+        if (!this.personalRecords) {
+          this.personalRecords = {};
+        }
+
+        const existing = this.personalRecords[normalized.key];
+        if (!existing) {
+          this.personalRecords[normalized.key] = normalized;
+          merged = true;
+          continue;
+        }
+
+        const epsilon = 0.0001;
+        const delta = normalized.weightKg - existing.weightKg;
+        const normalizedTime = normalized.timestamp
+          ? new Date(normalized.timestamp).getTime()
+          : 0;
+        const existingTime = existing.timestamp
+          ? new Date(existing.timestamp).getTime()
+          : 0;
+
+        if (delta > epsilon || (Math.abs(delta) <= epsilon && normalizedTime > existingTime)) {
+          this.personalRecords[normalized.key] = normalized;
+          merged = true;
+        }
+      }
+
+      if (merged) {
+        this.savePersonalRecordsCache();
+      }
+
+      if (!options.silent && records.length > 0) {
+        this.addLogEntry(
+          `Loaded ${records.length} personal record${records.length === 1 ? "" : "s"} from Dropbox`,
+          "success",
+        );
+      }
+    } catch (error) {
+      if (!options.silent) {
+        this.addLogEntry(
+          `Failed to load personal records from Dropbox: ${error.message}`,
+          "error",
+        );
+      }
+    }
+  }
+
+  async syncPersonalRecordsToDropbox(options = {}) {
+    const force = options?.force === true;
+    const silent = options?.silent !== false;
+
+    if (force) {
+      this._personalRecordsForceSync = true;
+    }
+
+    if (!this.dropboxManager?.isConnected) {
+      this._pendingPersonalRecordsDropboxSync = true;
+      return;
+    }
+
+    const shouldForce = this._personalRecordsForceSync;
+
+    if (!shouldForce && !this._personalRecordsDirty) {
+      return;
+    }
+
+    if (this._personalRecordsSyncInFlight) {
+      this._pendingPersonalRecordsDropboxSync = true;
+      return;
+    }
+
+    this._personalRecordsSyncInFlight = true;
+    this._pendingPersonalRecordsDropboxSync = false;
+
+    try {
+      await this.dropboxManager.savePersonalRecords({
+        records: this.getPersonalRecordsList(),
+      });
+      this._personalRecordsDirty = false;
+      this._personalRecordsForceSync = false;
+      this._pendingPersonalRecordsDropboxSync = false;
+      if (!silent) {
+        this.addLogEntry("Personal records synced to Dropbox", "success");
+      }
+    } catch (error) {
+      this._pendingPersonalRecordsDropboxSync = true;
+      if (!silent) {
+        this.addLogEntry(
+          `Failed to sync personal records: ${error.message}`,
+          "error",
+        );
+      }
+    } finally {
+      this._personalRecordsSyncInFlight = false;
+    }
+  }
+
+  queuePersonalRecordsDropboxSync(reason) {
+    this._pendingPersonalRecordsDropboxSync = true;
+
+    if (!this.dropboxManager?.isConnected) {
+      return;
+    }
+
+    this.syncPersonalRecordsToDropbox({ reason, silent: true }).catch(() => {
+      // Errors are surfaced via the log inside syncPersonalRecordsToDropbox
+    });
   }
 
   loadSidebarPreference() {
@@ -3940,6 +4503,12 @@ class VitruvianApp {
         prInfo = this.displayTotalLoadPR(storedWorkout);
       } else {
         this.hidePRBanner();
+      }
+
+      if (!isSkipped) {
+        this.finalizePersonalRecordForWorkout(summaryWorkout);
+      } else {
+        this.clearPersonalRecordCandidate();
       }
 
       // Auto-save to Dropbox if connected
