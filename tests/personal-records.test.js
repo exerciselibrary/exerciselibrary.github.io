@@ -371,7 +371,11 @@ function setupTestEnvironment() {
   const window = createWindowStub();
   globalThis.window = window;
   globalThis.document = window.document;
-  globalThis.navigator = window.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    value: window.navigator,
+    configurable: true,
+    writable: false,
+  });
   globalThis.localStorage = window.localStorage;
   globalThis.alert = window.alert;
   globalThis.confirm = window.confirm;
@@ -418,7 +422,15 @@ function setupTestEnvironment() {
     restore() {
       globalThis.window = previous.window;
       globalThis.document = previous.document;
-      globalThis.navigator = previous.navigator;
+      if (previous.navigator === undefined) {
+        delete globalThis.navigator;
+      } else {
+        Object.defineProperty(globalThis, "navigator", {
+          value: previous.navigator,
+          configurable: true,
+          writable: false,
+        });
+      }
       globalThis.localStorage = previous.localStorage;
       globalThis.alert = previous.alert;
       globalThis.confirm = previous.confirm;
