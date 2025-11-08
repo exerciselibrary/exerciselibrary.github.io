@@ -78,10 +78,12 @@ class VitruvianApp {
     this.targetReps = 0; // Target working reps
     this.workoutHistory = []; // Track completed workouts
     this.personalRecords = this.loadPersonalRecordsCache();
+    const personalRecordsSyncState = this.loadPersonalRecordsSyncState();
     this._pendingPersonalRecordCandidate = null;
-    this._personalRecordsDirty = false;
+    this._personalRecordsDirty = personalRecordsSyncState.dirty;
     this._personalRecordsSyncInFlight = false;
-    this._pendingPersonalRecordsDropboxSync = false;
+    this._pendingPersonalRecordsDropboxSync =
+      personalRecordsSyncState.pendingDropboxSync;
     this._personalRecordsForceSync = false;
     this.currentWorkout = null; // Current workout info
     this.currentProgramParams = null; // Last program parameters sent to the device
@@ -3631,6 +3633,57 @@ class VitruvianApp {
     }
   }
 
+  loadPersonalRecordsSyncState() {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return { dirty: false, pendingDropboxSync: false };
+    }
+
+    try {
+      const raw = window.localStorage.getItem(
+        "vitruvian.personalRecords.syncState",
+      );
+      if (!raw) {
+        return { dirty: false, pendingDropboxSync: false };
+      }
+
+      const parsed = JSON.parse(raw);
+      return {
+        dirty: Boolean(parsed?.dirty),
+        pendingDropboxSync: Boolean(parsed?.pendingDropboxSync),
+      };
+    } catch {
+      return { dirty: false, pendingDropboxSync: false };
+    }
+  }
+
+  persistPersonalRecordsSyncState() {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        "vitruvian.personalRecords.syncState",
+        JSON.stringify({
+          dirty: !!this._personalRecordsDirty,
+          pendingDropboxSync: !!this._pendingPersonalRecordsDropboxSync,
+        }),
+      );
+    } catch {
+      // Ignore persistence errors (e.g., private browsing)
+    }
+  }
+
+  setPersonalRecordsDirty(isDirty) {
+    this._personalRecordsDirty = isDirty === true;
+    this.persistPersonalRecordsSyncState();
+  }
+
+  setPendingPersonalRecordsDropboxSync(isPending) {
+    this._pendingPersonalRecordsDropboxSync = isPending === true;
+    this.persistPersonalRecordsSyncState();
+  }
+
   savePersonalRecordsCache() {
     if (typeof window === "undefined" || !window.localStorage) {
       return;
@@ -4238,7 +4291,7 @@ class VitruvianApp {
     }
 
     if (!options.skipDirtyFlag) {
-      this._personalRecordsDirty = true;
+      this.setPersonalRecordsDirty(true);
     }
 
     if (!options.skipDropboxSync) {
@@ -4362,7 +4415,7 @@ class VitruvianApp {
     }
 
     this.personalRecords = nextRecords;
-    this._personalRecordsDirty = true;
+    this.setPersonalRecordsDirty(true);
     this.savePersonalRecordsCache();
     return true;
   }
@@ -4438,7 +4491,7 @@ class VitruvianApp {
     }
 
     if (!this.dropboxManager?.isConnected) {
-      this._pendingPersonalRecordsDropboxSync = true;
+      this.setPendingPersonalRecordsDropboxSync(true);
       return;
     }
 
@@ -4449,25 +4502,25 @@ class VitruvianApp {
     }
 
     if (this._personalRecordsSyncInFlight) {
-      this._pendingPersonalRecordsDropboxSync = true;
+      this.setPendingPersonalRecordsDropboxSync(true);
       return;
     }
 
     this._personalRecordsSyncInFlight = true;
-    this._pendingPersonalRecordsDropboxSync = false;
+    this.setPendingPersonalRecordsDropboxSync(false);
 
     try {
       await this.dropboxManager.savePersonalRecords({
         records: this.getPersonalRecordsList(),
       });
-      this._personalRecordsDirty = false;
+      this.setPersonalRecordsDirty(false);
       this._personalRecordsForceSync = false;
-      this._pendingPersonalRecordsDropboxSync = false;
+      this.setPendingPersonalRecordsDropboxSync(false);
       if (!silent) {
         this.addLogEntry("Personal records synced to Dropbox", "success");
       }
     } catch (error) {
-      this._pendingPersonalRecordsDropboxSync = true;
+      this.setPendingPersonalRecordsDropboxSync(true);
       if (!silent) {
         this.addLogEntry(
           `Failed to sync personal records: ${error.message}`,
@@ -4480,7 +4533,7 @@ class VitruvianApp {
   }
 
   queuePersonalRecordsDropboxSync(reason) {
-    this._pendingPersonalRecordsDropboxSync = true;
+    this.setPendingPersonalRecordsDropboxSync(true);
 
     if (!this.dropboxManager?.isConnected) {
       return;
