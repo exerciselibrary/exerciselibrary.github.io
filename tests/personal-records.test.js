@@ -283,6 +283,8 @@ function createChartManagerStub() {
       return true;
     }
 
+    resize() {}
+
     setLoadUnit() {}
 
     addData() {}
