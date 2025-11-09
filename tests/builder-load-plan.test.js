@@ -201,15 +201,18 @@ test('collapses grouped plan items into a single builder entry with ordered sets
     videos: ['shared-deadlift.mp4']
   });
 
-  const setShape = entry.sets.map((set) => ({
-    reps: set.reps,
-    weight: set.weight,
-    mode: set.mode,
-    echoLevel: set.echoLevel,
-    eccentricPct: set.eccentricPct,
-    progression: set.progression,
-    progressionPercent: set.progressionPercent
-  }));
+const setShape = entry.sets.map((set) => ({
+  reps: set.reps,
+  weight: set.weight,
+  mode: set.mode,
+  echoLevel: set.echoLevel,
+  eccentricPct: set.eccentricPct,
+  progression: set.progression,
+  progressionPercent: set.progressionPercent,
+  restSec: set.restSec,
+  justLift: set.justLift,
+  stopAtTop: set.stopAtTop
+}));
 
   assert.deepStrictEqual(setShape, [
     {
@@ -219,7 +222,10 @@ test('collapses grouped plan items into a single builder entry with ordered sets
       echoLevel: 'HARD',
       eccentricPct: 100,
       progression: '2',
-      progressionPercent: '5'
+      progressionPercent: '5',
+      restSec: '60',
+      justLift: false,
+      stopAtTop: false
     },
     {
       reps: '6',
@@ -228,7 +234,10 @@ test('collapses grouped plan items into a single builder entry with ordered sets
       echoLevel: 'HARDEST',
       eccentricPct: '120',
       progression: '3',
-      progressionPercent: '10'
+      progressionPercent: '10',
+      restSec: '60',
+      justLift: false,
+      stopAtTop: false
     },
     {
       reps: '7',
@@ -237,7 +246,10 @@ test('collapses grouped plan items into a single builder entry with ordered sets
       echoLevel: 'HARD',
       eccentricPct: 100,
       progression: '5',
-      progressionPercent: '15'
+      progressionPercent: '15',
+      restSec: '60',
+      justLift: false,
+      stopAtTop: false
     }
   ]);
 });
@@ -317,14 +329,20 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
         weight: set.weight,
         mode: set.mode,
         progression: set.progression,
-        progressionPercent: set.progressionPercent
+        progressionPercent: set.progressionPercent,
+        restSec: set.restSec,
+        justLift: set.justLift,
+        stopAtTop: set.stopAtTop
       },
       {
         reps: '12',
         weight: '50',
         mode: 'PUMP',
         progression: '1',
-        progressionPercent: '5'
+        progressionPercent: '5',
+        restSec: '60',
+        justLift: false,
+        stopAtTop: false
       }
     );
   });
@@ -345,7 +363,10 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
       weight: set.weight,
       mode: set.mode,
       progression: set.progression,
-      progressionPercent: set.progressionPercent
+      progressionPercent: set.progressionPercent,
+      restSec: set.restSec,
+      justLift: set.justLift,
+      stopAtTop: set.stopAtTop
     })),
     [
       {
@@ -353,8 +374,68 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
         weight: '60',
         mode: 'TIME_UNDER_TENSION',
         progression: '2',
-        progressionPercent: '8'
+        progressionPercent: '8',
+        restSec: '60',
+        justLift: false,
+        stopAtTop: false
       }
     ]
   );
+});
+
+test('adjusts builder unit to match plan metadata from workout-time payloads', () => {
+  state.weightUnit = 'LBS';
+  state.data = [
+    {
+      id: 'metric',
+      name: 'Metric Row',
+      muscleGroups: [],
+      muscles: [],
+      equipment: [],
+      videos: []
+    }
+  ];
+
+  const planItems = [
+    {
+      type: 'exercise',
+      name: 'Metric Row',
+      perCableKg: 50,
+      progressionKg: 2,
+      progressionUnit: 'KG',
+      weightUnit: 'KG',
+      builderMeta: {
+        exerciseId: 'metric',
+        exerciseName: 'Metric Row',
+        order: 0,
+        videos: [],
+        setIndex: 0,
+        setData: {
+          reps: '8',
+          weight: '50.0',
+          weightUnit: 'KG',
+          progression: '2.0',
+          progressionUnit: 'KG',
+          mode: 'OLD_SCHOOL',
+          restSec: '90',
+          justLift: false,
+          stopAtTop: false
+        }
+      }
+    }
+  ];
+
+  loadPlanIntoBuilder(planItems);
+
+  assert.strictEqual(state.weightUnit, 'KG');
+  assert.deepStrictEqual(state.builder.order, ['metric']);
+  const entry = state.builder.items.get('metric');
+  assert(entry, 'expected metric entry to be loaded');
+  const [set] = entry.sets;
+  assert.ok(set, 'expected at least one set');
+  assert.strictEqual(set.weight, '50.0');
+  assert.strictEqual(set.progression, '2.0');
+  assert.strictEqual(set.restSec, '90');
+  assert.strictEqual(set.justLift, false);
+  assert.strictEqual(set.stopAtTop, false);
 });
