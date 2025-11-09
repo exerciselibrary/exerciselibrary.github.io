@@ -5927,6 +5927,14 @@ class VitruvianApp {
         ) {
           // We're at targetReps - 1, and just reached top
           // This is the top of the final rep, complete now
+          if (this.workingReps < this.targetReps) {
+            this.workingReps = Math.min(this.targetReps, this.workingReps + 1);
+            this.addLogEntry(
+              `Working rep ${this.workingReps}/${this.targetReps} counted at the top`,
+              "success",
+            );
+            this.updateRepCounters();
+          }
           this.addLogEntry(
             "Reached top of final rep! Auto-completing workout...",
             "success",
