@@ -292,9 +292,6 @@ class ChartManager {
     }
 
     const width = container.clientWidth || container.offsetWidth || 0;
-    if (!width) {
-      return false;
-    }
 
     this.chart.setSize({
       width,
