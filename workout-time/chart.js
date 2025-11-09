@@ -4,6 +4,7 @@ class ChartManager {
   constructor(containerId) {
     this.containerId = containerId;
     this.chart = null;
+    this.container = null;
     this.loadHistory = [];
     this.maxHistoryPoints = 72000; // 2hrs at 100ms polling (7200s / 0.1s = 72000 points)
     this.currentTimeRange = 30; // Current time range in seconds (default 30s)
@@ -11,12 +12,15 @@ class ChartManager {
     this.onLog = null; // Callback for logging
     this.updateInterval = null; // Interval handle for periodic updates
     this.updateFrequency = 10; // Update chart every 10ms
+    this.chartHeight = 300;
     this.loadUnit = {
       label: "kg",
       decimals: 1,
       toDisplay: (value) => value,
     };
     this.eventMarkers = []; // Array of {time: Date, label: string, color: string}
+    this.resizeObserver = null;
+    this._handleWindowResize = null;
   }
 
   // Initialize uPlot chart
@@ -26,6 +30,8 @@ class ChartManager {
       console.warn("Chart container not found yet, will initialize later");
       return false;
     }
+
+    this.container = container;
 
     // uPlot expects data in this format: [timestamps, series1, series2, ...]
     const data = [
@@ -89,7 +95,7 @@ class ChartManager {
 
     const opts = {
       width: container.clientWidth || 800,
-      height: 300,
+      height: this.chartHeight,
       plugins: [eventMarkersPlugin],
       cursor: {
         drag: {
@@ -243,18 +249,54 @@ class ChartManager {
 
     this.chart = new uPlot(opts, data, container);
 
-    // Handle window resize
-    window.addEventListener("resize", () => {
-      if (this.chart && container) {
-        this.chart.setSize({
-          width: container.clientWidth,
-          height: 300,
-        });
-      }
-    });
+    this.attachResizeObservers(container);
 
     // Start periodic updates
     this.startPeriodicUpdates();
+
+    return true;
+  }
+
+  attachResizeObservers(container) {
+    if (typeof window === "undefined" || !container) {
+      return;
+    }
+
+    if (!this._handleWindowResize) {
+      this._handleWindowResize = () => {
+        this.resize();
+      };
+      window.addEventListener("resize", this._handleWindowResize);
+    }
+
+    if (typeof window.ResizeObserver === "function") {
+      if (this.resizeObserver) {
+        this.resizeObserver.disconnect();
+      }
+      this.resizeObserver = new window.ResizeObserver(() => {
+        this.resize();
+      });
+      this.resizeObserver.observe(container);
+    }
+  }
+
+  resize() {
+    const container =
+      this.container ||
+      (typeof document !== "undefined"
+        ? document.getElementById(this.containerId)
+        : null);
+
+    if (!this.chart || !container) {
+      return false;
+    }
+
+    const width = container.clientWidth || container.offsetWidth || 0;
+
+    this.chart.setSize({
+      width,
+      height: this.chartHeight,
+    });
 
     return true;
   }

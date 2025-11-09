@@ -52,6 +52,8 @@ class VitruvianApp {
   constructor() {
     this.device = new VitruvianDevice();
     this.chartManager = new ChartManager("loadGraph");
+    this._pendingChartResizeFrame = null;
+    this._delayedChartResizeTimeout = null;
     this.dropboxManager = new DropboxManager(); // Dropbox cloud storage
     this.maxPos = 1000; // Shared max for both cables (keeps bars comparable)
     this.weightUnit = "kg"; // Display unit for weights (default)
@@ -244,6 +246,45 @@ class VitruvianApp {
       this.addLogEntry(message, type);
     };
     this.applyUnitToChart();
+  }
+
+  requestChartResize(options = {}) {
+    if (
+      !this.chartManager ||
+      typeof this.chartManager.resize !== "function"
+    ) {
+      return;
+    }
+
+    const delay =
+      typeof options.delay === "number" && options.delay >= 0
+        ? options.delay
+        : 350;
+
+    if (typeof window === "undefined") {
+      this.chartManager.resize();
+      return;
+    }
+
+    if (this._pendingChartResizeFrame) {
+      window.cancelAnimationFrame(this._pendingChartResizeFrame);
+      this._pendingChartResizeFrame = null;
+    }
+
+    this._pendingChartResizeFrame = window.requestAnimationFrame(() => {
+      this._pendingChartResizeFrame = null;
+      this.chartManager.resize();
+    });
+
+    if (this._delayedChartResizeTimeout) {
+      window.clearTimeout(this._delayedChartResizeTimeout);
+      this._delayedChartResizeTimeout = null;
+    }
+
+    this._delayedChartResizeTimeout = window.setTimeout(() => {
+      this._delayedChartResizeTimeout = null;
+      this.chartManager.resize();
+    }, delay);
   }
 
   setupUnitControls() {
@@ -2985,6 +3026,8 @@ class VitruvianApp {
       }
       this.updateSidebarToggleVisual();
     }
+
+    this.requestChartResize();
   }
 
   closeSidebar() {
@@ -3007,6 +3050,8 @@ class VitruvianApp {
       document.body.classList.remove("sidebar-open");
     }
     this.updateSidebarToggleVisual();
+
+    this.requestChartResize();
   }
 
   // Toggle Just Lift mode UI
@@ -4604,6 +4649,7 @@ class VitruvianApp {
     }
 
     this.updateSidebarToggleVisual();
+    this.requestChartResize();
   }
 
   updateSidebarToggleVisual() {
