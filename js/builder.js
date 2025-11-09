@@ -513,12 +513,13 @@ const createEntryFromPlanItem = (item, index) => {
     const setData = meta && meta.setData ? meta.setData : {};
     const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
     const storedWeightUnit =
-      normalizeWeightUnit(setData.weightUnit) ||
       normalizeWeightUnit(item?.weightUnit) ||
-      normalizeWeightUnit(item?.progressionUnit);
-    const storedProgressionUnit =
-      normalizeWeightUnit(setData.progressionUnit) ||
       normalizeWeightUnit(item?.progressionUnit) ||
+      normalizeWeightUnit(setData.weightUnit);
+    const storedProgressionUnit =
+      normalizeWeightUnit(item?.progressionUnit) ||
+      normalizeWeightUnit(item?.weightUnit) ||
+      normalizeWeightUnit(setData.progressionUnit) ||
       storedWeightUnit;
 
     if (item?.type === 'echo') {
