@@ -11,7 +11,10 @@ export const createSet = () => ({
   echoLevel: ECHO_LEVELS[0].value,
   eccentricPct: 100,
   progression: '',
-  progressionPercent: ''
+  progressionPercent: '',
+  restSec: '60',
+  justLift: false,
+  stopAtTop: false
 });
 
 export const getBuilderSnapshot = () => ({
@@ -36,7 +39,10 @@ export const getBuilderSnapshot = () => ({
             ? Number.parseInt(set.eccentricPct, 10)
             : 100,
           set.progression ?? '',
-          set.progressionPercent ?? ''
+          set.progressionPercent ?? '',
+          set.restSec ?? '60',
+          Boolean(set.justLift),
+          Boolean(set.stopAtTop)
         ])
       };
     })
@@ -72,7 +78,10 @@ export const applyBuilderSnapshot = (snapshot) => {
             ? Number.parseInt(set.eccentricPct, 10)
             : 100,
           set.progression ?? '',
-          set.progressionPercent ?? ''
+          set.progressionPercent ?? '',
+          set.restSec ?? '60',
+          Boolean(set.justLift),
+          Boolean(set.stopAtTop)
         ])
       });
     }
@@ -92,7 +101,10 @@ export const applyBuilderSnapshot = (snapshot) => {
         ? Number.parseInt(values[4], 10)
         : 100,
       progression: values[5] ?? '',
-      progressionPercent: values[6] ?? ''
+      progressionPercent: values[6] ?? '',
+      restSec: values[7] ?? '60',
+      justLift: values[8] === true || values[8] === 1 || values[8] === '1' || values[8] === 'true',
+      stopAtTop: values[9] === true || values[9] === 1 || values[9] === '1' || values[9] === 'true'
     }));
     if (!sets.length) sets.push(createSet());
 

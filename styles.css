@@ -583,6 +583,10 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .sets-table th, .sets-table td { border: 1px solid #1f2737; padding: 8px; text-align: left; font-size: 13px; vertical-align: middle; }
 .sets-table th { background: #131a2a; color: var(--muted); font-weight: 500; }
 .sets-table input, .sets-table select { width: 100%; }
+.sets-table td.set-flag { text-align: center; }
+.sets-table td.set-flag input { width: auto; }
+.sets-table .flag-control { display: flex; justify-content: center; }
+.sets-table .flag-note { margin-top: 4px; font-size: 11px; }
 .mode-cell { display: grid; gap: 6px; }
 .mode-echo { display: grid; gap: 4px; }
 .set-actions { display: flex; gap: 6px; justify-content: flex-end; }

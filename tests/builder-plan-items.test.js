@@ -27,13 +27,16 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
             videos: ['https://example.com/echo']
           },
           sets: [
-            { mode: 'ECHO', echoLevel: 'EPIC', eccentricPct: '150' },
+            { mode: 'ECHO', echoLevel: 'EPIC', eccentricPct: '150', restSec: '45', stopAtTop: true },
             {
               mode: 'OLD_SCHOOL',
               reps: '10',
               weight: '40',
               progression: '5',
-              progressionPercent: '450'
+              progressionPercent: '450',
+              restSec: '75',
+              justLift: true,
+              stopAtTop: false
             }
           ]
         }
@@ -47,13 +50,16 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
             videos: ['https://example.com/pull']
           },
           sets: [
-            { mode: 'ECHO', echoLevel: 'HARDER', eccentricPct: '80' },
+            { mode: 'ECHO', echoLevel: 'HARDER', eccentricPct: '80', restSec: '30', stopAtTop: false },
             {
               mode: 'TIME_UNDER_TENSION',
               reps: '8',
               weight: '30',
               progression: '-4',
-              progressionPercent: '-200'
+              progressionPercent: '-200',
+              restSec: '90',
+              justLift: false,
+              stopAtTop: true
             }
           ]
         }
@@ -73,9 +79,9 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       eccentricPct: 130,
       targetReps: 0,
       sets: 1,
-      restSec: 60,
+      restSec: 45,
       justLift: true,
-      stopAtTop: false,
+      stopAtTop: true,
       videos: ['https://example.com/echo'],
       builderMeta: {
         exerciseId: 'exercise-1',
@@ -91,7 +97,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           echoLevel: 'EPIC',
           eccentricPct: '150',
           progression: '',
-          progressionPercent: ''
+          progressionPercent: '',
+          restSec: '45',
+          justLift: false,
+          stopAtTop: true
         }
       }
     });
@@ -103,12 +112,12 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       perCableKg: 18.144,
       reps: 10,
       sets: 1,
-      restSec: 60,
+      restSec: 75,
       progressionKg: 2.268,
       progressionDisplay: '5',
       progressionUnit: 'LBS',
       progressionPercent: 400,
-      justLift: false,
+      justLift: true,
       stopAtTop: false,
       cables: 2,
       videos: ['https://example.com/echo'],
@@ -126,7 +135,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           echoLevel: 'HARD',
           eccentricPct: '100',
           progression: '5',
-          progressionPercent: '450'
+          progressionPercent: '450',
+          restSec: '75',
+          justLift: true,
+          stopAtTop: false
         }
       }
     });
@@ -138,7 +150,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       eccentricPct: 100,
       targetReps: 0,
       sets: 1,
-      restSec: 60,
+      restSec: 30,
       justLift: true,
       stopAtTop: false,
       videos: ['https://example.com/pull'],
@@ -156,7 +168,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           echoLevel: 'HARDER',
           eccentricPct: '80',
           progression: '',
-          progressionPercent: ''
+          progressionPercent: '',
+          restSec: '30',
+          justLift: false,
+          stopAtTop: false
         }
       }
     });
@@ -168,13 +183,13 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       perCableKg: 13.608,
       reps: 8,
       sets: 1,
-      restSec: 60,
+      restSec: 90,
       progressionKg: -1.814,
       progressionDisplay: '-4',
       progressionUnit: 'LBS',
       progressionPercent: -100,
       justLift: false,
-      stopAtTop: false,
+      stopAtTop: true,
       cables: 2,
       videos: ['https://example.com/pull'],
       builderMeta: {
@@ -191,7 +206,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           echoLevel: 'HARD',
           eccentricPct: '100',
           progression: '-4',
-          progressionPercent: '-200'
+          progressionPercent: '-200',
+          restSec: '90',
+          justLift: false,
+          stopAtTop: true
         }
       }
     });

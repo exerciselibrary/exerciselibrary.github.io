@@ -66,6 +66,8 @@ const PROGRAM_MODE_REVERSE_MAP = Object.entries(PROGRAM_MODE_MAP).reduce((acc, [
 const PROGRESSIVE_OVERLOAD_TOOLTIP =
   'Increase the percent lifted per workout for this exercise. Only applies on new days where you do this exercise.';
 
+const DEFAULT_REST_SECONDS = 60;
+
 const OCCURRENCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   weekday: 'short',
   month: 'short',
@@ -173,6 +175,25 @@ const sanitizeNumber = (value, fallback = 0) => {
 const parseReps = (value) => {
   const num = Number.parseInt(value, 10);
   return Number.isFinite(num) && num >= 0 ? num : 0;
+};
+
+const parseRestSeconds = (value) => {
+  const source = typeof value === 'string' ? value.trim() : value;
+  const num = Number.parseInt(source, 10);
+  return Number.isFinite(num) && num >= 0 ? num : DEFAULT_REST_SECONDS;
+};
+
+const formatRestValue = (value, fallback = DEFAULT_REST_SECONDS) => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return String(fallback);
+    const parsed = Number.parseInt(trimmed, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) return String(parsed);
+    return String(fallback);
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed >= 0) return String(parsed);
+  return String(fallback);
 };
 
 const clamp = (value, min, max) => {
@@ -313,6 +334,10 @@ export const buildPlanItems = () => {
     sets.forEach((set, setIndex) => {
       const mode = set.mode || 'OLD_SCHOOL';
       const displayName = exerciseName;
+      const restSeconds = parseRestSeconds(set.restSec);
+      const restString = formatRestValue(set.restSec, restSeconds);
+      const justLift = Boolean(set.justLift);
+      const stopAtTop = Boolean(set.stopAtTop);
       const setData = {
         reps: set.reps ?? '',
         weight: set.weight ?? '',
@@ -324,7 +349,10 @@ export const buildPlanItems = () => {
             : 100
         ),
         progression: set.progression ?? '',
-        progressionPercent: set.progressionPercent ?? ''
+        progressionPercent: set.progressionPercent ?? '',
+        restSec: restString,
+        justLift,
+        stopAtTop
       };
       const builderMeta = {
         ...baseMeta,
@@ -352,9 +380,9 @@ export const buildPlanItems = () => {
           eccentricPct: eccentric,
           targetReps: 0,
           sets: 1,
-          restSec: 60,
+          restSec: restSeconds,
           justLift: true,
-          stopAtTop: false,
+          stopAtTop,
           videos,
           builderMeta
         });
@@ -377,13 +405,13 @@ export const buildPlanItems = () => {
           perCableKg,
           reps: parseReps(set.reps),
           sets: 1,
-          restSec: 60,
+          restSec: restSeconds,
           progressionKg,
           progressionDisplay: progressionDisplay || '',
           progressionUnit: state.weightUnit,
           progressionPercent,
-          justLift: false,
-          stopAtTop: false,
+          justLift,
+          stopAtTop,
           cables: 2,
           videos,
           builderMeta
@@ -443,6 +471,7 @@ const createEntryFromPlanItem = (item, index) => {
   const buildSet = () => {
     const set = createSet();
     const setData = meta && meta.setData ? meta.setData : {};
+    const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
 
     if (item?.type === 'echo') {
       set.mode = 'ECHO';
@@ -502,6 +531,15 @@ const createEntryFromPlanItem = (item, index) => {
             ? String(Number(item.progressionPercent))
             : '';
     }
+    set.restSec = formatRestValue(setData.restSec, fallbackRest);
+    set.justLift =
+      typeof setData.justLift === 'boolean'
+        ? setData.justLift
+        : Boolean(item?.justLift);
+    set.stopAtTop =
+      typeof setData.stopAtTop === 'boolean'
+        ? setData.stopAtTop
+        : Boolean(item?.stopAtTop);
     return set;
   };
 
@@ -642,6 +680,16 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
               typeof setData.progressionPercent === 'string'
                 ? setData.progressionPercent
                 : set.progressionPercent;
+            const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
+            set.restSec = formatRestValue(setData.restSec, fallbackRest);
+            set.justLift =
+              typeof setData.justLift === 'boolean'
+                ? setData.justLift
+                : Boolean(item?.justLift);
+            set.stopAtTop =
+              typeof setData.stopAtTop === 'boolean'
+                ? setData.stopAtTop
+                : Boolean(item?.stopAtTop);
 
             return set;
           });
@@ -788,6 +836,16 @@ export const renderSetRow = (exerciseId, set, index) => {
   }
   if (set.progressionPercent === undefined || set.progressionPercent === null) {
     set.progressionPercent = '';
+  }
+  if (set.restSec === undefined || set.restSec === null || set.restSec === '') {
+    set.restSec = String(DEFAULT_REST_SECONDS);
+  }
+  if (typeof set.justLift !== 'boolean') {
+    set.justLift = set.justLift === true || set.justLift === 'true' || set.justLift === 1 || set.justLift === '1';
+  }
+  if (typeof set.stopAtTop !== 'boolean') {
+    set.stopAtTop =
+      set.stopAtTop === true || set.stopAtTop === 'true' || set.stopAtTop === 1 || set.stopAtTop === '1';
   }
 
   const setCell = document.createElement('td');
@@ -978,6 +1036,79 @@ export const renderSetRow = (exerciseId, set, index) => {
   progressionPercentWrapper.appendChild(progressionPercentInput);
   progressionPercentCell.appendChild(progressionPercentWrapper);
 
+  const restCell = document.createElement('td');
+  const restWrapper = document.createElement('div');
+  const restInput = document.createElement('input');
+  restInput.type = 'number';
+  restInput.min = '0';
+  restInput.step = '1';
+  restInput.placeholder = String(DEFAULT_REST_SECONDS);
+  restInput.setAttribute('aria-label', 'Rest time in seconds');
+  restInput.value = formatRestValue(set.restSec, parseRestSeconds(set.restSec));
+  restInput.addEventListener('input', () => {
+    set.restSec = restInput.value;
+  });
+  const applyRestValue = () => {
+    const sanitized = formatRestValue(restInput.value, DEFAULT_REST_SECONDS);
+    restInput.value = sanitized;
+    set.restSec = sanitized;
+    return sanitized;
+  };
+  restInput.addEventListener('change', () => {
+    const finalValue = applyRestValue();
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.restSec !== finalValue) {
+        target.restSec = finalValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  restWrapper.appendChild(restInput);
+  restCell.appendChild(restWrapper);
+
+  const justLiftCell = document.createElement('td');
+  justLiftCell.className = 'set-flag';
+  const justLiftWrapper = document.createElement('div');
+  justLiftWrapper.className = 'flag-control';
+  const justLiftCheckbox = document.createElement('input');
+  justLiftCheckbox.type = 'checkbox';
+  justLiftCheckbox.checked = Boolean(set.justLift);
+  justLiftCheckbox.setAttribute('aria-label', 'Enable Just Lift (no target reps)');
+  justLiftCheckbox.addEventListener('change', () => {
+    set.justLift = justLiftCheckbox.checked;
+    if (set.justLift && set.mode !== 'ECHO') {
+      set.reps = '';
+      repsInput.value = '';
+    }
+    persistState();
+    updateRepEditor();
+  });
+  justLiftWrapper.appendChild(justLiftCheckbox);
+  const justLiftNote = document.createElement('div');
+  justLiftNote.className = 'flag-note muted small';
+  justLiftNote.textContent = 'Always on in Echo Mode';
+  justLiftCell.append(justLiftWrapper, justLiftNote);
+
+  const stopAtTopCell = document.createElement('td');
+  stopAtTopCell.className = 'set-flag';
+  const stopAtTopWrapper = document.createElement('div');
+  stopAtTopWrapper.className = 'flag-control';
+  const stopAtTopCheckbox = document.createElement('input');
+  stopAtTopCheckbox.type = 'checkbox';
+  stopAtTopCheckbox.checked = Boolean(set.stopAtTop);
+  stopAtTopCheckbox.setAttribute('aria-label', 'Stop at the top of your final rep');
+  stopAtTopCheckbox.addEventListener('change', () => {
+    set.stopAtTop = stopAtTopCheckbox.checked;
+    persistState();
+  });
+  stopAtTopWrapper.appendChild(stopAtTopCheckbox);
+  stopAtTopCell.appendChild(stopAtTopWrapper);
+
   const updateWeightVisibility = () => {
     const isEcho = set.mode === 'ECHO';
     if (isEcho) {
@@ -1000,8 +1131,16 @@ export const renderSetRow = (exerciseId, set, index) => {
 
   const updateRepEditor = () => {
     const isEcho = set.mode === 'ECHO';
-    repsWrapper.style.display = isEcho ? 'none' : '';
+    const hideReps = isEcho || Boolean(set.justLift);
+    repsWrapper.style.display = hideReps ? 'none' : '';
     eccentricWrapper.style.display = isEcho ? '' : 'none';
+  };
+
+  const updateJustLiftControl = () => {
+    const isEcho = set.mode === 'ECHO';
+    justLiftWrapper.style.display = isEcho ? 'none' : '';
+    justLiftCheckbox.disabled = isEcho;
+    justLiftNote.style.display = isEcho ? '' : 'none';
   };
 
   modeSelect.addEventListener('change', () => {
@@ -1015,6 +1154,7 @@ export const renderSetRow = (exerciseId, set, index) => {
 
   updateWeightVisibility();
   updateRepEditor();
+  updateJustLiftControl();
 
   const actionsCell = document.createElement('td');
   actionsCell.className = 'set-actions';
@@ -1029,7 +1169,18 @@ export const renderSetRow = (exerciseId, set, index) => {
   });
   actionsCell.appendChild(removeBtn);
 
-  tr.append(setCell, modeCell, repsCell, weightCell, progressionCell, progressionPercentCell, actionsCell);
+  tr.append(
+    setCell,
+    modeCell,
+    repsCell,
+    weightCell,
+    progressionCell,
+    progressionPercentCell,
+    restCell,
+    justLiftCell,
+    stopAtTopCell,
+    actionsCell
+  );
   return tr;
 };
 
@@ -2070,7 +2221,7 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const table = document.createElement('table');
   table.className = 'sets-table';
   const thead = document.createElement('thead');
-  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload %</th><th></th></tr>`;
+  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload %</th><th>Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
@@ -2095,6 +2246,9 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
       newSet.weight = lastSet.weight;
       newSet.progression = lastSet.progression;
       newSet.progressionPercent = lastSet.progressionPercent;
+      newSet.restSec = lastSet.restSec;
+      newSet.justLift = lastSet.justLift;
+      newSet.stopAtTop = lastSet.stopAtTop;
     }
     entry.sets.push(newSet);
     triggerRender();
