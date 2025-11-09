@@ -215,6 +215,40 @@ const convertAllWeights = (newUnit) => {
   });
 };
 
+const normalizeWeightUnit = (value) => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'KG' || normalized === 'KGS' || normalized === 'KILOGRAMS') return 'KG';
+  if (normalized === 'LB' || normalized === 'LBS' || normalized === 'POUNDS') return 'LBS';
+  return null;
+};
+
+const getStateWeightUnit = () => (state.weightUnit === 'KG' ? 'KG' : 'LBS');
+
+const convertWeightStringValue = (value, fromUnit, toUnit) => {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (!fromUnit || !toUnit || fromUnit === toUnit) return trimmed;
+  const converted = convertWeightValue(trimmed, fromUnit, toUnit);
+  return converted !== '' ? converted : trimmed;
+};
+
+const detectPlanWeightUnit = (planItems = []) => {
+  for (const item of planItems) {
+    if (!item) continue;
+    const builderWeightUnit = normalizeWeightUnit(item?.builderMeta?.setData?.weightUnit);
+    if (builderWeightUnit) return builderWeightUnit;
+    const builderProgressionUnit = normalizeWeightUnit(item?.builderMeta?.setData?.progressionUnit);
+    if (builderProgressionUnit) return builderProgressionUnit;
+    const progressionUnit = normalizeWeightUnit(item?.progressionUnit);
+    if (progressionUnit) return progressionUnit;
+    const weightUnit = normalizeWeightUnit(item?.weightUnit);
+    if (weightUnit) return weightUnit;
+  }
+  return null;
+};
+
 export const updateUnitToggle = () => {
   if (!els.unitToggle) return;
   const label = state.weightUnit === 'LBS' ? 'Units: lbs' : 'Units: kg';
@@ -313,6 +347,7 @@ const getModeLabel = (set) => {
 
 export const buildPlanItems = () => {
   const items = [];
+  const currentUnit = getStateWeightUnit();
 
   state.builder.order.forEach((exerciseId, orderIndex) => {
     const entry = state.builder.items.get(exerciseId);
@@ -350,6 +385,8 @@ export const buildPlanItems = () => {
         ),
         progression: set.progression ?? '',
         progressionPercent: set.progressionPercent ?? '',
+        weightUnit: currentUnit,
+        progressionUnit: currentUnit,
         restSec: restString,
         justLift,
         stopAtTop
@@ -384,7 +421,8 @@ export const buildPlanItems = () => {
           justLift: true,
           stopAtTop,
           videos,
-          builderMeta
+          builderMeta,
+          weightUnit: currentUnit
         });
       } else {
         const perCableKg = roundKg(Math.max(0, toPerCableKg(set.weight)));
@@ -408,13 +446,14 @@ export const buildPlanItems = () => {
           restSec: restSeconds,
           progressionKg,
           progressionDisplay: progressionDisplay || '',
-          progressionUnit: state.weightUnit,
+          progressionUnit: currentUnit,
           progressionPercent,
           justLift,
           stopAtTop,
           cables: 2,
           videos,
-          builderMeta
+          builderMeta,
+          weightUnit: currentUnit
         });
       }
     });
@@ -467,11 +506,20 @@ const createEntryFromPlanItem = (item, index) => {
   };
 
   const modeValue = Number.isFinite(Number(item?.mode)) ? Number(item.mode) : null;
+  const targetUnit = getStateWeightUnit();
 
   const buildSet = () => {
     const set = createSet();
     const setData = meta && meta.setData ? meta.setData : {};
     const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
+    const storedWeightUnit =
+      normalizeWeightUnit(setData.weightUnit) ||
+      normalizeWeightUnit(item?.weightUnit) ||
+      normalizeWeightUnit(item?.progressionUnit);
+    const storedProgressionUnit =
+      normalizeWeightUnit(setData.progressionUnit) ||
+      normalizeWeightUnit(item?.progressionUnit) ||
+      storedWeightUnit;
 
     if (item?.type === 'echo') {
       set.mode = 'ECHO';
@@ -492,8 +540,14 @@ const createEntryFromPlanItem = (item, index) => {
           ? setData.reps
           : String(Number.isFinite(Number(item?.targetReps)) ? Number(item.targetReps) : '');
       set.reps = item?.justLift ? '' : repsValue;
-      set.weight = typeof setData.weight === 'string' ? setData.weight : '';
-      set.progression = typeof setData.progression === 'string' ? setData.progression : '';
+      set.weight =
+        typeof setData.weight === 'string'
+          ? convertWeightStringValue(setData.weight, storedWeightUnit, targetUnit)
+          : '';
+      set.progression =
+        typeof setData.progression === 'string'
+          ? convertWeightStringValue(setData.progression, storedProgressionUnit, targetUnit)
+          : '';
       set.progressionPercent =
         typeof setData.progressionPercent === 'string' ? setData.progressionPercent : '';
     } else {
@@ -511,13 +565,14 @@ const createEntryFromPlanItem = (item, index) => {
             ? String(Number(item.reps))
             : '';
       set.reps = item?.justLift ? '' : repsValue;
-      set.weight =
-        typeof setData.weight === 'string'
-          ? setData.weight
-          : formatWeightForUnit(item?.perCableKg);
+      if (typeof setData.weight === 'string' && setData.weight.trim()) {
+        set.weight = convertWeightStringValue(setData.weight, storedWeightUnit, targetUnit);
+      } else {
+        set.weight = formatWeightForUnit(item?.perCableKg);
+      }
       set.progression =
-        typeof setData.progression === 'string'
-          ? setData.progression
+        typeof setData.progression === 'string' && setData.progression.trim()
+          ? convertWeightStringValue(setData.progression, storedProgressionUnit, targetUnit)
           : (() => {
               const progressionKg = Number.isFinite(Number(item?.progressionKg))
                 ? Number(item.progressionKg)
@@ -585,6 +640,12 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
   if (!Array.isArray(planItems)) {
     return;
   }
+
+  const detectedUnit = detectPlanWeightUnit(planItems);
+  if (detectedUnit && detectedUnit !== state.weightUnit) {
+    state.weightUnit = detectedUnit;
+  }
+  const targetUnit = getStateWeightUnit();
 
   state.builder.order = [];
   state.builder.items.clear();
@@ -660,6 +721,14 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             const set = createSet();
             const setData = itemMeta.setData || {};
             const type = item?.type === 'echo' || setData.mode === 'ECHO' ? 'ECHO' : 'PROGRAM';
+            const storedWeightUnit =
+              normalizeWeightUnit(setData.weightUnit) ||
+              normalizeWeightUnit(item?.weightUnit) ||
+              normalizeWeightUnit(item?.progressionUnit);
+            const storedProgressionUnit =
+              normalizeWeightUnit(setData.progressionUnit) ||
+              normalizeWeightUnit(item?.progressionUnit) ||
+              storedWeightUnit;
 
             if (type === 'ECHO') {
               set.mode = 'ECHO';
@@ -674,8 +743,12 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             }
 
             set.reps = typeof setData.reps === 'string' ? setData.reps : set.reps;
-            set.weight = typeof setData.weight === 'string' ? setData.weight : set.weight;
-            set.progression = typeof setData.progression === 'string' ? setData.progression : set.progression;
+            if (typeof setData.weight === 'string' && setData.weight.trim()) {
+              set.weight = convertWeightStringValue(setData.weight, storedWeightUnit, targetUnit);
+            }
+            if (typeof setData.progression === 'string' && setData.progression.trim()) {
+              set.progression = convertWeightStringValue(setData.progression, storedProgressionUnit, targetUnit);
+            }
             set.progressionPercent =
               typeof setData.progressionPercent === 'string'
                 ? setData.progressionPercent

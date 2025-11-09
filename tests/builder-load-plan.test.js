@@ -382,3 +382,60 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
     ]
   );
 });
+
+test('adjusts builder unit to match plan metadata from workout-time payloads', () => {
+  state.weightUnit = 'LBS';
+  state.data = [
+    {
+      id: 'metric',
+      name: 'Metric Row',
+      muscleGroups: [],
+      muscles: [],
+      equipment: [],
+      videos: []
+    }
+  ];
+
+  const planItems = [
+    {
+      type: 'exercise',
+      name: 'Metric Row',
+      perCableKg: 50,
+      progressionKg: 2,
+      progressionUnit: 'KG',
+      weightUnit: 'KG',
+      builderMeta: {
+        exerciseId: 'metric',
+        exerciseName: 'Metric Row',
+        order: 0,
+        videos: [],
+        setIndex: 0,
+        setData: {
+          reps: '8',
+          weight: '50.0',
+          weightUnit: 'KG',
+          progression: '2.0',
+          progressionUnit: 'KG',
+          mode: 'OLD_SCHOOL',
+          restSec: '90',
+          justLift: false,
+          stopAtTop: false
+        }
+      }
+    }
+  ];
+
+  loadPlanIntoBuilder(planItems);
+
+  assert.strictEqual(state.weightUnit, 'KG');
+  assert.deepStrictEqual(state.builder.order, ['metric']);
+  const entry = state.builder.items.get('metric');
+  assert(entry, 'expected metric entry to be loaded');
+  const [set] = entry.sets;
+  assert.ok(set, 'expected at least one set');
+  assert.strictEqual(set.weight, '50.0');
+  assert.strictEqual(set.progression, '2.0');
+  assert.strictEqual(set.restSec, '90');
+  assert.strictEqual(set.justLift, false);
+  assert.strictEqual(set.stopAtTop, false);
+});

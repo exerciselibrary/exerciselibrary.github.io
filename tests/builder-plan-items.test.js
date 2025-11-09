@@ -83,6 +83,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       justLift: true,
       stopAtTop: true,
       videos: ['https://example.com/echo'],
+      weightUnit: 'LBS',
       builderMeta: {
         exerciseId: 'exercise-1',
         exerciseName: 'Echo Combo',
@@ -98,6 +99,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           eccentricPct: '150',
           progression: '',
           progressionPercent: '',
+          weightUnit: 'LBS',
+          progressionUnit: 'LBS',
           restSec: '45',
           justLift: false,
           stopAtTop: true
@@ -121,6 +124,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       stopAtTop: false,
       cables: 2,
       videos: ['https://example.com/echo'],
+      weightUnit: 'LBS',
       builderMeta: {
         exerciseId: 'exercise-1',
         exerciseName: 'Echo Combo',
@@ -136,6 +140,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           eccentricPct: '100',
           progression: '5',
           progressionPercent: '450',
+          weightUnit: 'LBS',
+          progressionUnit: 'LBS',
           restSec: '75',
           justLift: true,
           stopAtTop: false
@@ -154,6 +160,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       justLift: true,
       stopAtTop: false,
       videos: ['https://example.com/pull'],
+      weightUnit: 'LBS',
       builderMeta: {
         exerciseId: 'exercise-2',
         exerciseName: 'Tempo Pull',
@@ -169,6 +176,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           eccentricPct: '80',
           progression: '',
           progressionPercent: '',
+          weightUnit: 'LBS',
+          progressionUnit: 'LBS',
           restSec: '30',
           justLift: false,
           stopAtTop: false
@@ -192,6 +201,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       stopAtTop: true,
       cables: 2,
       videos: ['https://example.com/pull'],
+      weightUnit: 'LBS',
       builderMeta: {
         exerciseId: 'exercise-2',
         exerciseName: 'Tempo Pull',
@@ -207,6 +217,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           eccentricPct: '100',
           progression: '-4',
           progressionPercent: '-200',
+          weightUnit: 'LBS',
+          progressionUnit: 'LBS',
           restSec: '90',
           justLift: false,
           stopAtTop: true
