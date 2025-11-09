@@ -237,14 +237,14 @@ const convertWeightStringValue = (value, fromUnit, toUnit) => {
 const detectPlanWeightUnit = (planItems = []) => {
   for (const item of planItems) {
     if (!item) continue;
+    const weightUnit = normalizeWeightUnit(item?.weightUnit);
+    if (weightUnit) return weightUnit;
+    const progressionUnit = normalizeWeightUnit(item?.progressionUnit);
+    if (progressionUnit) return progressionUnit;
     const builderWeightUnit = normalizeWeightUnit(item?.builderMeta?.setData?.weightUnit);
     if (builderWeightUnit) return builderWeightUnit;
     const builderProgressionUnit = normalizeWeightUnit(item?.builderMeta?.setData?.progressionUnit);
     if (builderProgressionUnit) return builderProgressionUnit;
-    const progressionUnit = normalizeWeightUnit(item?.progressionUnit);
-    if (progressionUnit) return progressionUnit;
-    const weightUnit = normalizeWeightUnit(item?.weightUnit);
-    if (weightUnit) return weightUnit;
   }
   return null;
 };
@@ -513,12 +513,13 @@ const createEntryFromPlanItem = (item, index) => {
     const setData = meta && meta.setData ? meta.setData : {};
     const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
     const storedWeightUnit =
-      normalizeWeightUnit(setData.weightUnit) ||
       normalizeWeightUnit(item?.weightUnit) ||
-      normalizeWeightUnit(item?.progressionUnit);
-    const storedProgressionUnit =
-      normalizeWeightUnit(setData.progressionUnit) ||
       normalizeWeightUnit(item?.progressionUnit) ||
+      normalizeWeightUnit(setData.weightUnit);
+    const storedProgressionUnit =
+      normalizeWeightUnit(item?.progressionUnit) ||
+      normalizeWeightUnit(item?.weightUnit) ||
+      normalizeWeightUnit(setData.progressionUnit) ||
       storedWeightUnit;
 
     if (item?.type === 'echo') {
