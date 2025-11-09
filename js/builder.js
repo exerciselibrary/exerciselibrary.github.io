@@ -237,14 +237,14 @@ const convertWeightStringValue = (value, fromUnit, toUnit) => {
 const detectPlanWeightUnit = (planItems = []) => {
   for (const item of planItems) {
     if (!item) continue;
+    const weightUnit = normalizeWeightUnit(item?.weightUnit);
+    if (weightUnit) return weightUnit;
+    const progressionUnit = normalizeWeightUnit(item?.progressionUnit);
+    if (progressionUnit) return progressionUnit;
     const builderWeightUnit = normalizeWeightUnit(item?.builderMeta?.setData?.weightUnit);
     if (builderWeightUnit) return builderWeightUnit;
     const builderProgressionUnit = normalizeWeightUnit(item?.builderMeta?.setData?.progressionUnit);
     if (builderProgressionUnit) return builderProgressionUnit;
-    const progressionUnit = normalizeWeightUnit(item?.progressionUnit);
-    if (progressionUnit) return progressionUnit;
-    const weightUnit = normalizeWeightUnit(item?.weightUnit);
-    if (weightUnit) return weightUnit;
   }
   return null;
 };
