@@ -3326,10 +3326,14 @@ class VitruvianApp {
     this.updatePlanSetIndicator();
     this.updateWorkingCounterControlsState();
 
-    // Hide auto-stop timer
-    const autoStopTimer = document.getElementById("autoStopTimer");
-    if (autoStopTimer) {
-      autoStopTimer.style.display = "none";
+    // Reset auto-stop indicator
+    const weightCircle = document.getElementById("weightAdjusterCircle");
+    const autoStopIndicator = document.getElementById("autoStopIndicator");
+    if (weightCircle) {
+      weightCircle.classList.remove("auto-stop-active", "auto-stop-available");
+    }
+    if (autoStopIndicator) {
+      autoStopIndicator.setAttribute("aria-hidden", "true");
     }
     this.updateAutoStopUI(0);
     this.updateStopButtonState();
@@ -5443,43 +5447,65 @@ class VitruvianApp {
 
   // Update the auto-stop timer UI
   updateAutoStopUI(progress) {
+    const circle = document.getElementById("weightAdjusterCircle");
     const progressCircle = document.getElementById("autoStopProgress");
-    const autoStopText = document.getElementById("autoStopText");
+    const indicator = document.getElementById("autoStopIndicator");
+    const timeLabel = document.getElementById("autoStopTime");
 
-    if (!progressCircle || !autoStopText) return;
+    if (!progressCircle || !circle) return;
 
-    // Circle circumference is ~220 (2 * PI * radius where radius = 35)
-    const circumference = 220;
-    const offset = circumference - progress * circumference;
+    const circumference = 339.292;
+    const clampedProgress = Math.max(0, Math.min(progress, 1));
+    const offset = circumference - clampedProgress * circumference;
 
     progressCircle.style.strokeDashoffset = offset;
 
-    // Update text based on progress
-    if (progress > 0) {
-      const timeLeft = Math.ceil((1 - progress) * 5);
-      autoStopText.textContent = `${timeLeft}s`;
-      autoStopText.style.color = "#dc3545";
-      autoStopText.style.fontSize = "1.5em";
-    } else {
-      autoStopText.textContent = "Auto-Stop";
-      autoStopText.style.color = "#6c757d";
-      autoStopText.style.fontSize = "0.75em";
+    const isEnabled = circle.classList.contains("auto-stop-available");
+
+    if (!isEnabled || clampedProgress <= 0) {
+      circle.classList.remove("auto-stop-active");
+      if (indicator) {
+        indicator.setAttribute("aria-hidden", "true");
+      }
+      if (timeLabel) {
+        timeLabel.textContent = "5s";
+      }
+      return;
+    }
+
+    const timeLeft = Math.max(0, Math.ceil((1 - clampedProgress) * 5));
+    if (timeLabel) {
+      timeLabel.textContent = `${timeLeft}s`;
+    }
+
+    circle.classList.add("auto-stop-active");
+    if (indicator) {
+      indicator.setAttribute("aria-hidden", "false");
     }
   }
 
   updateAutoStopTimerVisibility(isJustLift) {
-    const autoStopTimer = document.getElementById("autoStopTimer");
-    if (!autoStopTimer) {
+    const circle = document.getElementById("weightAdjusterCircle");
+    const indicator = document.getElementById("autoStopIndicator");
+    const progressCircle = document.getElementById("autoStopProgress");
+
+    if (!circle || !progressCircle) {
       return;
     }
 
-    const modeLabel = this.currentWorkout?.mode || "";
-    const isEchoWorkout =
-      this.currentWorkout?.itemType === "echo" ||
-      (typeof modeLabel === "string" && modeLabel.toLowerCase().includes("echo"));
+    const shouldShow = !!isJustLift;
 
-    const shouldShow = !!isJustLift && !isEchoWorkout;
-    autoStopTimer.style.display = shouldShow ? "block" : "none";
+    circle.classList.toggle("auto-stop-available", shouldShow);
+
+    if (!shouldShow) {
+      circle.classList.remove("auto-stop-active");
+      const circumference = 339.292;
+      progressCircle.style.strokeDashoffset = circumference;
+      if (indicator) {
+        indicator.setAttribute("aria-hidden", "true");
+      }
+      this.updateAutoStopUI(0);
+    }
   }
 
   setupAudioUnlockSupport() {
@@ -6278,7 +6304,7 @@ class VitruvianApp {
       this.updateLiveWeightDisplay();
       this.updateCurrentSetLabel();
 
-      // Show auto-stop timer if Just Lift mode (suppressed for Echo workouts)
+      // Enable auto-stop indicator if Just Lift mode (including Echo Just Lift)
       this.updateAutoStopTimerVisibility(isJustLift);
 
       this.currentProgramParams = { ...params };
@@ -6410,7 +6436,7 @@ class VitruvianApp {
       this.updateLiveWeightDisplay();
       this.updateCurrentSetLabel();
 
-      // Show auto-stop timer if Just Lift mode (suppressed for Echo workouts)
+      // Enable auto-stop indicator if Just Lift mode (including Echo Just Lift)
       this.updateAutoStopTimerVisibility(isJustLift);
 
       await this.device.startEcho(params);

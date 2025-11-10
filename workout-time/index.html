@@ -1356,6 +1356,83 @@
                 display: block;
             }
 
+            .auto-stop-ring {
+                position: absolute;
+                inset: 0;
+                transform: rotate(-90deg);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
+                z-index: 0;
+            }
+
+            .auto-stop-track {
+                fill: none;
+                stroke: rgba(255, 255, 255, 0.15);
+                stroke-width: 6;
+            }
+
+            .auto-stop-progress {
+                fill: none;
+                stroke: #ff6b6b;
+                stroke-width: 6;
+                stroke-linecap: round;
+                stroke-dasharray: 339.292 339.292;
+                stroke-dashoffset: 339.292;
+                transition: stroke-dashoffset 0.1s linear;
+                shape-rendering: geometricPrecision;
+            }
+
+            .auto-stop-indicator {
+                position: absolute;
+                top: 14px;
+                left: 50%;
+                transform: translate(-50%, -8px);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 12px;
+                border-radius: 999px;
+                background: rgba(0, 0, 0, 0.35);
+                color: #ffffff;
+                font-size: 0.65em;
+                font-weight: 600;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease, transform 0.2s ease;
+                z-index: 4;
+            }
+
+            .auto-stop-time {
+                font-size: 1.6em;
+                letter-spacing: 0.02em;
+            }
+
+            .weight-adjuster-circle.auto-stop-active .auto-stop-ring {
+                opacity: 1;
+            }
+
+            .weight-adjuster-circle.auto-stop-active .auto-stop-indicator {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+
+            .weight-adjuster-circle.auto-stop-available .auto-stop-ring {
+                opacity: 0.25;
+            }
+
+            .weight-adjuster-circle.auto-stop-active.auto-stop-available
+                .auto-stop-ring {
+                opacity: 1;
+            }
+
+            .weight-adjuster-circle.rest-active .auto-stop-ring,
+            .weight-adjuster-circle.rest-active .auto-stop-indicator {
+                opacity: 0;
+            }
+
             .plan-set-indicator {
                 position: absolute;
                 left: 24px;
@@ -3028,26 +3105,63 @@
                                                 aria-live="polite"
                                                 id="weightAdjusterCircle"
                                             >
-                                                <svg
-                                                    class="rest-countdown-ring"
-                                                    id="restCountdownRing"
-                                                    viewBox="0 0 120 120"
-                                                    aria-hidden="true"
+                                            <svg
+                                                class="rest-countdown-ring"
+                                                id="restCountdownRing"
+                                                viewBox="0 0 120 120"
+                                                aria-hidden="true"
+                                            >
+                                                <circle
+                                                    class="rest-countdown-track"
+                                                    cx="60"
+                                                    cy="60"
+                                                    r="54"
+                                                ></circle>
+                                                <circle
+                                                    class="rest-countdown-progress"
+                                                    id="restCountdownProgress"
+                                                    cx="60"
+                                                    cy="60"
+                                                    r="54"
+                                                ></circle>
+                                            </svg>
+                                            <svg
+                                                class="auto-stop-ring"
+                                                id="autoStopRing"
+                                                viewBox="0 0 120 120"
+                                                aria-hidden="true"
+                                            >
+                                                <circle
+                                                    class="auto-stop-track"
+                                                    cx="60"
+                                                    cy="60"
+                                                    r="54"
+                                                ></circle>
+                                                <circle
+                                                    class="auto-stop-progress"
+                                                    id="autoStopProgress"
+                                                    cx="60"
+                                                    cy="60"
+                                                    r="54"
+                                                ></circle>
+                                            </svg>
+                                            <div
+                                                class="auto-stop-indicator"
+                                                id="autoStopIndicator"
+                                                aria-live="polite"
+                                                aria-hidden="true"
+                                            >
+                                                <span class="auto-stop-label">
+                                                    Auto-Stop
+                                                </span>
+                                                <span
+                                                    class="auto-stop-time"
+                                                    id="autoStopTime"
+                                                    role="timer"
                                                 >
-                                                    <circle
-                                                        class="rest-countdown-track"
-                                                        cx="60"
-                                                        cy="60"
-                                                        r="54"
-                                                    ></circle>
-                                                    <circle
-                                                        class="rest-countdown-progress"
-                                                        id="restCountdownProgress"
-                                                        cx="60"
-                                                        cy="60"
-                                                        r="54"
-                                                    ></circle>
-                                                </svg>
+                                                    5s
+                                                </span>
+                                            </div>
                                                 <button
                                                     type="button"
                                                     class="rest-countdown-button"
@@ -3159,65 +3273,6 @@
                                         <i class="bi bi-skip-forward-fill" aria-hidden="true"></i>
                                         <span class="sr-only">Next set</span>
                                     </button>
-                                </div>
-
-                                <!-- Auto-stop timer (Just Lift mode only) -->
-                                <div
-                                    id="autoStopTimer"
-                                    style="
-                                        display: none;
-                                        text-align: center;
-                                        height: 80px;
-                                    "
-                                >
-                                    <svg
-                                        width="80"
-                                        height="80"
-                                        style="
-                                            transform: rotate(-90deg);
-                                            filter: drop-shadow(
-                                                0 2px 4px rgba(0, 0, 0, 0.1)
-                                            );
-                                        "
-                                    >
-                                        <!-- Background circle -->
-                                        <circle
-                                            cx="40"
-                                            cy="40"
-                                            r="35"
-                                            fill="none"
-                                            stroke="#e9ecef"
-                                            stroke-width="6"
-                                        />
-                                        <!-- Progress circle -->
-                                        <circle
-                                            id="autoStopProgress"
-                                            cx="40"
-                                            cy="40"
-                                            r="35"
-                                            fill="none"
-                                            stroke="#ff6b6b"
-                                            stroke-width="6"
-                                            stroke-dasharray="220"
-                                            stroke-dashoffset="220"
-                                            style="
-                                                transition: stroke-dashoffset
-                                                    0.1s linear;
-                                            "
-                                        />
-                                    </svg>
-                                    <div
-                                        id="autoStopText"
-                                        style="
-                                            margin-top: -54px;
-                                            font-size: 0.75em;
-                                            color: var(--text-muted);
-                                            font-weight: 600;
-                                            pointer-events: none;
-                                        "
-                                    >
-                                        Auto-Stop
-                                    </div>
                                 </div>
 
                             </div>
