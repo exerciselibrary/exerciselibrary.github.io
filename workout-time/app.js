@@ -5493,12 +5493,7 @@ class VitruvianApp {
       return;
     }
 
-    const modeLabel = this.currentWorkout?.mode || "";
-    const isEchoWorkout =
-      this.currentWorkout?.itemType === "echo" ||
-      (typeof modeLabel === "string" && modeLabel.toLowerCase().includes("echo"));
-
-    const shouldShow = !!isJustLift && !isEchoWorkout;
+    const shouldShow = !!isJustLift;
 
     circle.classList.toggle("auto-stop-available", shouldShow);
 
@@ -6309,7 +6304,7 @@ class VitruvianApp {
       this.updateLiveWeightDisplay();
       this.updateCurrentSetLabel();
 
-      // Enable auto-stop indicator if Just Lift mode (suppressed for Echo workouts)
+      // Enable auto-stop indicator if Just Lift mode (including Echo Just Lift)
       this.updateAutoStopTimerVisibility(isJustLift);
 
       this.currentProgramParams = { ...params };
@@ -6441,7 +6436,7 @@ class VitruvianApp {
       this.updateLiveWeightDisplay();
       this.updateCurrentSetLabel();
 
-      // Enable auto-stop indicator if Just Lift mode (suppressed for Echo workouts)
+      // Enable auto-stop indicator if Just Lift mode (including Echo Just Lift)
       this.updateAutoStopTimerVisibility(isJustLift);
 
       await this.device.startEcho(params);
