@@ -474,7 +474,19 @@ class DropboxManager {
     try {
       // Find the file with matching timestamp
       const response = await this.dbx.filesListFolder({ path: "/workouts" });
-      const timestamp = workout.timestamp || workout.endTime;
+      const timestampValue = workout.timestamp || workout.endTime;
+      const timestamp =
+        timestampValue instanceof Date
+          ? timestampValue
+          : timestampValue
+            ? new Date(timestampValue)
+            : null;
+
+      if (!timestamp || Number.isNaN(timestamp.getTime())) {
+        this.log("Workout timestamp not available for Dropbox deletion", "error");
+        return false;
+      }
+
       const timestampStr = timestamp.toISOString().replace(/[:.]/g, "-");
 
       const file = response.result.entries.find(

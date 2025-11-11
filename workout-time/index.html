@@ -2144,6 +2144,33 @@
                 box-shadow: none;
             }
 
+            .history-item-actions {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                gap: 8px;
+            }
+
+            .delete-history-btn {
+                background: linear-gradient(135deg, #ff6b6b 0%, #d6336c 100%);
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 0.85em;
+                font-weight: 600;
+                transition: transform 0.2s, box-shadow 0.2s;
+                width: 100%;
+                margin-top: 8px;
+            }
+
+            .delete-history-btn:hover,
+            .delete-history-btn:focus {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(214, 51, 108, 0.35);
+                outline: none;
+            }
+
             .view-graph-btn.active:hover {
                 transform: none;
                 box-shadow: none;
