@@ -2246,6 +2246,10 @@ class VitruvianApp {
     return this.exportAllToDropboxExcel({ manual: true });
   }
 
+  requestDeleteWorkout(index) {
+    return this.deleteWorkoutHistoryEntry(index, { manual: true });
+  }
+
   requestPersonalRecordsSync() {
     return this.syncPersonalRecordsManual({ manual: true });
   }
@@ -4351,14 +4355,14 @@ class VitruvianApp {
   }
 
   ensurePersonalRecordsFromHistory() {
-    if (!Array.isArray(this.workoutHistory) || this.workoutHistory.length === 0) {
-      return false;
-    }
+    const workouts = Array.isArray(this.workoutHistory)
+      ? this.workoutHistory
+      : [];
 
     const bestByIdentity = new Map();
     const epsilon = 0.0001;
 
-    for (const workout of this.workoutHistory) {
+    for (const workout of workouts) {
       const identity = this.getWorkoutIdentityInfo(workout);
       if (!identity) {
         continue;
@@ -4400,6 +4404,26 @@ class VitruvianApp {
       if (applied) {
         updated = true;
       }
+    }
+
+    if (!this.personalRecords) {
+      this.personalRecords = {};
+    }
+
+    const bestKeys = new Set(bestByIdentity.keys());
+    let removed = false;
+
+    for (const key of Object.keys(this.personalRecords)) {
+      if (!bestKeys.has(key)) {
+        delete this.personalRecords[key];
+        removed = true;
+      }
+    }
+
+    if (removed) {
+      this.savePersonalRecordsCache();
+      this.setPersonalRecordsDirty(true);
+      return true;
     }
 
     if (updated) {
@@ -4864,6 +4888,133 @@ class VitruvianApp {
       });
   }
 
+  async deleteWorkoutHistoryEntry(index, options = {}) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.workoutHistory.length) {
+      this.addLogEntry("Invalid workout index", "error");
+      return false;
+    }
+
+    const workout = this.workoutHistory[index];
+    if (!workout) {
+      this.addLogEntry("Workout not found in history", "error");
+      return false;
+    }
+
+    const skipConfirm = options?.skipConfirm === true;
+    const dropboxConnected = Boolean(this.dropboxManager?.isConnected);
+
+    const descriptorParts = [];
+    if (typeof workout.setName === "string" && workout.setName.trim().length > 0) {
+      descriptorParts.push(workout.setName.trim());
+    } else if (typeof workout.mode === "string" && workout.mode.trim().length > 0) {
+      descriptorParts.push(workout.mode.trim());
+    }
+
+    const timestamp = this.getWorkoutTimestamp(workout);
+    if (timestamp instanceof Date && !Number.isNaN(timestamp.getTime())) {
+      try {
+        const formatted = timestamp.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        if (formatted) {
+          descriptorParts.push(formatted);
+        }
+      } catch (error) {
+        /* ignore formatting errors */
+      }
+    }
+
+    const descriptor = descriptorParts.length > 0 ? descriptorParts.join(" — ") : "workout";
+
+    let confirmed = skipConfirm;
+    if (!skipConfirm) {
+      if (typeof window !== "undefined" && typeof window.confirm === "function") {
+        confirmed = window.confirm(
+          `Delete ${descriptor} from your workout history? This will remove the local entry${dropboxConnected ? " and delete the Dropbox backup" : ""}.`,
+        );
+      } else {
+        confirmed = true;
+      }
+    }
+
+    if (!confirmed) {
+      this.addLogEntry("Workout deletion cancelled", "info");
+      return false;
+    }
+
+    let dropboxAttempted = false;
+    let dropboxDeleted = false;
+
+    if (dropboxConnected && typeof this.dropboxManager.deleteWorkout === "function") {
+      dropboxAttempted = true;
+      try {
+        const result = await this.dropboxManager.deleteWorkout(workout);
+        dropboxDeleted = result === undefined ? true : Boolean(result);
+      } catch (error) {
+        dropboxDeleted = false;
+        this.addLogEntry(
+          `Failed to delete Dropbox backup for ${descriptor}: ${error.message}`,
+          "error",
+        );
+      }
+    }
+
+    const removed = this.workoutHistory.splice(index, 1);
+
+    if (this.selectedHistoryIndex !== null) {
+      if (this.selectedHistoryIndex === index) {
+        this.selectedHistoryIndex = null;
+      } else if (this.selectedHistoryIndex > index) {
+        this.selectedHistoryIndex -= 1;
+      }
+    }
+
+    const removedKey = Array.isArray(removed) && removed.length > 0
+      ? this.getWorkoutHistoryKey(removed[0])
+      : this.getWorkoutHistoryKey(workout);
+
+    if (this.selectedHistoryKey !== null && removedKey !== null && removedKey === this.selectedHistoryKey) {
+      this.selectedHistoryKey = null;
+    }
+
+    this.setHistoryPage(this.historyPage);
+    this.updateHistoryDisplay();
+    this.updateExportButtonLabel();
+
+    if (this.chartManager) {
+      if (typeof this.chartManager.clearEventMarkers === "function") {
+        this.chartManager.clearEventMarkers();
+      }
+      if (typeof this.chartManager.clear === "function") {
+        this.chartManager.clear();
+      }
+    }
+
+    const personalRecordsUpdated = this.ensurePersonalRecordsFromHistory();
+    if (personalRecordsUpdated) {
+      this.queuePersonalRecordsDropboxSync("history-delete");
+    }
+
+    this.addLogEntry(`Deleted ${descriptor} from workout history`, "info");
+
+    if (dropboxAttempted) {
+      if (dropboxDeleted) {
+        this.addLogEntry(`Deleted Dropbox backup for ${descriptor}`, "success");
+      } else {
+        this.addLogEntry(
+          `Dropbox backup for ${descriptor} was not found`,
+          "warning",
+        );
+      }
+    }
+
+    return true;
+  }
+
   updateHistoryDisplay() {
     const historyList = document.getElementById("historyList");
     if (!historyList) return;
@@ -4931,7 +5082,14 @@ class VitruvianApp {
         const buttonLabel = isSelected ? "📊 Viewing" : "📊 View Graph";
         const buttonClass = isSelected ? "view-graph-btn active" : "view-graph-btn";
         const viewButtonHtml = hasTimingData
-          ? `<button class="${buttonClass}" onclick="app.viewWorkoutOnGraph(${index})" title="View this workout on the graph">${buttonLabel}</button>`
+          ? `<button type="button" class="${buttonClass}" onclick="app.viewWorkoutOnGraph(${index})" title="View this workout on the graph">${buttonLabel}</button>`
+          : "";
+        const deleteButtonHtml = `<button type="button" class="delete-history-btn" onclick="app.requestDeleteWorkout(${index})" title="Delete this workout from history" aria-label="Delete this workout from history">🗑 Delete</button>`;
+        const actionsHtml = [viewButtonHtml, deleteButtonHtml]
+          .filter((html) => typeof html === "string" && html.length > 0)
+          .join("");
+        const actionsBlock = actionsHtml
+          ? `<div class="history-item-actions">${actionsHtml}</div>`
           : "";
 
         return `
@@ -4944,7 +5102,7 @@ class VitruvianApp {
     <div class="history-item-details">
       ${weightStr} • ${workout.reps} reps${peakText}${dataPointsText}
     </div>
-    ${viewButtonHtml}
+    ${actionsBlock}
   </div>`;
       })
       .join("");
