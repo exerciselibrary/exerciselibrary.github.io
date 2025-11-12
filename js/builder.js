@@ -109,6 +109,29 @@ const inferProgressionModeFromValues = (set) => {
   return PROGRESSION_MODES.NONE;
 };
 
+const applyStoredProgressionConfig = (set, setData = {}, item = {}) => {
+  if (!set) return;
+
+  if (set.mode === 'ECHO') {
+    set.progressionMode = PROGRESSION_MODES.NONE;
+  } else {
+    const storedMode =
+      normalizeProgressionMode(setData?.progressionMode) ||
+      normalizeProgressionMode(item?.progressionMode);
+    if (storedMode) {
+      set.progressionMode = storedMode;
+    } else {
+      const inferred = inferProgressionModeFromValues(set);
+      set.progressionMode = inferred || PROGRESSION_MODES.NONE;
+    }
+  }
+
+  const storedFrequency =
+    normalizeProgressionFrequency(setData?.progressionFrequency) ||
+    normalizeProgressionFrequency(item?.progressionFrequency);
+  set.progressionFrequency = storedFrequency || DEFAULT_PROGRESSION_FREQUENCY;
+};
+
 const getSetProgressionMode = (set) => {
   if (!set) return PROGRESSION_MODES.NONE;
   const normalized = normalizeProgressionMode(set.progressionMode);
@@ -714,18 +737,7 @@ const createEntryFromPlanItem = (item, index) => {
       typeof setData.stopAtTop === 'boolean'
         ? setData.stopAtTop
         : Boolean(item?.stopAtTop);
-    const resolvedProgressionMode =
-      set.mode === 'ECHO'
-        ? PROGRESSION_MODES.NONE
-        : normalizeProgressionMode(setData.progressionMode) ||
-          normalizeProgressionMode(item?.progressionMode) ||
-          inferProgressionModeFromValues(set);
-    set.progressionMode = resolvedProgressionMode || PROGRESSION_MODES.NONE;
-    const resolvedProgressionFrequency =
-      normalizeProgressionFrequency(setData.progressionFrequency) ||
-      normalizeProgressionFrequency(item?.progressionFrequency) ||
-      DEFAULT_PROGRESSION_FREQUENCY;
-    set.progressionFrequency = resolvedProgressionFrequency || DEFAULT_PROGRESSION_FREQUENCY;
+    applyStoredProgressionConfig(set, setData, item);
     return set;
   };
 
@@ -894,18 +906,7 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
               typeof setData.progressionPercent === 'string'
                 ? setData.progressionPercent
                 : set.progressionPercent;
-            const resolvedProgressionMode =
-              set.mode === 'ECHO'
-                ? PROGRESSION_MODES.NONE
-                : normalizeProgressionMode(setData.progressionMode) ||
-                  normalizeProgressionMode(item?.progressionMode) ||
-                  inferProgressionModeFromValues(set);
-            set.progressionMode = resolvedProgressionMode || PROGRESSION_MODES.NONE;
-            const resolvedProgressionFrequency =
-              normalizeProgressionFrequency(setData.progressionFrequency) ||
-              normalizeProgressionFrequency(item?.progressionFrequency) ||
-              DEFAULT_PROGRESSION_FREQUENCY;
-            set.progressionFrequency = resolvedProgressionFrequency || DEFAULT_PROGRESSION_FREQUENCY;
+            applyStoredProgressionConfig(set, setData, item);
             const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
             set.restSec = formatRestValue(setData.restSec, fallbackRest);
             set.justLift =
