@@ -102,7 +102,7 @@ const inferProgressionModeFromValues = (set) => {
   if (!set) return PROGRESSION_MODES.NONE;
   const normalized = normalizeProgressionMode(set.progressionMode);
   if (normalized) return normalized;
-  const hasFlat = typeof set.progression === 'string' && set.progression.trim() !== '';
+  const hasFlat = typeof set.overloadValue === 'string' && set.overloadValue.trim() !== '';
   const hasPercent = typeof set.progressionPercent === 'string' && set.progressionPercent.trim() !== '';
   if (hasFlat && !hasPercent) return PROGRESSION_MODES.FLAT;
   if (hasPercent) return PROGRESSION_MODES.PERCENT;
@@ -296,6 +296,9 @@ const convertAllWeights = (newUnit) => {
       if (set.progression) {
         set.progression = convertWeightValue(set.progression, previous, newUnit);
       }
+      if (set.overloadValue) {
+        set.overloadValue = convertWeightValue(set.overloadValue, previous, newUnit);
+      }
     });
   });
 };
@@ -471,6 +474,7 @@ export const buildPlanItems = () => {
             : 100
         ),
         progression: set.progression ?? '',
+        overloadValue: set.overloadValue ?? '',
         progressionPercent: set.progressionPercent ?? '',
         progressionMode,
         progressionFrequency,
@@ -522,6 +526,12 @@ export const buildPlanItems = () => {
         if (Number.isFinite(progressionNumber)) {
           progressionKg = clamp(roundKg(toPerCableKg(progressionNumber)), -3, 3);
         }
+        const overloadDisplay = set.overloadValue || '';
+        let progressiveOverloadKg = 0;
+        const overloadNumber = Number.parseFloat(overloadDisplay);
+        if (Number.isFinite(overloadNumber)) {
+          progressiveOverloadKg = clamp(roundKg(toPerCableKg(overloadNumber)), -3, 3);
+        }
         const parsedPercent = Number.parseFloat(set.progressionPercent);
         const progressionPercent = Number.isFinite(parsedPercent) ? clamp(parsedPercent, -100, 400) : null;
 
@@ -537,6 +547,10 @@ export const buildPlanItems = () => {
           progressionDisplay: progressionDisplay || '',
           progressionUnit: currentUnit,
           progressionPercent,
+          progressiveOverloadKg,
+          progressiveOverloadDisplay: overloadDisplay || '',
+          progressiveOverloadUnit: currentUnit,
+          progressiveOverloadPercent: progressionPercent,
           progressionMode,
           progressionFrequency,
           justLift,
@@ -642,6 +656,10 @@ const createEntryFromPlanItem = (item, index) => {
           : '';
       set.progressionPercent =
         typeof setData.progressionPercent === 'string' ? setData.progressionPercent : '';
+      set.overloadValue =
+        typeof setData.overloadValue === 'string'
+          ? convertWeightStringValue(setData.overloadValue, storedProgressionUnit, targetUnit)
+          : '';
     } else {
       const metaMode = typeof setData.mode === 'string' ? setData.mode : null;
       const builderMode =
@@ -670,6 +688,15 @@ const createEntryFromPlanItem = (item, index) => {
                 ? Number(item.progressionKg)
                 : null;
               return progressionKg == null ? '' : formatWeightForUnit(progressionKg);
+            })();
+      set.overloadValue =
+        typeof setData.overloadValue === 'string' && setData.overloadValue.trim()
+          ? convertWeightStringValue(setData.overloadValue, storedProgressionUnit, targetUnit)
+          : (() => {
+              const overloadKg = Number.isFinite(Number(item?.progressiveOverloadKg))
+                ? Number(item.progressiveOverloadKg)
+                : null;
+              return overloadKg == null || overloadKg === 0 ? '' : formatWeightForUnit(overloadKg);
             })();
       set.progressionPercent =
         typeof setData.progressionPercent === 'string'
@@ -853,6 +880,16 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             if (typeof setData.progression === 'string' && setData.progression.trim()) {
               set.progression = convertWeightStringValue(setData.progression, storedProgressionUnit, targetUnit);
             }
+            if (typeof setData.overloadValue === 'string' && setData.overloadValue.trim()) {
+              set.overloadValue = convertWeightStringValue(setData.overloadValue, storedProgressionUnit, targetUnit);
+            } else {
+              const overloadKg = Number.isFinite(Number(item?.progressiveOverloadKg))
+                ? Number(item.progressiveOverloadKg)
+                : null;
+              if (overloadKg !== null && overloadKg !== 0) {
+                set.overloadValue = formatWeightForUnit(overloadKg);
+              }
+            }
             set.progressionPercent =
               typeof setData.progressionPercent === 'string'
                 ? setData.progressionPercent
@@ -1026,6 +1063,19 @@ export const renderSetRow = (exerciseId, set, index) => {
   if (set.progressionPercent === undefined || set.progressionPercent === null) {
     set.progressionPercent = '';
   }
+  if (set.overloadValue === undefined || set.overloadValue === null) {
+    set.overloadValue = '';
+  }
+  if (
+    !set.overloadValue &&
+    typeof set.progressionMode === 'string' &&
+    set.progressionMode === PROGRESSION_MODES.FLAT &&
+    typeof set.progression === 'string' &&
+    set.progression.trim()
+  ) {
+    set.overloadValue = set.progression;
+    set.progression = '';
+  }
   if (set.restSec === undefined || set.restSec === null || set.restSec === '') {
     set.restSec = String(DEFAULT_REST_SECONDS);
   }
@@ -1164,6 +1214,36 @@ export const renderSetRow = (exerciseId, set, index) => {
   echoNote.className = 'muted';
   echoNote.textContent = 'Not used for Echo Mode';
 
+  const repProgressionCell = document.createElement('td');
+  const repProgressionWrapper = document.createElement('div');
+  const repProgressionInput = document.createElement('input');
+  repProgressionInput.type = 'number';
+  repProgressionInput.step = weightInput.step;
+  repProgressionInput.min = '-100';
+  repProgressionInput.max = weightInput.max;
+  repProgressionInput.placeholder = `Δ ${getWeightLabel()}`;
+  repProgressionInput.value = set.progression;
+  repProgressionInput.addEventListener('input', () => {
+    set.progression = repProgressionInput.value;
+  });
+  repProgressionInput.addEventListener('change', () => {
+    const finalValue = repProgressionInput.value;
+    set.progression = finalValue;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.progression !== finalValue) {
+        target.progression = finalValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  repProgressionWrapper.appendChild(repProgressionInput);
+  repProgressionCell.appendChild(repProgressionWrapper);
+
   const progressionCell = document.createElement('td');
   progressionCell.className = 'progression-cell';
   const progressionFlatWrapper = document.createElement('div');
@@ -1174,17 +1254,17 @@ export const renderSetRow = (exerciseId, set, index) => {
   progressionInput.min = '-100';
   progressionInput.max = weightInput.max;
   progressionInput.placeholder = `Δ ${getWeightLabel()}`;
-  progressionInput.value = set.progression;
+  progressionInput.value = set.overloadValue;
   progressionInput.addEventListener('input', () => {
-    set.progression = progressionInput.value;
+    set.overloadValue = progressionInput.value;
   });
   progressionInput.addEventListener('change', () => {
     const finalValue = progressionInput.value;
-    set.progression = finalValue;
+    set.overloadValue = finalValue;
     let updated = false;
     propagateSetValue(entry, index, (target) => {
-      if (target.progression !== finalValue) {
-        target.progression = finalValue;
+      if (target.overloadValue !== finalValue) {
+        target.overloadValue = finalValue;
         updated = true;
       }
     });
@@ -1320,6 +1400,7 @@ export const renderSetRow = (exerciseId, set, index) => {
     const isEcho = set.mode === 'ECHO';
     if (isEcho) {
       weightWrapper.style.display = 'none';
+      repProgressionWrapper.style.display = 'none';
       progressionFlatWrapper.style.display = 'none';
       progressionPercentWrapper.style.display = 'none';
       progressionEmptyLabel.textContent = 'Echo';
@@ -1328,11 +1409,13 @@ export const renderSetRow = (exerciseId, set, index) => {
       if (!echoNote.parentElement) weightCell.appendChild(echoNote);
     } else {
       weightWrapper.style.display = '';
+       repProgressionWrapper.style.display = '';
       updateProgressionInputs();
       if (echoWrapper.parentElement === modeCell) echoWrapper.remove();
       if (echoNote.parentElement === weightCell) echoNote.remove();
       weightInput.value = set.weight || '';
-      progressionInput.value = set.progression || '';
+      repProgressionInput.value = set.progression || '';
+      progressionInput.value = set.overloadValue || '';
       progressionPercentInput.value = set.progressionPercent || '';
     }
   };
@@ -1382,6 +1465,7 @@ export const renderSetRow = (exerciseId, set, index) => {
     modeCell,
     repsCell,
     weightCell,
+    repProgressionCell,
     progressionCell,
     restCell,
     justLiftCell,
@@ -1543,22 +1627,29 @@ export const buildPlanSyncPayload = () => {
       const progressionMode = normalizeProgressionMode(item.progressionMode) || PROGRESSION_MODES.NONE;
       const progressionFrequency =
         normalizeProgressionFrequency(item.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY;
-      const percent = Number.isFinite(item.progressionPercent) ? item.progressionPercent : null;
+      const percent = Number.isFinite(item.progressiveOverloadPercent)
+        ? item.progressiveOverloadPercent
+        : Number.isFinite(item.progressionPercent)
+          ? item.progressionPercent
+          : null;
+      const flatKg = Number.isFinite(item.progressiveOverloadKg) ? item.progressiveOverloadKg : 0;
       const hasPercent =
         progressionMode === PROGRESSION_MODES.PERCENT && percent !== null && percent !== 0;
-      const hasFlat =
-        progressionMode === PROGRESSION_MODES.FLAT &&
-        Number.isFinite(item.progressionKg) &&
-        item.progressionKg !== 0;
+      const hasFlat = progressionMode === PROGRESSION_MODES.FLAT && flatKg !== 0;
 
       if (baseOccurrenceDate && (hasPercent || hasFlat)) {
-        const steps = getProgressionStepCount(baseOccurrenceDate, date, progressionFrequency, occurrenceIndex);
+        const steps = getProgressionStepCount(
+          baseOccurrenceDate,
+          date,
+          progressionFrequency,
+          occurrenceIndex
+        );
         if (steps > 0) {
           let nextWeight = item.perCableKg;
           if (hasPercent) {
             nextWeight = item.perCableKg * (1 + (percent / 100) * steps);
           } else if (hasFlat) {
-            nextWeight = item.perCableKg + item.progressionKg * steps;
+            nextWeight = item.perCableKg + flatKg * steps;
           }
           copy.perCableKg = roundKg(Math.max(0, nextWeight));
         }
@@ -1744,9 +1835,10 @@ export const exportWorkout = () => {
       'Mode',
       'Reps / Ecc%',
       `Weight (${getWeightLabel()})`,
-      'Progression Type',
-      'Progression Value',
-      'Increase Every',
+      `Progression (${getWeightLabel()})`,
+      'Progressive Overload Type',
+      'Progressive Overload Value',
+      'Every',
       'Muscle Groups',
       'Equipment'
     ]
@@ -1765,10 +1857,16 @@ export const exportWorkout = () => {
       const progressionTypeLabel =
         progressionMode === PROGRESSION_MODES.NONE ? '' : PROGRESSION_TYPE_LABELS[progressionMode];
       const progressionValue =
+        set.mode === 'ECHO'
+          ? ''
+          : set.progression || '';
+      const overloadValue =
         progressionMode === PROGRESSION_MODES.PERCENT
-          ? set.progressionPercent || ''
+          ? set.progressionPercent
+            ? `${set.progressionPercent}%`
+            : ''
           : progressionMode === PROGRESSION_MODES.FLAT
-            ? set.progression || ''
+            ? set.overloadValue || ''
             : '';
       const progressionFrequency =
         progressionMode === PROGRESSION_MODES.NONE
@@ -1780,8 +1878,9 @@ export const exportWorkout = () => {
         getModeLabel(set),
         repsDisplay,
         weightValue,
-        progressionTypeLabel,
         progressionValue,
+        progressionTypeLabel,
+        overloadValue,
         progressionFrequency,
         (entry.exercise.muscleGroups || []).map(niceName).join(', '),
         (entry.exercise.equipment || []).map(niceName).join(', ')
@@ -1830,17 +1929,18 @@ export const printWorkout = () => {
           : 100;
         const repsDisplay = set.mode === 'ECHO' ? `${eccentricValue}% ecc` : (set.reps || '');
         const progressionMode = set.mode === 'ECHO' ? PROGRESSION_MODES.NONE : getSetProgressionMode(set);
-        let progressionDisplay = '';
+        const perRepProgression = set.mode === 'ECHO' ? '' : (set.progression || '');
+        let overloadDisplay = '';
         if (progressionMode === PROGRESSION_MODES.PERCENT && set.progressionPercent) {
-          progressionDisplay = `${PROGRESSION_TYPE_SHORT_LABELS[PROGRESSION_MODES.PERCENT]}: ${set.progressionPercent}%`;
-        } else if (progressionMode === PROGRESSION_MODES.FLAT && set.progression) {
-          progressionDisplay = `${PROGRESSION_TYPE_SHORT_LABELS[PROGRESSION_MODES.FLAT]}: ${set.progression} ${weightLabel}`;
+          overloadDisplay = `${PROGRESSION_TYPE_SHORT_LABELS[PROGRESSION_MODES.PERCENT]}: ${set.progressionPercent}%`;
+        } else if (progressionMode === PROGRESSION_MODES.FLAT && set.overloadValue) {
+          overloadDisplay = `${PROGRESSION_TYPE_SHORT_LABELS[PROGRESSION_MODES.FLAT]}: ${set.overloadValue} ${weightLabel}`;
         }
-        const progressionFrequencyLabel =
+        const overloadFrequencyLabel =
           progressionMode === PROGRESSION_MODES.NONE
             ? ''
             : PROGRESSION_FREQUENCY_LABELS[getSetProgressionFrequency(set)] || '';
-        return `<tr><td>${idx + 1}</td><td>${getModeLabel(set)}</td><td>${repsDisplay}</td><td>${weightValue}</td><td>${progressionDisplay}</td><td>${progressionFrequencyLabel}</td>${checkboxCell}</tr>`;
+        return `<tr><td>${idx + 1}</td><td>${getModeLabel(set)}</td><td>${repsDisplay}</td><td>${weightValue}</td><td>${perRepProgression}</td><td>${overloadDisplay}</td><td>${overloadFrequencyLabel}</td>${checkboxCell}</tr>`;
       })
       .join('');
     const metaParts = [];
@@ -1856,7 +1956,7 @@ export const printWorkout = () => {
         <h2>${entry.exercise.name}</h2>
         ${metaHtml}
         <table>
-          <thead><tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${weightLabel})</th><th>Progression</th><th>Increase Every</th>${checkboxHeader}</tr></thead>
+          <thead><tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${weightLabel})</th><th>Progression (${weightLabel})</th><th>Progressive Overload</th><th>Every</th>${checkboxHeader}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </section>`;
@@ -2456,7 +2556,7 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const modeControl = document.createElement('div');
   modeControl.className = 'bulk-control';
   const modeLabel = document.createElement('span');
-  modeLabel.textContent = 'Progression';
+  modeLabel.textContent = 'Progressive Overload';
   modeLabel.title =
     'Automatically increase your working weight each workout, day, week, or month using % or flat increments.';
   const progressionOptions = [
@@ -2577,7 +2677,7 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const table = document.createElement('table');
   table.className = 'sets-table';
   const thead = document.createElement('thead');
-  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression</th><th>Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
+  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload</th><th>Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
