@@ -857,6 +857,18 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
               typeof setData.progressionPercent === 'string'
                 ? setData.progressionPercent
                 : set.progressionPercent;
+            const resolvedProgressionMode =
+              set.mode === 'ECHO'
+                ? PROGRESSION_MODES.NONE
+                : normalizeProgressionMode(setData.progressionMode) ||
+                  normalizeProgressionMode(item?.progressionMode) ||
+                  inferProgressionModeFromValues(set);
+            set.progressionMode = resolvedProgressionMode || PROGRESSION_MODES.NONE;
+            const resolvedProgressionFrequency =
+              normalizeProgressionFrequency(setData.progressionFrequency) ||
+              normalizeProgressionFrequency(item?.progressionFrequency) ||
+              DEFAULT_PROGRESSION_FREQUENCY;
+            set.progressionFrequency = resolvedProgressionFrequency || DEFAULT_PROGRESSION_FREQUENCY;
             const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
             set.restSec = formatRestValue(setData.restSec, fallbackRest);
             set.justLift =
