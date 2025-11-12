@@ -27,7 +27,13 @@ import {
   createSet,
   getBuilderSnapshot,
   persistState,
-  base64UrlEncodeUtf8
+  base64UrlEncodeUtf8,
+  PROGRESSION_MODES,
+  PROGRESSION_FREQUENCIES,
+  DEFAULT_PROGRESSION_MODE,
+  DEFAULT_PROGRESSION_FREQUENCY,
+  normalizeProgressionMode,
+  normalizeProgressionFrequency
 } from './storage.js';
 
 let renderCallback = null;
@@ -68,6 +74,108 @@ const PROGRESSIVE_OVERLOAD_TOOLTIP =
   'Increase the percent lifted per workout for this exercise. Only applies on new days where you do this exercise.';
 
 const DEFAULT_REST_SECONDS = 60;
+const MS_PER_DAY = 86400000;
+
+const PROGRESSION_TYPE_LABELS = {
+  [PROGRESSION_MODES.NONE]: 'No increase',
+  [PROGRESSION_MODES.PERCENT]: '% increase',
+  [PROGRESSION_MODES.FLAT]: 'Flat weight'
+};
+
+const PROGRESSION_TYPE_SHORT_LABELS = {
+  [PROGRESSION_MODES.NONE]: '',
+  [PROGRESSION_MODES.PERCENT]: '%',
+  [PROGRESSION_MODES.FLAT]: 'Flat'
+};
+
+const QUICK_PERCENT_VALUES = ['', '0', '1', '2.5', '5', '7.5', '10', '12.5', '15', '20', '25', '30', '35', '40'];
+const QUICK_FLAT_VALUES = ['', '0.5', '1', '2', '5', '10'];
+
+const PROGRESSION_FREQUENCY_LABELS = {
+  [PROGRESSION_FREQUENCIES.WORKOUT]: 'Every workout',
+  [PROGRESSION_FREQUENCIES.DAILY]: 'Day to day',
+  [PROGRESSION_FREQUENCIES.WEEKLY]: 'Week to week',
+  [PROGRESSION_FREQUENCIES.MONTHLY]: 'Month to month'
+};
+
+const inferProgressionModeFromValues = (set) => {
+  if (!set) return PROGRESSION_MODES.NONE;
+  const normalized = normalizeProgressionMode(set.progressionMode);
+  if (normalized) return normalized;
+  const hasFlat = typeof set.overloadValue === 'string' && set.overloadValue.trim() !== '';
+  const hasPercent = typeof set.progressionPercent === 'string' && set.progressionPercent.trim() !== '';
+  if (hasFlat && !hasPercent) return PROGRESSION_MODES.FLAT;
+  if (hasPercent) return PROGRESSION_MODES.PERCENT;
+  return PROGRESSION_MODES.NONE;
+};
+
+const applyStoredProgressionConfig = (set, setData = {}, item = {}) => {
+  if (!set) return;
+
+  if (set.mode === 'ECHO') {
+    set.progressionMode = PROGRESSION_MODES.NONE;
+  } else {
+    const storedMode =
+      normalizeProgressionMode(setData?.progressionMode) ||
+      normalizeProgressionMode(item?.progressionMode);
+    if (storedMode) {
+      set.progressionMode = storedMode;
+    } else {
+      const inferred = inferProgressionModeFromValues(set);
+      set.progressionMode = inferred || PROGRESSION_MODES.NONE;
+    }
+  }
+
+  const storedFrequency =
+    normalizeProgressionFrequency(setData?.progressionFrequency) ||
+    normalizeProgressionFrequency(item?.progressionFrequency);
+  set.progressionFrequency = storedFrequency || DEFAULT_PROGRESSION_FREQUENCY;
+};
+
+const getSetProgressionMode = (set) => {
+  if (!set) return PROGRESSION_MODES.NONE;
+  const normalized = normalizeProgressionMode(set.progressionMode);
+  if (normalized) {
+    set.progressionMode = normalized;
+    return normalized;
+  }
+  const inferred = inferProgressionModeFromValues(set) || DEFAULT_PROGRESSION_MODE;
+  set.progressionMode = inferred;
+  return inferred;
+};
+
+const getSetProgressionFrequency = (set) => {
+  if (!set) return DEFAULT_PROGRESSION_FREQUENCY;
+  const normalized = normalizeProgressionFrequency(set.progressionFrequency);
+  if (normalized) {
+    set.progressionFrequency = normalized;
+    return normalized;
+  }
+  set.progressionFrequency = DEFAULT_PROGRESSION_FREQUENCY;
+  return set.progressionFrequency;
+};
+
+const getProgressionStepCount = (baseDate, currentDate, frequency, occurrenceIndex = 0) => {
+  if (frequency === PROGRESSION_FREQUENCIES.WORKOUT) {
+    return Math.max(occurrenceIndex, 0);
+  }
+  if (!(baseDate instanceof Date) || !(currentDate instanceof Date)) return 0;
+  const diffMs = currentDate.getTime() - baseDate.getTime();
+  if (diffMs <= 0) return 0;
+  if (frequency === PROGRESSION_FREQUENCIES.WEEKLY) {
+    return Math.floor(diffMs / (7 * MS_PER_DAY));
+  }
+  if (frequency === PROGRESSION_FREQUENCIES.MONTHLY) {
+    const yearDiff = currentDate.getFullYear() - baseDate.getFullYear();
+    const monthDiff = currentDate.getMonth() - baseDate.getMonth();
+    let totalMonths = yearDiff * 12 + monthDiff;
+    if (currentDate.getDate() < baseDate.getDate()) {
+      totalMonths -= 1;
+    }
+    return Math.max(totalMonths, 0);
+  }
+  return Math.floor(diffMs / MS_PER_DAY);
+};
 
 const OCCURRENCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   weekday: 'short',
@@ -129,7 +237,7 @@ const computeScheduleOccurrences = (schedule) => {
   const end = parseISODate(schedule.endDate);
   const interval = clampPositiveInt(schedule.repeatInterval, 1);
 
-  const defaultDayRef = start && start > today ? start : today;
+  const defaultDayRef = start || today;
   const dayValues =
     schedule.daysOfWeek && schedule.daysOfWeek.size
       ? Array.from(schedule.daysOfWeek)
@@ -139,14 +247,13 @@ const computeScheduleOccurrences = (schedule) => {
 
   const days = Array.from(new Set(dayValues)).sort((a, b) => a - b);
 
-  const cursor =
-    start && start > today ? new Date(start) : new Date(today);
+  const cursor = start ? new Date(start) : new Date(today);
   let iterations = 0;
 
   while (occurrences.length < MAX_SCHEDULE_OCCURRENCES && iterations < 1000) {
     if (end && cursor > end) break;
 
-    const diffDays = Math.floor((cursor - base) / 86400000);
+    const diffDays = Math.floor((cursor - base) / MS_PER_DAY);
     const weekIndex = Math.floor(diffDays / 7);
 
     if (weekIndex % interval === 0 && days.includes(cursor.getDay())) {
@@ -211,6 +318,9 @@ const convertAllWeights = (newUnit) => {
       }
       if (set.progression) {
         set.progression = convertWeightValue(set.progression, previous, newUnit);
+      }
+      if (set.overloadValue) {
+        set.overloadValue = convertWeightValue(set.overloadValue, previous, newUnit);
       }
     });
   });
@@ -374,6 +484,8 @@ export const buildPlanItems = () => {
       const restString = formatRestValue(set.restSec, restSeconds);
       const justLift = Boolean(set.justLift);
       const stopAtTop = Boolean(set.stopAtTop);
+      const progressionMode = mode === 'ECHO' ? PROGRESSION_MODES.NONE : getSetProgressionMode(set);
+      const progressionFrequency = getSetProgressionFrequency(set);
       const setData = {
         reps: set.reps ?? '',
         weight: set.weight ?? '',
@@ -385,7 +497,10 @@ export const buildPlanItems = () => {
             : 100
         ),
         progression: set.progression ?? '',
+        overloadValue: set.overloadValue ?? '',
         progressionPercent: set.progressionPercent ?? '',
+        progressionMode,
+        progressionFrequency,
         weightUnit: currentUnit,
         progressionUnit: currentUnit,
         restSec: restString,
@@ -434,6 +549,12 @@ export const buildPlanItems = () => {
         if (Number.isFinite(progressionNumber)) {
           progressionKg = clamp(roundKg(toPerCableKg(progressionNumber)), -3, 3);
         }
+        const overloadDisplay = set.overloadValue || '';
+        let progressiveOverloadKg = 0;
+        const overloadNumber = Number.parseFloat(overloadDisplay);
+        if (Number.isFinite(overloadNumber)) {
+          progressiveOverloadKg = clamp(roundKg(toPerCableKg(overloadNumber)), -3, 3);
+        }
         const parsedPercent = Number.parseFloat(set.progressionPercent);
         const progressionPercent = Number.isFinite(parsedPercent) ? clamp(parsedPercent, -100, 400) : null;
 
@@ -449,6 +570,12 @@ export const buildPlanItems = () => {
           progressionDisplay: progressionDisplay || '',
           progressionUnit: currentUnit,
           progressionPercent,
+          progressiveOverloadKg,
+          progressiveOverloadDisplay: overloadDisplay || '',
+          progressiveOverloadUnit: currentUnit,
+          progressiveOverloadPercent: progressionPercent,
+          progressionMode,
+          progressionFrequency,
           justLift,
           stopAtTop,
           cables: 2,
@@ -552,6 +679,10 @@ const createEntryFromPlanItem = (item, index) => {
           : '';
       set.progressionPercent =
         typeof setData.progressionPercent === 'string' ? setData.progressionPercent : '';
+      set.overloadValue =
+        typeof setData.overloadValue === 'string'
+          ? convertWeightStringValue(setData.overloadValue, storedProgressionUnit, targetUnit)
+          : '';
     } else {
       const metaMode = typeof setData.mode === 'string' ? setData.mode : null;
       const builderMode =
@@ -581,6 +712,15 @@ const createEntryFromPlanItem = (item, index) => {
                 : null;
               return progressionKg == null ? '' : formatWeightForUnit(progressionKg);
             })();
+      set.overloadValue =
+        typeof setData.overloadValue === 'string' && setData.overloadValue.trim()
+          ? convertWeightStringValue(setData.overloadValue, storedProgressionUnit, targetUnit)
+          : (() => {
+              const overloadKg = Number.isFinite(Number(item?.progressiveOverloadKg))
+                ? Number(item.progressiveOverloadKg)
+                : null;
+              return overloadKg == null || overloadKg === 0 ? '' : formatWeightForUnit(overloadKg);
+            })();
       set.progressionPercent =
         typeof setData.progressionPercent === 'string'
           ? setData.progressionPercent
@@ -597,6 +737,7 @@ const createEntryFromPlanItem = (item, index) => {
       typeof setData.stopAtTop === 'boolean'
         ? setData.stopAtTop
         : Boolean(item?.stopAtTop);
+    applyStoredProgressionConfig(set, setData, item);
     return set;
   };
 
@@ -751,10 +892,21 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             if (typeof setData.progression === 'string' && setData.progression.trim()) {
               set.progression = convertWeightStringValue(setData.progression, storedProgressionUnit, targetUnit);
             }
+            if (typeof setData.overloadValue === 'string' && setData.overloadValue.trim()) {
+              set.overloadValue = convertWeightStringValue(setData.overloadValue, storedProgressionUnit, targetUnit);
+            } else {
+              const overloadKg = Number.isFinite(Number(item?.progressiveOverloadKg))
+                ? Number(item.progressiveOverloadKg)
+                : null;
+              if (overloadKg !== null && overloadKg !== 0) {
+                set.overloadValue = formatWeightForUnit(overloadKg);
+              }
+            }
             set.progressionPercent =
               typeof setData.progressionPercent === 'string'
                 ? setData.progressionPercent
                 : set.progressionPercent;
+            applyStoredProgressionConfig(set, setData, item);
             const fallbackRest = Number.isFinite(Number(item?.restSec)) ? Number(item.restSec) : DEFAULT_REST_SECONDS;
             set.restSec = formatRestValue(setData.restSec, fallbackRest);
             set.justLift =
@@ -912,6 +1064,19 @@ export const renderSetRow = (exerciseId, set, index) => {
   if (set.progressionPercent === undefined || set.progressionPercent === null) {
     set.progressionPercent = '';
   }
+  if (set.overloadValue === undefined || set.overloadValue === null) {
+    set.overloadValue = '';
+  }
+  if (
+    !set.overloadValue &&
+    typeof set.progressionMode === 'string' &&
+    set.progressionMode === PROGRESSION_MODES.FLAT &&
+    typeof set.progression === 'string' &&
+    set.progression.trim()
+  ) {
+    set.overloadValue = set.progression;
+    set.progression = '';
+  }
   if (set.restSec === undefined || set.restSec === null || set.restSec === '') {
     set.restSec = String(DEFAULT_REST_SECONDS);
   }
@@ -1050,19 +1215,20 @@ export const renderSetRow = (exerciseId, set, index) => {
   echoNote.className = 'muted';
   echoNote.textContent = 'Not used for Echo Mode';
 
-  const progressionCell = document.createElement('td');
-  const progressionInput = document.createElement('input');
-  progressionInput.type = 'number';
-  progressionInput.step = weightInput.step;
-  progressionInput.min = '-100';
-  progressionInput.max = weightInput.max;
-  progressionInput.placeholder = `Δ ${getWeightLabel()}`;
-  progressionInput.value = set.progression;
-  progressionInput.addEventListener('input', () => {
-    set.progression = progressionInput.value;
+  const repProgressionCell = document.createElement('td');
+  const repProgressionWrapper = document.createElement('div');
+  const repProgressionInput = document.createElement('input');
+  repProgressionInput.type = 'number';
+  repProgressionInput.step = weightInput.step;
+  repProgressionInput.min = '-100';
+  repProgressionInput.max = weightInput.max;
+  repProgressionInput.placeholder = `Δ ${getWeightLabel()}`;
+  repProgressionInput.value = set.progression;
+  repProgressionInput.addEventListener('input', () => {
+    set.progression = repProgressionInput.value;
   });
-  progressionInput.addEventListener('change', () => {
-    const finalValue = progressionInput.value;
+  repProgressionInput.addEventListener('change', () => {
+    const finalValue = repProgressionInput.value;
     set.progression = finalValue;
     let updated = false;
     propagateSetValue(entry, index, (target) => {
@@ -1076,11 +1242,42 @@ export const renderSetRow = (exerciseId, set, index) => {
       triggerRender();
     }
   });
-  const progressionWrapper = document.createElement('div');
-  progressionWrapper.appendChild(progressionInput);
-  progressionCell.appendChild(progressionWrapper);
+  repProgressionWrapper.appendChild(repProgressionInput);
+  repProgressionCell.appendChild(repProgressionWrapper);
 
-  const progressionPercentCell = document.createElement('td');
+  const progressionCell = document.createElement('td');
+  progressionCell.className = 'progression-cell';
+  const progressionFlatWrapper = document.createElement('div');
+  progressionFlatWrapper.className = 'progression-input flat';
+  const progressionInput = document.createElement('input');
+  progressionInput.type = 'number';
+  progressionInput.step = weightInput.step;
+  progressionInput.min = '-100';
+  progressionInput.max = weightInput.max;
+  progressionInput.placeholder = `Δ ${getWeightLabel()}`;
+  progressionInput.value = set.overloadValue;
+  progressionInput.addEventListener('input', () => {
+    set.overloadValue = progressionInput.value;
+  });
+  progressionInput.addEventListener('change', () => {
+    const finalValue = progressionInput.value;
+    set.overloadValue = finalValue;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.overloadValue !== finalValue) {
+        target.overloadValue = finalValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  progressionFlatWrapper.appendChild(progressionInput);
+
+  const progressionPercentWrapper = document.createElement('div');
+  progressionPercentWrapper.className = 'progression-input percent';
   const progressionPercentInput = document.createElement('input');
   progressionPercentInput.type = 'number';
   progressionPercentInput.step = '0.5';
@@ -1107,9 +1304,25 @@ export const renderSetRow = (exerciseId, set, index) => {
       triggerRender();
     }
   });
-  const progressionPercentWrapper = document.createElement('div');
   progressionPercentWrapper.appendChild(progressionPercentInput);
-  progressionPercentCell.appendChild(progressionPercentWrapper);
+
+  const progressionEmptyLabel = document.createElement('span');
+  progressionEmptyLabel.className = 'muted progression-placeholder';
+  progressionEmptyLabel.textContent = '—';
+
+  progressionCell.append(progressionPercentWrapper, progressionFlatWrapper, progressionEmptyLabel);
+
+  const updateProgressionInputs = () => {
+    const modeValue = getSetProgressionMode(set);
+    const showFlat = modeValue === PROGRESSION_MODES.FLAT;
+    const showPercent = modeValue === PROGRESSION_MODES.PERCENT;
+    progressionFlatWrapper.style.display = showFlat ? '' : 'none';
+    progressionPercentWrapper.style.display = showPercent ? '' : 'none';
+    progressionEmptyLabel.textContent = '—';
+    progressionEmptyLabel.style.display = modeValue === PROGRESSION_MODES.NONE ? '' : 'none';
+  };
+
+  updateProgressionInputs();
 
   const restCell = document.createElement('td');
   const restWrapper = document.createElement('div');
@@ -1188,18 +1401,22 @@ export const renderSetRow = (exerciseId, set, index) => {
     const isEcho = set.mode === 'ECHO';
     if (isEcho) {
       weightWrapper.style.display = 'none';
-      progressionWrapper.style.display = 'none';
+      repProgressionWrapper.style.display = 'none';
+      progressionFlatWrapper.style.display = 'none';
       progressionPercentWrapper.style.display = 'none';
+      progressionEmptyLabel.textContent = 'Echo';
+      progressionEmptyLabel.style.display = '';
       if (!modeCell.contains(echoWrapper)) modeCell.appendChild(echoWrapper);
       if (!echoNote.parentElement) weightCell.appendChild(echoNote);
     } else {
       weightWrapper.style.display = '';
-      progressionWrapper.style.display = '';
-      progressionPercentWrapper.style.display = '';
+       repProgressionWrapper.style.display = '';
+      updateProgressionInputs();
       if (echoWrapper.parentElement === modeCell) echoWrapper.remove();
       if (echoNote.parentElement === weightCell) echoNote.remove();
       weightInput.value = set.weight || '';
-      progressionInput.value = set.progression || '';
+      repProgressionInput.value = set.progression || '';
+      progressionInput.value = set.overloadValue || '';
       progressionPercentInput.value = set.progressionPercent || '';
     }
   };
@@ -1249,8 +1466,8 @@ export const renderSetRow = (exerciseId, set, index) => {
     modeCell,
     repsCell,
     weightCell,
+    repProgressionCell,
     progressionCell,
-    progressionPercentCell,
     restCell,
     justLiftCell,
     stopAtTopCell,
@@ -1399,6 +1616,7 @@ export const buildPlanSyncPayload = () => {
     };
   }
 
+  const baseOccurrenceDate = occurrences.length ? occurrences[0] : null;
   const plans = occurrences.map((date, occurrenceIndex) => {
     const iso = formatISODate(date);
     const items = planItems.map((item) => {
@@ -1407,12 +1625,35 @@ export const buildPlanSyncPayload = () => {
       }
 
       const copy = { ...item };
-      const percent = Number.parseFloat(item.progressionPercent);
-      const hasProgressiveOverload = Number.isFinite(percent) && percent !== 0;
+      const progressionMode = normalizeProgressionMode(item.progressionMode) || PROGRESSION_MODES.NONE;
+      const progressionFrequency =
+        normalizeProgressionFrequency(item.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY;
+      const percent = Number.isFinite(item.progressiveOverloadPercent)
+        ? item.progressiveOverloadPercent
+        : Number.isFinite(item.progressionPercent)
+          ? item.progressionPercent
+          : null;
+      const flatKg = Number.isFinite(item.progressiveOverloadKg) ? item.progressiveOverloadKg : 0;
+      const hasPercent =
+        progressionMode === PROGRESSION_MODES.PERCENT && percent !== null && percent !== 0;
+      const hasFlat = progressionMode === PROGRESSION_MODES.FLAT && flatKg !== 0;
 
-      if (hasProgressiveOverload && occurrenceIndex > 0) {
-        const factor = Math.pow(1 + percent / 100, occurrenceIndex);
-        copy.perCableKg = roundKg(item.perCableKg * factor);
+      if (baseOccurrenceDate && (hasPercent || hasFlat)) {
+        const steps = getProgressionStepCount(
+          baseOccurrenceDate,
+          date,
+          progressionFrequency,
+          occurrenceIndex
+        );
+        if (steps > 0) {
+          let nextWeight = item.perCableKg;
+          if (hasPercent) {
+            nextWeight = item.perCableKg * (1 + (percent / 100) * steps);
+          } else if (hasFlat) {
+            nextWeight = item.perCableKg + flatKg * steps;
+          }
+          copy.perCableKg = roundKg(Math.max(0, nextWeight));
+        }
       }
 
       return copy;
@@ -1596,7 +1837,9 @@ export const exportWorkout = () => {
       'Reps / Ecc%',
       `Weight (${getWeightLabel()})`,
       `Progression (${getWeightLabel()})`,
-      'Progressive Overload %',
+      'Progressive Overload Type',
+      'Progressive Overload Value',
+      'Every',
       'Muscle Groups',
       'Equipment'
     ]
@@ -1611,8 +1854,25 @@ export const exportWorkout = () => {
         ? Number.parseInt(set.eccentricPct, 10)
         : 100;
       const repsDisplay = set.mode === 'ECHO' ? `${eccentricValue}% ecc` : (set.reps || '');
-      const progressionValue = set.mode === 'ECHO' ? '' : (set.progression || '');
-      const progressionPercentValue = set.mode === 'ECHO' ? '' : (set.progressionPercent || '');
+      const progressionMode = set.mode === 'ECHO' ? PROGRESSION_MODES.NONE : getSetProgressionMode(set);
+      const progressionTypeLabel =
+        progressionMode === PROGRESSION_MODES.NONE ? '' : PROGRESSION_TYPE_LABELS[progressionMode];
+      const progressionValue =
+        set.mode === 'ECHO'
+          ? ''
+          : set.progression || '';
+      const overloadValue =
+        progressionMode === PROGRESSION_MODES.PERCENT
+          ? set.progressionPercent
+            ? `${set.progressionPercent}%`
+            : ''
+          : progressionMode === PROGRESSION_MODES.FLAT
+            ? set.overloadValue || ''
+            : '';
+      const progressionFrequency =
+        progressionMode === PROGRESSION_MODES.NONE
+          ? ''
+          : PROGRESSION_FREQUENCY_LABELS[getSetProgressionFrequency(set)] || '';
       rows.push([
         entry.exercise.name,
         (idx + 1).toString(),
@@ -1620,7 +1880,9 @@ export const exportWorkout = () => {
         repsDisplay,
         weightValue,
         progressionValue,
-        progressionPercentValue,
+        progressionTypeLabel,
+        overloadValue,
+        progressionFrequency,
         (entry.exercise.muscleGroups || []).map(niceName).join(', '),
         (entry.exercise.equipment || []).map(niceName).join(', ')
       ]);
@@ -1667,9 +1929,19 @@ export const printWorkout = () => {
           ? Number.parseInt(set.eccentricPct, 10)
           : 100;
         const repsDisplay = set.mode === 'ECHO' ? `${eccentricValue}% ecc` : (set.reps || '');
-        const progressionValue = set.mode === 'ECHO' ? '' : (set.progression || '');
-        const progressionPercentValue = set.mode === 'ECHO' ? '' : (set.progressionPercent || '');
-        return `<tr><td>${idx + 1}</td><td>${getModeLabel(set)}</td><td>${repsDisplay}</td><td>${weightValue}</td><td>${progressionValue}</td><td>${progressionPercentValue}</td>${checkboxCell}</tr>`;
+        const progressionMode = set.mode === 'ECHO' ? PROGRESSION_MODES.NONE : getSetProgressionMode(set);
+        const perRepProgression = set.mode === 'ECHO' ? '' : (set.progression || '');
+        let overloadDisplay = '';
+        if (progressionMode === PROGRESSION_MODES.PERCENT && set.progressionPercent) {
+          overloadDisplay = `${PROGRESSION_TYPE_SHORT_LABELS[PROGRESSION_MODES.PERCENT]}: ${set.progressionPercent}%`;
+        } else if (progressionMode === PROGRESSION_MODES.FLAT && set.overloadValue) {
+          overloadDisplay = `${PROGRESSION_TYPE_SHORT_LABELS[PROGRESSION_MODES.FLAT]}: ${set.overloadValue} ${weightLabel}`;
+        }
+        const overloadFrequencyLabel =
+          progressionMode === PROGRESSION_MODES.NONE
+            ? ''
+            : PROGRESSION_FREQUENCY_LABELS[getSetProgressionFrequency(set)] || '';
+        return `<tr><td>${idx + 1}</td><td>${getModeLabel(set)}</td><td>${repsDisplay}</td><td>${weightValue}</td><td>${perRepProgression}</td><td>${overloadDisplay}</td><td>${overloadFrequencyLabel}</td>${checkboxCell}</tr>`;
       })
       .join('');
     const metaParts = [];
@@ -1685,7 +1957,7 @@ export const printWorkout = () => {
         <h2>${entry.exercise.name}</h2>
         ${metaHtml}
         <table>
-          <thead><tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${weightLabel})</th><th>Progression (${weightLabel})</th><th>Progressive Overload %</th>${checkboxHeader}</tr></thead>
+          <thead><tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${weightLabel})</th><th>Progression (${weightLabel})</th><th>Progressive Overload</th><th>Every</th>${checkboxHeader}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </section>`;
@@ -2250,34 +2522,144 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
 
   const bulkControls = document.createElement('div');
   bulkControls.className = 'builder-bulk-controls';
-  const percentLabel = document.createElement('label');
-  percentLabel.textContent = 'Progressive Overload %';
-  percentLabel.title = PROGRESSIVE_OVERLOAD_TOOLTIP;
-  const percentSelect = document.createElement('select');
-  const percentOptions = ['', '0', '2.5', '5', '7.5', '10', '12.5', '15', '20', '25', '30', '35', '40'];
-  percentOptions.forEach((value) => {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value ? `${value}%` : 'Custom';
-    percentSelect.appendChild(option);
-  });
-  const sharedPercent = entry.sets.length
-    ? entry.sets.every((set) => (set.progressionPercent || '') === (entry.sets[0].progressionPercent || ''))
-      ? (entry.sets[0].progressionPercent || '')
-      : ''
-    : '';
-  percentSelect.value = sharedPercent ?? '';
-  percentSelect.title = PROGRESSIVE_OVERLOAD_TOOLTIP;
-  percentSelect.addEventListener('change', () => {
-    const chosen = percentSelect.value;
+
+  const getSharedProgressionMode = () => {
+    if (!entry.sets.length) return PROGRESSION_MODES.NONE;
+    const base = getSetProgressionMode(entry.sets[0]);
+    return entry.sets.every((set) => getSetProgressionMode(set) === base) ? base : null;
+  };
+
+  const getSharedFrequency = () => {
+    if (!entry.sets.length) return DEFAULT_PROGRESSION_FREQUENCY;
+    const base = getSetProgressionFrequency(entry.sets[0]);
+    return entry.sets.every((set) => getSetProgressionFrequency(set) === base) ? base : null;
+  };
+
+  const buildToggleGroup = (options, onSelect) => {
+    const group = document.createElement('div');
+    group.className = 'btn-toggle-group';
+    const buttons = options.map((opt) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-toggle';
+      btn.textContent = opt.label;
+      btn.dataset.value = opt.value;
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        onSelect(opt.value);
+      });
+      group.appendChild(btn);
+      return btn;
+    });
+    return { group, buttons };
+  };
+
+  const modeControl = document.createElement('div');
+  modeControl.className = 'bulk-control';
+  const modeLabel = document.createElement('span');
+  modeLabel.textContent = 'Progressive Overload';
+  modeLabel.title =
+    'Automatically increase your working weight each workout, day, week, or month using % or flat increments.';
+  const progressionOptions = [
+    { value: PROGRESSION_MODES.NONE, label: 'No Increase' },
+    { value: PROGRESSION_MODES.PERCENT, label: '%' },
+    { value: PROGRESSION_MODES.FLAT, label: 'Flat' }
+  ];
+  const { group: modeGroup, buttons: modeButtons } = buildToggleGroup(progressionOptions, (value) => {
     entry.sets.forEach((set) => {
-      set.progressionPercent = chosen;
+      set.progressionMode = value;
     });
     persistState();
     triggerRender();
   });
-  percentLabel.appendChild(percentSelect);
-  bulkControls.appendChild(percentLabel);
+  modeControl.append(modeLabel, modeGroup);
+  bulkControls.appendChild(modeControl);
+
+  const frequencyControl = document.createElement('div');
+  frequencyControl.className = 'bulk-control';
+  const frequencyLabel = document.createElement('span');
+  frequencyLabel.textContent = 'Every';
+  const frequencyOptions = [
+    { value: PROGRESSION_FREQUENCIES.WORKOUT, label: 'Workout' },
+    { value: PROGRESSION_FREQUENCIES.DAILY, label: 'Day' },
+    { value: PROGRESSION_FREQUENCIES.WEEKLY, label: 'Week' },
+    { value: PROGRESSION_FREQUENCIES.MONTHLY, label: 'Month' }
+  ];
+  const { group: frequencyGroup, buttons: frequencyButtons } = buildToggleGroup(frequencyOptions, (value) => {
+    entry.sets.forEach((set) => {
+      set.progressionFrequency = value;
+    });
+    persistState();
+    triggerRender();
+  });
+  frequencyControl.append(frequencyLabel, frequencyGroup);
+  bulkControls.appendChild(frequencyControl);
+
+  const quickControl = document.createElement('div');
+  quickControl.classList.add('bulk-control');
+  quickControl.title = PROGRESSIVE_OVERLOAD_TOOLTIP;
+  const quickLabel = document.createElement('span');
+  quickLabel.textContent = 'Quick %';
+  const quickSelect = document.createElement('select');
+  quickControl.append(quickLabel, quickSelect);
+  bulkControls.appendChild(quickControl);
+
+  let activeQuickMode = PROGRESSION_MODES.FLAT;
+  const refreshQuickOptions = (mode) => {
+    activeQuickMode = mode === PROGRESSION_MODES.PERCENT ? PROGRESSION_MODES.PERCENT : PROGRESSION_MODES.FLAT;
+    const isPercent = activeQuickMode === PROGRESSION_MODES.PERCENT;
+    quickLabel.textContent = isPercent ? 'Quick %' : 'Quick Flat';
+    const values = isPercent ? QUICK_PERCENT_VALUES : QUICK_FLAT_VALUES;
+    quickSelect.innerHTML = '';
+    values.forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      if (!value) {
+        option.textContent = 'Custom';
+      } else if (isPercent) {
+        option.textContent = `${value}%`;
+      } else {
+        option.textContent = `${value} ${getWeightLabel()}`;
+      }
+      quickSelect.appendChild(option);
+    });
+    quickSelect.value = '';
+  };
+
+  quickSelect.addEventListener('change', () => {
+    const chosen = quickSelect.value;
+    if (!chosen) return;
+    entry.sets.forEach((set) => {
+      if (activeQuickMode === PROGRESSION_MODES.PERCENT) {
+        set.progressionPercent = chosen;
+        set.progressionMode = PROGRESSION_MODES.PERCENT;
+      } else {
+        set.progression = chosen;
+        set.progressionMode = PROGRESSION_MODES.FLAT;
+      }
+    });
+    quickSelect.value = '';
+    persistState();
+    triggerRender();
+  });
+
+  const updateBulkControls = () => {
+    const sharedMode = getSharedProgressionMode();
+    const effectiveMode = sharedMode || PROGRESSION_MODES.NONE;
+    modeButtons.forEach((btn) => {
+      btn.classList.toggle('active', sharedMode === btn.dataset.value);
+    });
+    const sharedFrequency = getSharedFrequency();
+    frequencyButtons.forEach((btn) => {
+      btn.classList.toggle('active', sharedFrequency === btn.dataset.value);
+      btn.disabled = effectiveMode === PROGRESSION_MODES.NONE;
+    });
+    frequencyControl.classList.toggle('disabled', effectiveMode === PROGRESSION_MODES.NONE);
+    const quickMode = effectiveMode === PROGRESSION_MODES.PERCENT ? PROGRESSION_MODES.PERCENT : PROGRESSION_MODES.FLAT;
+    refreshQuickOptions(quickMode);
+  };
+
+  updateBulkControls();
   card.appendChild(bulkControls);
 
   card.draggable = true;
@@ -2296,7 +2678,7 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const table = document.createElement('table');
   table.className = 'sets-table';
   const thead = document.createElement('thead');
-  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload %</th><th>Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
+  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload</th><th class="rest-col">Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
@@ -2321,6 +2703,8 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
       newSet.weight = lastSet.weight;
       newSet.progression = lastSet.progression;
       newSet.progressionPercent = lastSet.progressionPercent;
+      newSet.progressionMode = getSetProgressionMode(lastSet);
+      newSet.progressionFrequency = getSetProgressionFrequency(lastSet);
       newSet.restSec = lastSet.restSec;
       newSet.justLift = lastSet.justLift;
       newSet.stopAtTop = lastSet.stopAtTop;

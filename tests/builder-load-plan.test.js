@@ -407,6 +407,86 @@ test('legacy plan items map numeric beast mode values to builder options', () =>
   assert.strictEqual(entry.sets[0].mode, 'TIME_UNDER_TENSION_BEAST');
 });
 
+test('rehydrates progression mode and cadence from builder metadata', () => {
+  state.data = [
+    {
+      id: 'press',
+      name: 'Overhead Press',
+      muscleGroups: [],
+      muscles: [],
+      equipment: [],
+      videos: []
+    }
+  ];
+
+  const planItems = [
+    {
+      type: 'exercise',
+      name: 'Overhead Press',
+      builderMeta: {
+        exerciseId: 'press',
+        exerciseName: 'Overhead Press',
+        order: 0,
+        totalSets: 2,
+        setIndex: 0,
+        videos: [],
+        setData: {
+          mode: 'OLD_SCHOOL',
+          reps: '8',
+          weight: '60',
+          progression: '5',
+          overloadValue: '5',
+          progressionPercent: '',
+          progressionMode: 'FLAT',
+          progressionFrequency: 'WEEKLY',
+          restSec: '75',
+          justLift: false,
+          stopAtTop: false,
+          weightUnit: 'KG',
+          progressionUnit: 'KG'
+        }
+      }
+    },
+    {
+      type: 'exercise',
+      name: 'Overhead Press',
+      builderMeta: {
+        exerciseId: 'press',
+        exerciseName: 'Overhead Press',
+        order: 0,
+        totalSets: 2,
+        setIndex: 1,
+        videos: [],
+        setData: {
+          mode: 'OLD_SCHOOL',
+          reps: '6',
+          weight: '65',
+          progression: '',
+          overloadValue: '',
+          progressionPercent: '5',
+          progressionMode: 'PERCENT',
+          progressionFrequency: 'MONTHLY',
+          restSec: '90',
+          justLift: false,
+          stopAtTop: true,
+          weightUnit: 'KG',
+          progressionUnit: 'KG'
+        }
+      }
+    }
+  ];
+
+  loadPlanIntoBuilder(planItems);
+
+  const entry = state.builder.items.get('press');
+  assert(entry, 'expected grouped entry for press');
+  assert.strictEqual(entry.sets.length, 2);
+  assert.strictEqual(entry.sets[0].progressionMode, 'FLAT');
+  assert.strictEqual(entry.sets[0].progressionFrequency, 'WEEKLY');
+  assert.strictEqual(entry.sets[1].progressionMode, 'PERCENT');
+  assert.strictEqual(entry.sets[1].progressionFrequency, 'MONTHLY');
+});
+
 test('adjusts builder unit to match plan metadata from workout-time payloads', () => {
   state.weightUnit = 'LBS';
   state.data = [

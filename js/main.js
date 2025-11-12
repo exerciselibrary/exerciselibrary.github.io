@@ -354,6 +354,9 @@ function setupSchedulePickers() {
     flatpickr(els.scheduleStart, {
       dateFormat: 'Y-m-d',
       allowInput: true,
+      disableMobile: true,
+      monthSelectorType: 'dropdown',
+      shorthandCurrentMonth: false,
       defaultDate: state.plan.schedule.startDate || null,
       onChange: (selectedDates, dateStr) => {
         setScheduleStart(dateStr || '');
@@ -365,6 +368,9 @@ function setupSchedulePickers() {
     flatpickr(els.scheduleEnd, {
       dateFormat: 'Y-m-d',
       allowInput: true,
+      disableMobile: true,
+      monthSelectorType: 'dropdown',
+      shorthandCurrentMonth: false,
       defaultDate: state.plan.schedule.endDate || null,
       onChange: (selectedDates, dateStr) => {
         setScheduleEnd(dateStr || '');

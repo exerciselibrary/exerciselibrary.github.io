@@ -3,6 +3,37 @@ import { STORAGE_KEY, ECHO_LEVELS } from './constants.js';
 import { state } from './context.js';
 import { setActiveGrouping } from './grouping.js';
 
+export const PROGRESSION_MODES = {
+  NONE: 'NONE',
+  PERCENT: 'PERCENT',
+  FLAT: 'FLAT'
+};
+
+export const PROGRESSION_FREQUENCIES = {
+  WORKOUT: 'WORKOUT',
+  DAILY: 'DAILY',
+  WEEKLY: 'WEEKLY',
+  MONTHLY: 'MONTHLY'
+};
+
+const PROGRESSION_MODE_VALUES = new Set(Object.values(PROGRESSION_MODES));
+const PROGRESSION_FREQUENCY_VALUES = new Set(Object.values(PROGRESSION_FREQUENCIES));
+
+export const DEFAULT_PROGRESSION_MODE = PROGRESSION_MODES.PERCENT;
+export const DEFAULT_PROGRESSION_FREQUENCY = PROGRESSION_FREQUENCIES.WORKOUT;
+
+export const normalizeProgressionMode = (value) => {
+  if (typeof value !== 'string') return null;
+  const upper = value.toUpperCase();
+  return PROGRESSION_MODE_VALUES.has(upper) ? upper : null;
+};
+
+export const normalizeProgressionFrequency = (value) => {
+  if (typeof value !== 'string') return null;
+  const upper = value.toUpperCase();
+  return PROGRESSION_FREQUENCY_VALUES.has(upper) ? upper : null;
+};
+
 export const createSet = () => ({
   id: Math.random().toString(36).slice(2),
   reps: '',
@@ -11,7 +42,10 @@ export const createSet = () => ({
   echoLevel: ECHO_LEVELS[0].value,
   eccentricPct: 100,
   progression: '',
+  overloadValue: '',
   progressionPercent: '',
+  progressionMode: DEFAULT_PROGRESSION_MODE,
+  progressionFrequency: DEFAULT_PROGRESSION_FREQUENCY,
   restSec: '60',
   justLift: false,
   stopAtTop: false
@@ -40,14 +74,35 @@ export const getBuilderSnapshot = () => ({
             : 100,
           set.progression ?? '',
           set.progressionPercent ?? '',
+          normalizeProgressionMode(set.progressionMode) || DEFAULT_PROGRESSION_MODE,
+          normalizeProgressionFrequency(set.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY,
           set.restSec ?? '60',
           Boolean(set.justLift),
-          Boolean(set.stopAtTop)
+          Boolean(set.stopAtTop),
+          set.overloadValue ?? ''
         ])
       };
     })
     .filter(Boolean)
 });
+
+const coerceBooleanFlag = (value) => value === true || value === 1 || value === '1' || value === 'true';
+
+const inferProgressionModeFromStoredValues = (set) => {
+  if (!set) return PROGRESSION_MODES.NONE;
+  if (set.mode === 'ECHO') return PROGRESSION_MODES.NONE;
+
+  const percentValue = typeof set.progressionPercent === 'string' ? set.progressionPercent.trim() : '';
+  if (percentValue) return PROGRESSION_MODES.PERCENT;
+
+  const overloadValue = typeof set.overloadValue === 'string' ? set.overloadValue.trim() : '';
+  if (overloadValue) return PROGRESSION_MODES.FLAT;
+
+  const legacyProgression = typeof set.progression === 'string' ? set.progression.trim() : '';
+  if (legacyProgression) return PROGRESSION_MODES.FLAT;
+
+  return PROGRESSION_MODES.NONE;
+};
 
 export const applyBuilderSnapshot = (snapshot) => {
   state.builder.order = [];
@@ -79,9 +134,12 @@ export const applyBuilderSnapshot = (snapshot) => {
             : 100,
           set.progression ?? '',
           set.progressionPercent ?? '',
+          normalizeProgressionMode(set.progressionMode) || DEFAULT_PROGRESSION_MODE,
+          normalizeProgressionFrequency(set.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY,
           set.restSec ?? '60',
           Boolean(set.justLift),
-          Boolean(set.stopAtTop)
+          Boolean(set.stopAtTop),
+          set.overloadValue ?? ''
         ])
       });
     }
@@ -91,21 +149,57 @@ export const applyBuilderSnapshot = (snapshot) => {
     const item = itemMap.get(id);
     if (!item) return;
 
-    const sets = (item.s || []).map((values) => ({
-      id: Math.random().toString(36).slice(2),
-      reps: values[0] ?? '',
-      weight: values[1] ?? '',
-      mode: values[2] || 'OLD_SCHOOL',
-      echoLevel: values[3] || ECHO_LEVELS[0].value,
-      eccentricPct: Number.isFinite(Number.parseInt(values[4], 10))
-        ? Number.parseInt(values[4], 10)
-        : 100,
-      progression: values[5] ?? '',
-      progressionPercent: values[6] ?? '',
-      restSec: values[7] ?? '60',
-      justLift: values[8] === true || values[8] === 1 || values[8] === '1' || values[8] === 'true',
-      stopAtTop: values[9] === true || values[9] === 1 || values[9] === '1' || values[9] === 'true'
-    }));
+    const sets = (item.s || []).map((values) => {
+      const setValues = Array.isArray(values) ? values : [];
+      const legacySet = setValues.length <= 10;
+      const restIndex = legacySet ? 7 : 9;
+      const justLiftIndex = legacySet ? 8 : 10;
+      const stopAtTopIndex = legacySet ? 9 : 11;
+
+      const set = {
+        id: Math.random().toString(36).slice(2),
+        reps: setValues[0] ?? '',
+        weight: setValues[1] ?? '',
+        mode: setValues[2] || 'OLD_SCHOOL',
+        echoLevel: setValues[3] || ECHO_LEVELS[0].value,
+        eccentricPct: Number.isFinite(Number.parseInt(setValues[4], 10))
+          ? Number.parseInt(setValues[4], 10)
+          : 100,
+        progression: setValues[5] ?? '',
+        progressionPercent: setValues[6] ?? '',
+        progressionMode: PROGRESSION_MODES.NONE,
+        progressionFrequency: DEFAULT_PROGRESSION_FREQUENCY,
+        restSec: (() => {
+          const rawRest = setValues[restIndex];
+          if (rawRest === undefined || rawRest === null || rawRest === '') return '60';
+          return String(rawRest);
+        })(),
+        justLift: coerceBooleanFlag(setValues[justLiftIndex]),
+        stopAtTop: coerceBooleanFlag(setValues[stopAtTopIndex]),
+        overloadValue: ''
+      };
+
+      const rawOverload = legacySet ? item?.overloadValue : setValues[12];
+      if (typeof rawOverload === 'string' && rawOverload.trim()) {
+        set.overloadValue = rawOverload;
+      } else if (typeof rawOverload === 'number' && Number.isFinite(rawOverload)) {
+        set.overloadValue = String(rawOverload);
+      }
+
+      const rawMode = !legacySet && setValues[7] !== undefined ? setValues[7] : item?.progressionMode;
+      const normalizedMode = normalizeProgressionMode(rawMode);
+      if (normalizedMode) {
+        set.progressionMode = normalizedMode;
+      } else {
+        set.progressionMode = inferProgressionModeFromStoredValues(set);
+      }
+
+      const rawFrequency = !legacySet && setValues[8] !== undefined ? setValues[8] : item?.progressionFrequency;
+      const normalizedFrequency = normalizeProgressionFrequency(rawFrequency);
+      set.progressionFrequency = normalizedFrequency || DEFAULT_PROGRESSION_FREQUENCY;
+
+      return set;
+    });
     if (!sets.length) sets.push(createSet());
 
     const catalogue = state.data.find((ex) => ex.id === id);
