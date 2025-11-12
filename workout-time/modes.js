@@ -167,4 +167,3 @@ function getModeProfile(mode) {
 
   return data;
 }
-

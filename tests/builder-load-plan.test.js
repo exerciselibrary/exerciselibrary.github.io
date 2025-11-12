@@ -383,6 +383,30 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
   );
 });
 
+test('legacy plan items map numeric beast mode values to builder options', () => {
+  state.data = [];
+  const planItems = [
+    {
+      name: 'Legacy Beast Mode',
+      type: 'exercise',
+      mode: 3,
+      sets: 1,
+      reps: 6,
+      perCableKg: 40,
+      restSec: 75
+    }
+  ];
+
+  loadPlanIntoBuilder(planItems);
+
+  assert.strictEqual(state.builder.order.length, 1);
+  const entryId = state.builder.order[0];
+  const entry = state.builder.items.get(entryId);
+  assert(entry, 'expected legacy beast entry to exist');
+  assert.strictEqual(entry.sets.length, 1);
+  assert.strictEqual(entry.sets[0].mode, 'TIME_UNDER_TENSION_BEAST');
+});
+
 test('adjusts builder unit to match plan metadata from workout-time payloads', () => {
   state.weightUnit = 'LBS';
   state.data = [

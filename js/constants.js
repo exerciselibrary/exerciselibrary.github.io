@@ -11,6 +11,7 @@ export const STORAGE_KEY = 'exercise-library-state-v1';
 export const MODE_OPTIONS = [
   { value: 'OLD_SCHOOL', label: 'Old School' },
   { value: 'TIME_UNDER_TENSION', label: 'Time Under Tension' },
+  { value: 'TIME_UNDER_TENSION_BEAST', label: 'Time Under Tension Beast Mode' },
   { value: 'PUMP', label: 'Pump' },
   { value: 'ECCENTRIC', label: 'Eccentric' },
   { value: 'ECHO', label: 'Echo Mode' }

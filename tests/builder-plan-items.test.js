@@ -231,3 +231,48 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
     state.builder.items = new Map(originalItems);
   }
 });
+
+test('buildPlanItems encodes Time Under Tension Beast Mode correctly', () => {
+  const originalWeightUnit = state.weightUnit;
+  const originalOrder = [...state.builder.order];
+  const originalItems = new Map(state.builder.items);
+
+  try {
+    state.weightUnit = 'KG';
+    state.builder.order = ['exercise-beast'];
+    state.builder.items = new Map([
+      [
+        'exercise-beast',
+        {
+          exercise: {
+            id: 'exercise-beast',
+            name: 'Beast Tempo',
+            videos: []
+          },
+          sets: [
+            {
+              mode: 'TIME_UNDER_TENSION_BEAST',
+              reps: '6',
+              weight: '40',
+              progression: '',
+              progressionPercent: '',
+              restSec: '80',
+              justLift: false,
+              stopAtTop: true
+            }
+          ]
+        }
+      ]
+    ]);
+
+    const planItems = buildPlanItems();
+    assert.equal(planItems.length, 1);
+    const [beastSet] = planItems;
+    assert.equal(beastSet.mode, 3);
+    assert.equal(beastSet.reps, 6);
+  } finally {
+    state.weightUnit = originalWeightUnit;
+    state.builder.order = originalOrder;
+    state.builder.items = new Map(originalItems);
+  }
+});

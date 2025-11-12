@@ -57,6 +57,7 @@ const PROGRAM_MODE_MAP = {
   OLD_SCHOOL: 0,
   PUMP: 1,
   TIME_UNDER_TENSION: 2,
+  TIME_UNDER_TENSION_BEAST: 3,
   ECCENTRIC: 4
 };
 const PROGRAM_MODE_REVERSE_MAP = Object.entries(PROGRAM_MODE_MAP).reduce((acc, [key, value]) => {
