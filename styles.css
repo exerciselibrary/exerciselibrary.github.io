@@ -384,8 +384,17 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .builder-bulk-controls {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 16px;
   margin: 6px 0 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.builder-bulk-controls .bulk-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .builder-bulk-controls label {
   font-size: 12px;
@@ -396,6 +405,35 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 }
 .builder-bulk-controls select {
   min-width: 90px;
+}
+.btn-toggle-group {
+  display: inline-flex;
+  border: 1px solid #2a3244;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.btn-toggle {
+  border: none;
+  background: transparent;
+  color: #cbd5f5;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-toggle:not(:last-child) {
+  border-right: 1px solid #2a3244;
+}
+.btn-toggle.active {
+  background: #2563eb;
+  color: #fff;
+}
+.btn-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.builder-bulk-controls .bulk-control.disabled {
+  opacity: 0.5;
 }
 .plan-controls {
   display: grid;
@@ -587,6 +625,21 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .sets-table td.set-flag input { width: auto; }
 .sets-table .flag-control { display: flex; justify-content: center; }
 .sets-table .flag-note { margin-top: 4px; font-size: 11px; }
+.sets-table .progression-cell { min-width: 180px; }
+.sets-table .progression-mode-select { margin-bottom: 4px; }
+.sets-table .progression-inputs { display: flex; gap: 6px; flex-wrap: wrap; }
+.sets-table .progression-inputs .progression-input { flex: 1 1 120px; }
+.sets-table .progression-placeholder { display: inline-block; min-width: 40px; }
+.flatpickr-current-month .numInputWrapper {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+}
+.flatpickr-current-month input.cur-year {
+  width: 4.5ch;
+  padding: 0;
+  font-weight: 600;
+}
 .mode-cell { display: grid; gap: 6px; }
 .mode-echo { display: grid; gap: 4px; }
 .set-actions { display: flex; gap: 6px; justify-content: flex-end; }

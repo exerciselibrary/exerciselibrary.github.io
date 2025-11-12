@@ -3,6 +3,37 @@ import { STORAGE_KEY, ECHO_LEVELS } from './constants.js';
 import { state } from './context.js';
 import { setActiveGrouping } from './grouping.js';
 
+export const PROGRESSION_MODES = {
+  NONE: 'NONE',
+  PERCENT: 'PERCENT',
+  FLAT: 'FLAT'
+};
+
+export const PROGRESSION_FREQUENCIES = {
+  WORKOUT: 'WORKOUT',
+  DAILY: 'DAILY',
+  WEEKLY: 'WEEKLY',
+  MONTHLY: 'MONTHLY'
+};
+
+const PROGRESSION_MODE_VALUES = new Set(Object.values(PROGRESSION_MODES));
+const PROGRESSION_FREQUENCY_VALUES = new Set(Object.values(PROGRESSION_FREQUENCIES));
+
+export const DEFAULT_PROGRESSION_MODE = PROGRESSION_MODES.PERCENT;
+export const DEFAULT_PROGRESSION_FREQUENCY = PROGRESSION_FREQUENCIES.WORKOUT;
+
+export const normalizeProgressionMode = (value) => {
+  if (typeof value !== 'string') return null;
+  const upper = value.toUpperCase();
+  return PROGRESSION_MODE_VALUES.has(upper) ? upper : null;
+};
+
+export const normalizeProgressionFrequency = (value) => {
+  if (typeof value !== 'string') return null;
+  const upper = value.toUpperCase();
+  return PROGRESSION_FREQUENCY_VALUES.has(upper) ? upper : null;
+};
+
 export const createSet = () => ({
   id: Math.random().toString(36).slice(2),
   reps: '',
@@ -12,6 +43,8 @@ export const createSet = () => ({
   eccentricPct: 100,
   progression: '',
   progressionPercent: '',
+  progressionMode: DEFAULT_PROGRESSION_MODE,
+  progressionFrequency: DEFAULT_PROGRESSION_FREQUENCY,
   restSec: '60',
   justLift: false,
   stopAtTop: false
@@ -40,6 +73,8 @@ export const getBuilderSnapshot = () => ({
             : 100,
           set.progression ?? '',
           set.progressionPercent ?? '',
+          normalizeProgressionMode(set.progressionMode) || DEFAULT_PROGRESSION_MODE,
+          normalizeProgressionFrequency(set.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY,
           set.restSec ?? '60',
           Boolean(set.justLift),
           Boolean(set.stopAtTop)
@@ -79,6 +114,8 @@ export const applyBuilderSnapshot = (snapshot) => {
             : 100,
           set.progression ?? '',
           set.progressionPercent ?? '',
+          normalizeProgressionMode(set.progressionMode) || DEFAULT_PROGRESSION_MODE,
+          normalizeProgressionFrequency(set.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY,
           set.restSec ?? '60',
           Boolean(set.justLift),
           Boolean(set.stopAtTop)
@@ -102,9 +139,11 @@ export const applyBuilderSnapshot = (snapshot) => {
         : 100,
       progression: values[5] ?? '',
       progressionPercent: values[6] ?? '',
-      restSec: values[7] ?? '60',
-      justLift: values[8] === true || values[8] === 1 || values[8] === '1' || values[8] === 'true',
-      stopAtTop: values[9] === true || values[9] === 1 || values[9] === '1' || values[9] === 'true'
+      progressionMode: normalizeProgressionMode(values[7]) || DEFAULT_PROGRESSION_MODE,
+      progressionFrequency: normalizeProgressionFrequency(values[8]) || DEFAULT_PROGRESSION_FREQUENCY,
+      restSec: values[9] ?? '60',
+      justLift: values[10] === true || values[10] === 1 || values[10] === '1' || values[10] === 'true',
+      stopAtTop: values[11] === true || values[11] === 1 || values[11] === '1' || values[11] === 'true'
     }));
     if (!sets.length) sets.push(createSet());
 
