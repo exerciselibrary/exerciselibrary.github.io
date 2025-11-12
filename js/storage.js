@@ -42,6 +42,7 @@ export const createSet = () => ({
   echoLevel: ECHO_LEVELS[0].value,
   eccentricPct: 100,
   progression: '',
+  overloadValue: '',
   progressionPercent: '',
   progressionMode: DEFAULT_PROGRESSION_MODE,
   progressionFrequency: DEFAULT_PROGRESSION_FREQUENCY,
@@ -77,7 +78,8 @@ export const getBuilderSnapshot = () => ({
           normalizeProgressionFrequency(set.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY,
           set.restSec ?? '60',
           Boolean(set.justLift),
-          Boolean(set.stopAtTop)
+          Boolean(set.stopAtTop),
+          set.overloadValue ?? ''
         ])
       };
     })
@@ -118,7 +120,8 @@ export const applyBuilderSnapshot = (snapshot) => {
           normalizeProgressionFrequency(set.progressionFrequency) || DEFAULT_PROGRESSION_FREQUENCY,
           set.restSec ?? '60',
           Boolean(set.justLift),
-          Boolean(set.stopAtTop)
+          Boolean(set.stopAtTop),
+          set.overloadValue ?? ''
         ])
       });
     }
@@ -143,7 +146,8 @@ export const applyBuilderSnapshot = (snapshot) => {
       progressionFrequency: normalizeProgressionFrequency(values[8]) || DEFAULT_PROGRESSION_FREQUENCY,
       restSec: values[9] ?? '60',
       justLift: values[10] === true || values[10] === 1 || values[10] === '1' || values[10] === 'true',
-      stopAtTop: values[11] === true || values[11] === 1 || values[11] === '1' || values[11] === 'true'
+      stopAtTop: values[11] === true || values[11] === 1 || values[11] === '1' || values[11] === 'true',
+      overloadValue: typeof values[12] === 'string' ? values[12] : ''
     }));
     if (!sets.length) sets.push(createSet());
 

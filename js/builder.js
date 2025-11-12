@@ -2677,7 +2677,7 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const table = document.createElement('table');
   table.className = 'sets-table';
   const thead = document.createElement('thead');
-  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload</th><th>Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
+  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload</th><th class="rest-col">Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');

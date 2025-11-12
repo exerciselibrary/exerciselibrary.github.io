@@ -630,6 +630,15 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .sets-table .progression-inputs { display: flex; gap: 6px; flex-wrap: wrap; }
 .sets-table .progression-inputs .progression-input { flex: 1 1 120px; }
 .sets-table .progression-placeholder { display: inline-block; min-width: 40px; }
+.sets-table th.rest-col,
+.sets-table td.rest-cell {
+  min-width: 150px;
+  width: 150px;
+}
+.sets-table td.rest-cell.rest-expanded {
+  min-width: 240px;
+  width: 240px;
+}
 .flatpickr-current-month .numInputWrapper {
   display: inline-flex;
   align-items: center;
