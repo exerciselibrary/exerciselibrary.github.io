@@ -25,6 +25,7 @@ This document orients automation and human collaborators to the structure, conve
 - Run `npm run lint` before sending PRs so any trailing whitespace, loose equality, or rogue `var` declarations are caught early; `npm run format` will normalise whitespace/newlines when you need automatic fixes.
 - Maintain accessibility: new UI components should include keyboard support and ARIA labelling consistent with existing markup.
 - After touching persistence or plan-index flows, update `plan-storage.js` first and adapt consumers (currently `js/main.js`) to avoid drift between cached plan state and saved plans.
+- When documentation or instructions change (including this file), summarise the rationale in the PR description so future collaborators understand why guidance shifted.
 
 ## Agent Guidance
 - When adding features, reflect changes in both the documentation and the relevant UI (root site vs. workout control panel) to keep experiences in sync.
