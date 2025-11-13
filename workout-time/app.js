@@ -179,6 +179,9 @@ class VitruvianApp {
     this._boundWakeLockVisibilityChange = null;
     this._boundWakeLockRelease = null;
 
+    this._stopAtTopPending = false;
+    this._planStopAtTopBase = null;
+
     // initialize plan UI dropdown from storage and render once UI is ready
     setTimeout(() => {
       this.refreshPlanSelectNames();
@@ -6153,7 +6156,8 @@ class VitruvianApp {
           this.stopAtTop &&
           !this.isJustLiftMode &&
           this.targetReps > 0 &&
-          this.workingReps === this.targetReps - 1
+          this.workingReps === this.targetReps - 1 &&
+          !this._stopAtTopPending
         ) {
           // We're at targetReps - 1, and just reached top
           // This is the top of the final rep, complete now
@@ -6169,8 +6173,20 @@ class VitruvianApp {
             "Reached top of final rep! Auto-completing workout...",
             "success",
           );
-          this.stopWorkout({ reason: "stop-at-top", complete: false }); // Must be explicitly stopped as the machine thinks the set isn't finished until the bottom of the final rep.
-          this.completeWorkout({ reason: "stop-at-top" });
+          this._stopAtTopPending = true;
+          this.stopWorkout({ reason: "stop-at-top", complete: false })
+            .catch((error) => {
+              this.addLogEntry(
+                `Failed to stop at top automatically: ${error?.message || error}`,
+                "error",
+              );
+            })
+            .finally(() => {
+              this.completeWorkout({ reason: "stop-at-top" });
+              this._stopAtTopPending = false;
+            }); // Must be explicitly stopped as the machine thinks the set isn't finished until the bottom of the final rep.
+          this.lastRepCounter = completeCounter;
+          return;
         }
       }
     }
