@@ -54,6 +54,7 @@
 
       const firstItem = this.planItems[this.planCursor.index];
       if (firstItem) {
+        this._planStopAtTopBase = this.stopAtTop;
         this._applyItemToUI(firstItem);
       }
 
@@ -114,7 +115,6 @@
       this.ensureFullscreenPreference?.();
 
       try {
-        const prevStopAtTop = this.stopAtTop;
         this.stopAtTop = !!item.stopAtTop;
 
         if (item.type === "exercise") {
@@ -122,8 +122,6 @@
         } else {
           await this.startEcho();
         }
-
-        this.stopAtTop = prevStopAtTop;
       } catch (error) {
         this.addLogEntry(`Failed to start plan block: ${error.message}`, "error");
         this._planSetInProgress = false;
@@ -684,6 +682,11 @@
       const inlineHud = document.getElementById("planRestInline");
       if (inlineHud) {
         inlineHud.textContent = "";
+      }
+
+      if (this._planStopAtTopBase !== null && this._planStopAtTopBase !== undefined) {
+        this.stopAtTop = this._planStopAtTopBase;
+        this._planStopAtTopBase = null;
       }
 
       if (!silent) {
