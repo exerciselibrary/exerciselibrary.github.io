@@ -28,6 +28,8 @@ body {
 
 .builder-active .layout { grid-template-columns: 1fr; }
 .builder-active .sidebar { display: none; }
+.insights-active .layout { grid-template-columns: 1fr; }
+.insights-active .sidebar { display: none; }
 /* Two-column layout: sticky filters on the left */
 .layout {
   display: grid;
@@ -811,6 +813,11 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
   padding: 20px 24px;
   display: grid;
   gap: 20px;
+}
+
+.insights-chart canvas {
+  width: 100% !important;
+  height: clamp(180px, 22vw, 260px) !important;
 }
 
 .insights-chart__header {

@@ -318,7 +318,7 @@ const bucketWorkouts = (workouts, intervalKey) => {
 };
 
 const formatRangeDescription = (workouts) => {
-  if (!workouts.length) return 'No sessions logged yet';
+  if (!workouts.length) return 'No exercises logged yet';
   const first = workouts[0].timestamp;
   const last = workouts[workouts.length - 1].timestamp;
   if (first.toISOString() === last.toISOString()) {
@@ -338,8 +338,8 @@ const renderSummary = (history, filtered, series, intervalKey, unit, selectedKey
   }
   if (els.insightsTotalSessions) {
     els.insightsTotalSessions.textContent = sessionCount
-      ? `${formatters.integer.format(sessionCount)} session${sessionCount === 1 ? '' : 's'} logged`
-      : 'No sessions yet';
+      ? `${formatters.integer.format(sessionCount)} exercise${sessionCount === 1 ? '' : 's'} logged`
+      : 'No exercises yet';
   }
   if (els.insightsAverageLoad) {
     els.insightsAverageLoad.textContent = averageKg
