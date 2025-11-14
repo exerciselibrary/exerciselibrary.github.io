@@ -1130,6 +1130,11 @@
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             }
 
+            .unit-toggle-button[data-active-mode="flat"] .unit-option[data-mode="flat"]::after,
+            .unit-toggle-button[data-active-mode="percent"] .unit-option[data-mode="percent"]::after {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+
             .unit-toggle-button .unit-separator {
                 font-size: 0.85em;
                 color: #ced4da;
@@ -1621,11 +1626,192 @@
                 text-align: center;
             }
 
+            .plan-summary-adjustments {
+                margin-top: 24px;
+                padding: 18px 20px;
+                border: 1px solid var(--section-border);
+                border-radius: 12px;
+                background: var(--surface-subtle);
+                display: grid;
+                gap: 16px;
+            }
+
+            .plan-summary-actions-title {
+                font-size: 1.05em;
+                font-weight: 700;
+                text-align: center;
+                color: var(--text-primary);
+            }
+
+            .plan-summary-actions-hint {
+                font-size: 0.85em;
+                color: var(--text-secondary);
+                text-align: center;
+                line-height: 1.4;
+            }
+
+            .plan-summary-adjustment--toggle {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .plan-summary-adjustment__toggle-label {
+                font-weight: 600;
+                font-size: 0.85em;
+                color: var(--text-secondary);
+            }
+
+            .plan-summary-mode-toggle {
+                min-width: 160px;
+            }
+
+            .plan-summary-adjustment {
+                display: grid;
+                gap: 8px;
+            }
+
+            .plan-summary-adjustment[data-plan-summary-mode] {
+                display: none;
+            }
+
+            .plan-summary-adjustments[data-active-mode="flat"]
+                .plan-summary-adjustment[data-plan-summary-mode="flat"],
+            .plan-summary-adjustments[data-active-mode="percent"]
+                .plan-summary-adjustment[data-plan-summary-mode="percent"] {
+                display: grid;
+            }
+
+            .plan-summary-adjustment label {
+                font-weight: 600;
+                font-size: 0.9em;
+                color: var(--text-primary);
+            }
+
+            .plan-summary-adjustment__control {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                align-items: center;
+            }
+
+            .plan-summary-adjustment__select {
+                min-width: 160px;
+                width: 100%;
+                flex: 1 1 200px;
+                padding: 10px 14px;
+                border-radius: 12px;
+                border: 1px solid var(--input-border);
+                background: var(--input-bg);
+                color: var(--input-text);
+                font-size: 0.95em;
+                font-weight: 600;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                transition: border-color 0.2s ease, box-shadow 0.2s ease,
+                    background 0.2s ease, color 0.2s ease;
+            }
+
+            .plan-summary-adjustment__select:focus-visible {
+                outline: none;
+                border-color: var(--accent-color);
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25);
+            }
+
+            .plan-summary-adjustment__select:disabled,
+            .plan-summary-adjustment__select[aria-disabled="true"] {
+                opacity: 0.5;
+                cursor: not-allowed;
+                box-shadow: none;
+            }
+
+            .plan-summary-adjustment__option {
+                border: none;
+                background: var(--surface-base);
+                color: var(--text-primary);
+                padding: 8px 14px;
+                border-radius: 999px;
+                cursor: pointer;
+                font-size: 0.9em;
+                font-weight: 600;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+                transition: background 0.2s ease, box-shadow 0.2s ease,
+                    transform 0.15s ease;
+            }
+
+            .plan-summary-adjustment__option:hover,
+            .plan-summary-adjustment__option:focus-visible {
+                background: var(--accent-color);
+                color: #ffffff;
+                outline: none;
+                box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+                transform: translateY(-1px);
+            }
+
+            .plan-summary-adjustment__option:disabled,
+            .plan-summary-adjustment__option[aria-disabled="true"] {
+                opacity: 0.5;
+                cursor: not-allowed;
+                box-shadow: none;
+                transform: none;
+            }
+
+            .plan-summary-adjustment__unit {
+                font-size: 0.9em;
+                color: var(--text-secondary);
+                font-weight: 600;
+            }
+
+            .plan-summary-adjustment__feedback {
+                font-size: 0.85em;
+                text-align: center;
+                min-height: 1.2em;
+            }
+
+            .plan-summary-adjustment__feedback--success {
+                color: var(--success-color);
+            }
+
+            .plan-summary-adjustment__feedback--error {
+                color: var(--danger-color);
+            }
+
             .plan-summary-next {
-                margin-top: 16px;
+                margin-top: 20px;
                 text-align: center;
                 color: var(--text-secondary);
                 font-size: 0.9em;
+            }
+
+            .plan-summary-reopen {
+                position: fixed;
+                top: 16px;
+                right: 16px;
+                z-index: 1200;
+                border: none;
+                border-radius: 999px;
+                padding: 10px 18px;
+                background: var(--accent-color);
+                color: #ffffff;
+                font-weight: 600;
+                box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+                display: none;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+                transition: background 0.2s ease, box-shadow 0.2s ease;
+            }
+
+            .plan-summary-reopen.is-visible {
+                display: inline-flex;
+            }
+
+            .plan-summary-reopen:hover,
+            .plan-summary-reopen:focus-visible {
+                background: var(--accent-contrast);
+                outline: none;
+                box-shadow: 0 14px 28px rgba(0, 0, 0, 0.3);
             }
 
             .rest-countdown-summary strong {
@@ -3506,11 +3692,126 @@
                 <p id="planSummaryPlanName" class="plan-summary-plan-name"></p>
                 <div class="plan-summary-list" id="planSummaryList"></div>
                 <div class="plan-summary-total" id="planSummaryTotal"></div>
+                <div
+                    class="plan-summary-adjustments"
+                    id="planSummaryAdjustments"
+                    data-active-mode="flat"
+                >
+                    <h3 class="plan-summary-actions-title">Dial up the challenge next time</h3>
+                    <p class="plan-summary-actions-hint" id="planSummaryAdjustmentsHint">
+                        Increase every weighted set for this plan by a flat amount or percentage.
+                    </p>
+                    <div class="plan-summary-adjustment plan-summary-adjustment--toggle">
+                        <span class="plan-summary-adjustment__toggle-label" id="planSummaryToggleLabel"
+                            >Choose adjustment type</span
+                        >
+                        <button
+                            type="button"
+                            id="planSummaryAdjustmentToggle"
+                            class="unit-toggle-button plan-summary-mode-toggle"
+                            aria-label="Weight adjustments selected. Switch to percent adjustments."
+                            data-active-mode="flat"
+                        >
+                            <span class="unit-option" data-mode="flat">Weight</span>
+                            <span class="unit-separator">|</span>
+                            <span class="unit-option" data-mode="percent">Percent</span>
+                        </button>
+                    </div>
+                    <div class="plan-summary-adjustment" data-plan-summary-mode="flat">
+                        <label id="planSummaryFlatLabel" for="planSummaryFlatSelect"
+                            >Add weight per cable</label
+                        >
+                        <div class="plan-summary-adjustment__control">
+                            <select
+                                id="planSummaryFlatSelect"
+                                class="plan-summary-adjustment__select"
+                                aria-describedby="planSummaryFlatUnit"
+                            >
+                                <option value="">
+                                    Choose amount
+                                </option>
+                                <option data-plan-summary-flat="0.5" value="0.5">
+                                    0.5
+                                </option>
+                                <option data-plan-summary-flat="1" value="1">
+                                    1
+                                </option>
+                                <option data-plan-summary-flat="1.5" value="1.5">
+                                    1.5
+                                </option>
+                                <option data-plan-summary-flat="2" value="2">
+                                    2
+                                </option>
+                                <option data-plan-summary-flat="2.5" value="2.5">
+                                    2.5
+                                </option>
+                                <option data-plan-summary-flat="5" value="5">
+                                    5
+                                </option>
+                            </select>
+                            <span
+                                class="plan-summary-adjustment__unit"
+                                id="planSummaryFlatUnit"
+                            ></span>
+                        </div>
+                    </div>
+                    <div class="plan-summary-adjustment" data-plan-summary-mode="percent">
+                        <label id="planSummaryPercentLabel" for="planSummaryPercentSelect"
+                            >Increase by percentage</label
+                        >
+                        <div class="plan-summary-adjustment__control">
+                            <select
+                                id="planSummaryPercentSelect"
+                                class="plan-summary-adjustment__select"
+                                aria-describedby="planSummaryPercentUnit"
+                            >
+                                <option value="">
+                                    Choose amount
+                                </option>
+                                <option data-plan-summary-percent="0.5" value="0.5">
+                                    0.5
+                                </option>
+                                <option data-plan-summary-percent="1" value="1">
+                                    1
+                                </option>
+                                <option data-plan-summary-percent="1.5" value="1.5">
+                                    1.5
+                                </option>
+                                <option data-plan-summary-percent="2" value="2">
+                                    2
+                                </option>
+                                <option data-plan-summary-percent="2.5" value="2.5">
+                                    2.5
+                                </option>
+                                <option data-plan-summary-percent="5" value="5">
+                                    5
+                                </option>
+                            </select>
+                            <span class="plan-summary-adjustment__unit" id="planSummaryPercentUnit">%</span>
+                        </div>
+                    </div>
+                    <p
+                        class="plan-summary-adjustment__feedback"
+                        id="planSummaryAdjustmentFeedback"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                </div>
                 <p class="plan-summary-next">
                     Ready for more? Click the Start Plan button in the left pane to begin again.
                 </p>
             </div>
         </div>
+
+        <button
+            type="button"
+            id="planSummaryReopen"
+            class="plan-summary-reopen"
+            aria-label="Reopen workout summary"
+        >
+            <i class="bi bi-clipboard-data" aria-hidden="true"></i>
+            <span>View Summary</span>
+        </button>
 
         <!-- Dropbox SDK -->
         <script src="https://unpkg.com/dropbox@10.34.0/dist/Dropbox-sdk.min.js"></script>
