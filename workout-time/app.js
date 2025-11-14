@@ -111,6 +111,8 @@ class VitruvianApp {
     this._weightInputKg = DEFAULT_PER_CABLE_KG;
     this._cancelRest = null;
     this.theme = this.loadStoredTheme();
+    this.applyAppVersion();
+    this.registerAppVersionListener();
     this.setupLogging();
     this.setupChart();
     this.setupUnitControls();
@@ -369,6 +371,67 @@ class VitruvianApp {
     } catch (error) {
       return "light";
     }
+  }
+
+  registerAppVersionListener() {
+    if (
+      typeof document === "undefined" ||
+      typeof document.addEventListener !== "function"
+    ) {
+      return;
+    }
+
+    const updateVersionBadge = () => {
+      this.applyAppVersion();
+    };
+
+    document.addEventListener(
+      "workouttime:version-ready",
+      updateVersionBadge,
+      { once: true }
+    );
+  }
+
+  applyAppVersion() {
+    const root =
+      typeof globalThis !== "undefined"
+        ? globalThis
+        : typeof window !== "undefined"
+        ? window
+        : null;
+
+    const badge =
+      typeof document !== "undefined"
+        ? document.getElementById("appVersionBadge")
+        : null;
+
+    if (!badge) {
+      return;
+    }
+
+    const versionInfo = (root && root.WorkoutTimeAppInfo) || {};
+    const appVersion =
+      typeof versionInfo.version === "string" && versionInfo.version.trim().length > 0
+        ? versionInfo.version.trim()
+        : null;
+
+    if (!appVersion) {
+      badge.hidden = true;
+      badge.removeAttribute("title");
+      delete badge.dataset.version;
+      return;
+    }
+
+    const label =
+      typeof versionInfo.getVersionLabel === "function"
+        ? versionInfo.getVersionLabel({ prefix: "v" })
+        : `v${appVersion}`;
+
+    badge.textContent = label;
+    badge.hidden = false;
+    badge.setAttribute("title", `App version ${appVersion}`);
+    badge.setAttribute("aria-label", `Application version ${label}`);
+    badge.dataset.version = appVersion;
   }
 
   setTheme(theme, options = {}) {
