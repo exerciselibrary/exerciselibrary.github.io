@@ -6207,6 +6207,14 @@ class VitruvianApp {
     }
 
     if (delta > 0) {
+      if (this._stopAtTopPending) {
+        this.addLogEntry(
+          "Stop-at-top pending; skipping bottom rep increment.",
+          "info",
+        );
+        this.lastRepCounter = completeCounter;
+        return;
+      }
       this.ensureWorkoutStartTime();
       // Rep completed! Record bottom position
       this.addLogEntry(
