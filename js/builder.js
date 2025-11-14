@@ -1712,11 +1712,12 @@ export const buildPlanSyncPayload = () => {
           occurrenceIndex
         );
         if (steps > 0) {
-          let nextWeight = item.perCableKg;
+          const basePerCableKg = item.perCableKg;
+          let nextWeight = basePerCableKg;
           if (hasPercent) {
-            nextWeight = item.perCableKg * (1 + (percent / 100) * steps);
-          } else if (hasFlat) {
-            nextWeight = item.perCableKg + flatKg * steps;
+            nextWeight = basePerCableKg * (1 + (percent / 100) * steps);
+          } else if (hasFlat && basePerCableKg > 0) {
+            nextWeight = basePerCableKg + flatKg * steps;
           }
           copy.perCableKg = roundKg(Math.max(0, nextWeight));
         }

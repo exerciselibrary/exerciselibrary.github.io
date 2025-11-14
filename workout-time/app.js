@@ -47,6 +47,8 @@ const HEADER_STYLE = {
 };
 const WORKOUT_TAB_COLOR = { rgb: "FF2E75B6" };
 const PR_TAB_COLOR = { rgb: "FFF1C232" };
+const PLAN_SUMMARY_FLAT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
+const PLAN_SUMMARY_PERCENT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
 
 class VitruvianApp {
   constructor() {
@@ -174,6 +176,24 @@ class VitruvianApp {
     this._planSummaryListEl = null;
     this._planSummaryTotalEl = null;
     this._planSummaryPlanNameEl = null;
+    this._planSummaryAdjustmentsEl = null;
+    this._planSummaryAdjustmentsHintEl = null;
+    this._planSummaryModeToggle = null;
+    this._planSummaryModeToggleLabelEl = null;
+    this._planSummaryActiveAdjustmentMode = "flat";
+    this._planSummaryFlatGroup = null;
+    this._planSummaryPercentGroup = null;
+    this._planSummaryFlatSelect = null;
+    this._planSummaryFlatOptions = [];
+    this._planSummaryFlatUnitEl = null;
+    this._planSummaryFlatLabelEl = null;
+    this._planSummaryPercentSelect = null;
+    this._planSummaryPercentOptions = [];
+    this._planSummaryPercentLabelEl = null;
+    this._planSummaryPercentUnitEl = null;
+    this._planSummaryAdjustmentFeedbackEl = null;
+    this._planSummaryDisplayUnit = null;
+    this._planSummaryReopenBtn = null;
 
     this._wakeLockSentinel = null;
     this._boundWakeLockVisibilityChange = null;
@@ -1133,11 +1153,117 @@ class VitruvianApp {
     this._planSummaryListEl = document.getElementById("planSummaryList");
     this._planSummaryTotalEl = document.getElementById("planSummaryTotal");
     this._planSummaryPlanNameEl = document.getElementById("planSummaryPlanName");
+    this._planSummaryAdjustmentsEl = document.getElementById("planSummaryAdjustments");
+    this._planSummaryAdjustmentsHintEl = document.getElementById("planSummaryAdjustmentsHint");
+    this._planSummaryModeToggle = document.getElementById("planSummaryAdjustmentToggle");
+    this._planSummaryModeToggleLabelEl = document.getElementById("planSummaryToggleLabel");
+    this._planSummaryFlatUnitEl = document.getElementById("planSummaryFlatUnit");
+    this._planSummaryFlatLabelEl = document.getElementById("planSummaryFlatLabel");
+    this._planSummaryPercentLabelEl = document.getElementById("planSummaryPercentLabel");
+    this._planSummaryPercentUnitEl = document.getElementById("planSummaryPercentUnit");
+    this._planSummaryAdjustmentFeedbackEl = document.getElementById(
+      "planSummaryAdjustmentFeedback",
+    );
+    this._planSummaryReopenBtn = document.getElementById("planSummaryReopen");
+
+    this._planSummaryFlatSelect = document.getElementById(
+      "planSummaryFlatSelect",
+    );
+    this._planSummaryPercentSelect = document.getElementById(
+      "planSummaryPercentSelect",
+    );
+    this._planSummaryFlatOptions = this.populatePlanSummaryOptions(
+      this._planSummaryFlatSelect,
+      PLAN_SUMMARY_FLAT_AMOUNTS,
+      "flat",
+    );
+    this._planSummaryPercentOptions = this.populatePlanSummaryOptions(
+      this._planSummaryPercentSelect,
+      PLAN_SUMMARY_PERCENT_AMOUNTS,
+      "percent",
+    );
+
+    if (this._planSummaryAdjustmentsEl) {
+      this._planSummaryFlatGroup = this._planSummaryAdjustmentsEl.querySelector(
+        '[data-plan-summary-mode="flat"]',
+      );
+      this._planSummaryPercentGroup = this._planSummaryAdjustmentsEl.querySelector(
+        '[data-plan-summary-mode="percent"]',
+      );
+    }
 
     const closeBtn = document.getElementById("planSummaryCloseBtn");
     if (closeBtn) {
       closeBtn.addEventListener("click", () => {
         this.hidePlanSummary();
+      });
+    }
+
+    if (this._planSummaryFlatSelect) {
+      this._planSummaryFlatSelect.addEventListener("change", () => {
+        const selected = this._planSummaryFlatSelect?.selectedOptions?.[0];
+        if (!selected) {
+          return;
+        }
+
+        const rawValue = Number.parseFloat(
+          selected.dataset.planSummaryFlat ?? selected.value,
+        );
+
+        if (!Number.isFinite(rawValue) || rawValue <= 0) {
+          return;
+        }
+
+        this.applyPlanSummaryAdjustment({ mode: "flat", amount: rawValue });
+        this._planSummaryFlatSelect.value = "";
+      });
+    }
+
+    if (this._planSummaryPercentSelect) {
+      this._planSummaryPercentSelect.addEventListener("change", () => {
+        const selected = this._planSummaryPercentSelect?.selectedOptions?.[0];
+        if (!selected) {
+          return;
+        }
+
+        const rawValue = Number.parseFloat(
+          selected.dataset.planSummaryPercent ?? selected.value,
+        );
+
+        if (!Number.isFinite(rawValue) || rawValue <= 0) {
+          return;
+        }
+
+        this.applyPlanSummaryAdjustment({ mode: "percent", amount: rawValue });
+        this._planSummaryPercentSelect.value = "";
+      });
+    }
+
+    const handleModeToggle = (event) => {
+      if (event) {
+        event.preventDefault();
+      }
+      const nextMode =
+        this._planSummaryActiveAdjustmentMode === "percent"
+          ? "flat"
+          : "percent";
+      this.setPlanSummaryAdjustmentMode(nextMode, { focus: true });
+    };
+
+    if (this._planSummaryModeToggle) {
+      this._planSummaryModeToggle.addEventListener("click", handleModeToggle);
+      this._planSummaryModeToggle.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          handleModeToggle(event);
+        }
+      });
+    }
+
+    this.setPlanSummaryAdjustmentMode("flat");
+
+    if (this._planSummaryReopenBtn) {
+      this._planSummaryReopenBtn.addEventListener("click", () => {
+        this.presentPlanSummary();
       });
     }
 
@@ -1165,6 +1291,8 @@ class VitruvianApp {
         }
       });
     }
+
+    this.updatePlanSummaryReopenVisibility();
   }
 
   hidePlanSummary() {
@@ -1174,6 +1302,438 @@ class VitruvianApp {
 
     this._planSummaryOverlay.classList.remove("is-visible");
     this._planSummaryOverlay.setAttribute("aria-hidden", "true");
+    this.updatePlanSummaryReopenVisibility();
+  }
+
+  updatePlanSummaryReopenVisibility() {
+    const button = this._planSummaryReopenBtn;
+    if (!button) {
+      return;
+    }
+
+    const hasSummary =
+      !!this._lastPlanSummary &&
+      Array.isArray(this._lastPlanSummary.sets) &&
+      this._lastPlanSummary.sets.length > 0;
+    const overlayVisible = this._planSummaryOverlay?.classList.contains("is-visible");
+
+    if (hasSummary && !overlayVisible) {
+      button.classList.add("is-visible");
+      button.setAttribute("aria-hidden", "false");
+    } else {
+      button.classList.remove("is-visible");
+      button.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  resetPlanSummaryAdjustments() {
+    this.showPlanSummaryAdjustmentFeedback("");
+    if (this._planSummaryFlatSelect) {
+      this._planSummaryFlatSelect.value = "";
+    }
+    if (this._planSummaryPercentSelect) {
+      this._planSummaryPercentSelect.value = "";
+    }
+  }
+
+  showPlanSummaryAdjustmentFeedback(message, variant = null) {
+    const feedbackEl = this._planSummaryAdjustmentFeedbackEl;
+    if (!feedbackEl) {
+      return;
+    }
+
+    feedbackEl.textContent = message || "";
+    feedbackEl.classList.remove(
+      "plan-summary-adjustment__feedback--success",
+      "plan-summary-adjustment__feedback--error",
+    );
+
+    if (variant === "success") {
+      feedbackEl.classList.add("plan-summary-adjustment__feedback--success");
+    } else if (variant === "error") {
+      feedbackEl.classList.add("plan-summary-adjustment__feedback--error");
+    }
+  }
+
+  preparePlanSummaryAdjustments(unit = this.weightUnit) {
+    const normalizedUnit = unit === "lb" ? "lb" : "kg";
+    this._planSummaryDisplayUnit = normalizedUnit;
+
+    if (this._planSummaryFlatSelect) {
+      this._planSummaryFlatSelect.value = "";
+    }
+
+    if (this._planSummaryPercentSelect) {
+      this._planSummaryPercentSelect.value = "";
+    }
+
+    if (this._planSummaryFlatUnitEl) {
+      this._planSummaryFlatUnitEl.textContent = normalizedUnit;
+    }
+
+    if (this._planSummaryAdjustmentsHintEl) {
+      const friendly = this.getFriendlyUnitLabel(normalizedUnit);
+      this._planSummaryAdjustmentsHintEl.textContent = `Increase every weighted set for this plan by a flat amount in ${friendly} or by a percentage.`;
+    }
+
+    const decimals = this.getLoadDisplayDecimalsForUnit(normalizedUnit);
+
+    this._planSummaryFlatOptions.forEach((option) => {
+      if (!option) {
+        return;
+      }
+      const baseValue = Number.parseFloat(option.dataset.planSummaryFlat);
+      if (!Number.isFinite(baseValue) || baseValue <= 0) {
+        return;
+      }
+      const formatted = Number.parseFloat(baseValue.toFixed(decimals)).toString();
+      option.textContent = formatted;
+      option.value = formatted;
+    });
+
+    this._planSummaryPercentOptions.forEach((option) => {
+      if (!option) {
+        return;
+      }
+      const baseValue = Number.parseFloat(option.dataset.planSummaryPercent);
+      if (!Number.isFinite(baseValue) || baseValue <= 0) {
+        return;
+      }
+      const formatted = Number.parseFloat(baseValue.toFixed(1)).toString();
+      option.textContent = formatted;
+      option.value = formatted;
+    });
+
+    const hasWeightedExercises = Array.isArray(this.planItems)
+      ? this.planItems.some((item) => item && item.type === "exercise")
+      : false;
+
+    const disableAdjustments = !hasWeightedExercises;
+
+    if (this._planSummaryAdjustmentsEl) {
+      this._planSummaryAdjustmentsEl.toggleAttribute("data-disabled", disableAdjustments);
+    }
+
+    if (this._planSummaryFlatSelect) {
+      this._planSummaryFlatSelect.disabled = disableAdjustments;
+      this._planSummaryFlatSelect.setAttribute(
+        "aria-disabled",
+        disableAdjustments ? "true" : "false",
+      );
+    }
+
+    this._planSummaryFlatOptions.forEach((option) => {
+      if (!option) {
+        return;
+      }
+      option.disabled = disableAdjustments;
+    });
+
+    if (this._planSummaryPercentSelect) {
+      this._planSummaryPercentSelect.disabled = disableAdjustments;
+      this._planSummaryPercentSelect.setAttribute(
+        "aria-disabled",
+        disableAdjustments ? "true" : "false",
+      );
+    }
+
+    this._planSummaryPercentOptions.forEach((option) => {
+      if (!option) {
+        return;
+      }
+      option.disabled = disableAdjustments;
+    });
+
+    if (this._planSummaryModeToggle) {
+      this._planSummaryModeToggle.disabled = disableAdjustments;
+      this._planSummaryModeToggle.setAttribute(
+        "aria-disabled",
+        disableAdjustments ? "true" : "false",
+      );
+    }
+
+    if (this._planSummaryAdjustmentsEl && !disableAdjustments) {
+      const mode =
+        this._planSummaryActiveAdjustmentMode === "percent"
+          ? "percent"
+          : "flat";
+      this._planSummaryAdjustmentsEl.dataset.activeMode = mode;
+    }
+
+    if (disableAdjustments && this._planSummaryAdjustmentsHintEl) {
+      this._planSummaryAdjustmentsHintEl.textContent =
+        "Add at least one weighted exercise to adjust your next plan.";
+    }
+  }
+
+  populatePlanSummaryOptions(selectElement, values, mode = "flat") {
+    if (!selectElement || !Array.isArray(values) || values.length === 0) {
+      return [];
+    }
+
+    const normalizedMode = mode === "percent" ? "percent" : "flat";
+    const dataAttribute = `data-plan-summary-${normalizedMode}`;
+    selectElement
+      .querySelectorAll(`option[${dataAttribute}]`)
+      .forEach((option) => option.remove());
+
+    const doc = selectElement.ownerDocument || document;
+    const createdOptions = [];
+
+    values.forEach((value) => {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue) || numericValue <= 0) {
+        return;
+      }
+
+      const textValue = numericValue.toString();
+      const option = doc.createElement("option");
+      option.value = textValue;
+      option.textContent = textValue;
+      option.setAttribute(dataAttribute, textValue);
+      selectElement.appendChild(option);
+      createdOptions.push(option);
+    });
+
+    return createdOptions;
+  }
+
+  setPlanSummaryAdjustmentMode(mode = "flat", options = {}) {
+    const normalized = mode === "percent" ? "percent" : "flat";
+    this._planSummaryActiveAdjustmentMode = normalized;
+
+    if (this._planSummaryAdjustmentsEl) {
+      this._planSummaryAdjustmentsEl.dataset.activeMode = normalized;
+    }
+
+    if (this._planSummaryModeToggle) {
+      this._planSummaryModeToggle.dataset.activeMode = normalized;
+      const nextMode = normalized === "flat" ? "percent" : "flat";
+      const label =
+        normalized === "flat"
+          ? "Weight adjustments selected. Switch to percent adjustments."
+          : "Percent adjustments selected. Switch to weight adjustments.";
+      this._planSummaryModeToggle.setAttribute("aria-label", label);
+      this._planSummaryModeToggle.setAttribute("title", label);
+      this._planSummaryModeToggle.setAttribute(
+        "aria-pressed",
+        normalized === "percent" ? "true" : "false",
+      );
+    }
+
+    if (this._planSummaryModeToggleLabelEl) {
+      this._planSummaryModeToggleLabelEl.textContent =
+        normalized === "flat"
+          ? "Weight adjustments"
+          : "Percent adjustments";
+    }
+
+    if (this._planSummaryFlatGroup) {
+      this._planSummaryFlatGroup.hidden = normalized !== "flat";
+    }
+
+    if (this._planSummaryPercentGroup) {
+      this._planSummaryPercentGroup.hidden = normalized !== "percent";
+    }
+
+    if (options.focus) {
+      if (normalized === "flat" && this._planSummaryFlatSelect) {
+        this._planSummaryFlatSelect.focus();
+      } else if (normalized === "percent" && this._planSummaryPercentSelect) {
+        this._planSummaryPercentSelect.focus();
+      }
+    }
+  }
+
+  applyPlanSummaryAdjustment(options = {}) {
+    const mode = options.mode === "percent" ? "percent" : "flat";
+
+    const summary = this._lastPlanSummary;
+    if (!summary || !Array.isArray(summary.sets) || summary.sets.length === 0) {
+      this.showPlanSummaryAdjustmentFeedback(
+        "Run a workout plan to adjust the next session.",
+        "error",
+      );
+      return;
+    }
+
+    if (!Array.isArray(this.planItems) || this.planItems.length === 0) {
+      this.showPlanSummaryAdjustmentFeedback(
+        "No saved plan is loaded to adjust.",
+        "error",
+      );
+      return;
+    }
+
+    const unit = this._planSummaryDisplayUnit || summary.unit || this.weightUnit;
+    const normalizedUnit = unit === "lb" ? "lb" : "kg";
+
+    if (mode === "flat") {
+      const rawValue = Number.parseFloat(options.amount);
+      if (!Number.isFinite(rawValue) || rawValue <= 0) {
+        this.showPlanSummaryAdjustmentFeedback(
+          `Select an amount of ${this.getFriendlyUnitLabel(normalizedUnit)} to add.`,
+          "error",
+        );
+        return;
+      }
+
+      const deltaKg = this.convertDisplayToKg(rawValue, normalizedUnit);
+      if (!Number.isFinite(deltaKg) || deltaKg <= 0) {
+        this.showPlanSummaryAdjustmentFeedback(
+          "That amount could not be converted to a weight.",
+          "error",
+        );
+        return;
+      }
+
+      const adjustedCount = this.adjustPlanWeightsByDelta(deltaKg);
+      if (adjustedCount > 0) {
+        const decimals = this.getLoadDisplayDecimalsForUnit(normalizedUnit);
+        const amountText = parseFloat(rawValue.toFixed(decimals)).toString();
+        const formattedDelta = `${amountText} ${this.getUnitLabel(normalizedUnit)}`;
+        this.showPlanSummaryAdjustmentFeedback(
+          `Added ${formattedDelta} per cable to ${adjustedCount} set${
+            adjustedCount === 1 ? "" : "s"
+          }.`,
+          "success",
+        );
+      } else {
+        this.showPlanSummaryAdjustmentFeedback(
+          "No weighted sets were available to adjust.",
+          "error",
+        );
+      }
+      return;
+    }
+
+    const rawPercent = Number.parseFloat(options.amount);
+    if (!Number.isFinite(rawPercent) || rawPercent <= 0) {
+      this.showPlanSummaryAdjustmentFeedback(
+        "Select a percentage to increase your loads.",
+        "error",
+      );
+      return;
+    }
+
+    const adjustedCount = this.adjustPlanWeightsByPercent(rawPercent);
+    if (adjustedCount > 0) {
+      const percentText = parseFloat(rawPercent.toFixed(1)).toString();
+      this.showPlanSummaryAdjustmentFeedback(
+        `Increased ${adjustedCount} set${
+          adjustedCount === 1 ? "" : "s"
+        } by ${percentText} percent per cable.`,
+        "success",
+      );
+    } else {
+      this.showPlanSummaryAdjustmentFeedback(
+        "No weighted sets were available to adjust.",
+        "error",
+      );
+    }
+  }
+
+  adjustPlanWeightsByDelta(deltaKg) {
+    if (!Number.isFinite(deltaKg) || deltaKg <= 0) {
+      return 0;
+    }
+
+    let updated = 0;
+
+    for (const item of this.planItems || []) {
+      if (!item || item.type !== "exercise") {
+        continue;
+      }
+
+      const current = Number(item.perCableKg);
+      if (!Number.isFinite(current)) {
+        continue;
+      }
+
+      const next = Math.max(0, current + deltaKg);
+      if (Math.abs(next - current) < 1e-6) {
+        continue;
+      }
+
+      item.perCableKg = next;
+      updated += 1;
+    }
+
+    if (updated > 0) {
+      this.afterPlanWeightsAdjusted();
+      const displayUnit = this._planSummaryDisplayUnit || this.weightUnit;
+      const deltaDisplay = this.convertKgToDisplay(deltaKg, displayUnit);
+      const unitLabel = this.getUnitLabel(displayUnit);
+      const decimals = this.getLoadDisplayDecimalsForUnit(displayUnit);
+      const amountText = Number.isFinite(deltaDisplay)
+        ? parseFloat(deltaDisplay.toFixed(decimals)).toString()
+        : "";
+      this.addLogEntry(
+        `Plan weights increased by ${amountText} ${unitLabel} per cable for ${updated} set${
+          updated === 1 ? "" : "s"
+        }.`,
+        "success",
+      );
+    }
+
+    return updated;
+  }
+
+  adjustPlanWeightsByPercent(percent) {
+    if (!Number.isFinite(percent) || percent <= 0) {
+      return 0;
+    }
+
+    let updated = 0;
+    const multiplier = 1 + percent / 100;
+
+    for (const item of this.planItems || []) {
+      if (!item || item.type !== "exercise") {
+        continue;
+      }
+
+      const current = Number(item.perCableKg);
+      if (!Number.isFinite(current)) {
+        continue;
+      }
+
+      const next = Math.max(0, current * multiplier);
+      if (Math.abs(next - current) < 1e-6) {
+        continue;
+      }
+
+      item.perCableKg = next;
+      updated += 1;
+    }
+
+    if (updated > 0) {
+      this.afterPlanWeightsAdjusted();
+      const percentText = parseFloat(percent.toFixed(1)).toString();
+      this.addLogEntry(
+        `Plan weights increased by ${percentText}% per cable for ${updated} set${
+          updated === 1 ? "" : "s"
+        }.`,
+        "success",
+      );
+    }
+
+    return updated;
+  }
+
+  afterPlanWeightsAdjusted() {
+    this.ensurePlanItemsRepresentUnit(this.planItems, this.weightUnit);
+    this.renderPlanUI();
+
+    const planName = this._loadedPlanName;
+    if (planName) {
+      const saved = this.savePlanLocally(planName, this.planItems);
+      if (saved && this.dropboxManager?.isConnected) {
+        this.syncPlanToDropbox(planName, this.planItems, {
+          silent: true,
+          suppressError: true,
+        });
+      }
+    }
   }
 
   presentPlanSummary(summary) {
@@ -1186,6 +1746,9 @@ class VitruvianApp {
       this.hidePlanSummary();
       return;
     }
+
+    const displayUnit = data.unit || this.weightUnit;
+    this._planSummaryDisplayUnit = displayUnit === "lb" ? "lb" : "kg";
 
     if (this._planSummaryPlanNameEl) {
       this._planSummaryPlanNameEl.textContent = data.planName || "";
@@ -1259,7 +1822,9 @@ class VitruvianApp {
         const weightKg = Number(entry.weightKg);
         const hasWeight = Number.isFinite(weightKg) && weightKg > 0;
         if (hasWeight) {
-          detailsParts.push(`Weight: ${this.formatWeightWithUnit(weightKg)} per cable`);
+          detailsParts.push(
+            `Weight: ${this.formatWeightWithUnit(weightKg, undefined, this._planSummaryDisplayUnit)} per cable`,
+          );
         } else if (Number.isFinite(weightKg) && weightKg === 0) {
           detailsParts.push("Weight: Adaptive");
         }
@@ -1272,7 +1837,9 @@ class VitruvianApp {
         const totalLoadKg =
           hasWeight && Number.isFinite(cables) && cables > 0 ? weightKg * cables : null;
         if (totalLoadKg !== null) {
-          detailsParts.push(`Total load: ${this.formatWeightWithUnit(totalLoadKg)}`);
+          detailsParts.push(
+            `Total load: ${this.formatWeightWithUnit(totalLoadKg, undefined, this._planSummaryDisplayUnit)}`,
+          );
         }
 
         if (detailsParts.length) {
@@ -1305,15 +1872,19 @@ class VitruvianApp {
 
           const previousDisplay =
             previousBestKg && previousBestKg > 0
-              ? this.formatWeightWithUnit(previousBestKg)
+              ? this.formatWeightWithUnit(previousBestKg, undefined, this._planSummaryDisplayUnit)
               : "—";
           const currentDisplay = currentBestKg !== null
-            ? this.formatWeightWithUnit(currentBestKg)
+            ? this.formatWeightWithUnit(currentBestKg, undefined, this._planSummaryDisplayUnit)
             : "—";
 
           const deltaParts = [];
           if (deltaKg !== null) {
-            const diffValue = this.formatWeightWithUnit(Math.abs(deltaKg));
+            const diffValue = this.formatWeightWithUnit(
+              Math.abs(deltaKg),
+              undefined,
+              this._planSummaryDisplayUnit,
+            );
             if (diffValue) {
               const diffSign = deltaKg >= 0 ? "+" : "−";
               deltaParts.push(`${diffSign}${diffValue}`);
@@ -1337,7 +1908,11 @@ class VitruvianApp {
         loadEl.className = "plan-summary-item__load";
         const volumeKg = Number(entry.volumeKg);
         if (!entry.isUnlimited && Number.isFinite(volumeKg) && volumeKg > 0) {
-          loadEl.textContent = `Total volume lifted: ${this.formatWeightWithUnit(volumeKg)}`;
+          loadEl.textContent = `Total volume lifted: ${this.formatWeightWithUnit(
+            volumeKg,
+            undefined,
+            this._planSummaryDisplayUnit,
+          )}`;
           overallKg += volumeKg;
         } else {
           loadEl.textContent = "Total volume lifted: —";
@@ -1349,7 +1924,11 @@ class VitruvianApp {
 
       if (this._planSummaryTotalEl) {
         if (overallKg > 0) {
-          this._planSummaryTotalEl.textContent = `Total volume across sets: ${this.formatWeightWithUnit(overallKg)}`;
+          this._planSummaryTotalEl.textContent = `Total volume across sets: ${this.formatWeightWithUnit(
+            overallKg,
+            undefined,
+            this._planSummaryDisplayUnit,
+          )}`;
         } else {
           this._planSummaryTotalEl.textContent = "Total volume across sets: —";
         }
@@ -1361,6 +1940,10 @@ class VitruvianApp {
 
     const closeBtn = document.getElementById("planSummaryCloseBtn");
     closeBtn?.focus({ preventScroll: true });
+    this.preparePlanSummaryAdjustments(this._planSummaryDisplayUnit);
+    this.resetPlanSummaryAdjustments();
+    this.setPlanSummaryAdjustmentMode("flat");
+    this.updatePlanSummaryReopenVisibility();
   }
 
   initializePlanSummary() {
@@ -1368,15 +1951,21 @@ class VitruvianApp {
       startedAt: Date.now(),
       planName: this.getActivePlanDisplayName(),
       sets: [],
+      unit: this.weightUnit,
     };
     this._lastPlanSummary = null;
+    this._planSummaryDisplayUnit = null;
     this.hidePlanSummary();
+    this.resetPlanSummaryAdjustments();
+    this.updatePlanSummaryReopenVisibility();
   }
 
   recordPlanSetResult(workout, meta = {}) {
     if (!this._planSummaryData || !workout) {
       return;
     }
+
+    this._planSummaryData.unit = this.weightUnit;
 
     const entryMeta = meta.completedEntry || null;
     const planItem = entryMeta ? this.planItems?.[entryMeta.itemIndex] : null;
@@ -1448,6 +2037,8 @@ class VitruvianApp {
       sets: [...this._planSummaryData.sets],
       finishedAt: Date.now(),
     };
+
+    snapshot.unit = snapshot.unit || this.weightUnit;
 
     this._planSummaryData = null;
     this._lastPlanSummary = snapshot;
@@ -2397,8 +2988,8 @@ class VitruvianApp {
     });
   }
 
-  getUnitLabel() {
-    return this.weightUnit === "lb" ? "lb" : "kg";
+  getUnitLabel(unit = this.weightUnit) {
+    return unit === "lb" ? "lb" : "kg";
   }
 
   getFriendlyUnitLabel(unit = this.weightUnit) {
@@ -2443,21 +3034,26 @@ class VitruvianApp {
     return Number.isFinite(converted) ? converted : NaN;
   }
 
-  formatWeightValue(kg, decimals = this.getLoadDisplayDecimals()) {
+  formatWeightValue(kg, decimals = undefined, unit = this.weightUnit) {
     if (kg === null || kg === undefined || isNaN(kg)) {
       return "";
     }
 
-    const displayValue = this.convertKgToDisplay(kg);
-    return displayValue.toFixed(decimals);
+    const resolvedUnit = unit === "lb" ? "lb" : "kg";
+    const resolvedDecimals = Number.isFinite(decimals)
+      ? decimals
+      : this.getLoadDisplayDecimalsForUnit(resolvedUnit);
+    const displayValue = this.convertKgToDisplay(kg, resolvedUnit);
+    return Number.isFinite(displayValue) ? displayValue.toFixed(resolvedDecimals) : "";
   }
 
-  formatWeightWithUnit(kg, decimals = this.getLoadDisplayDecimals()) {
-    const value = this.formatWeightValue(kg, decimals);
+  formatWeightWithUnit(kg, decimals = undefined, unit = this.weightUnit) {
+    const resolvedUnit = unit === "lb" ? "lb" : "kg";
+    const value = this.formatWeightValue(kg, decimals, resolvedUnit);
     if (!value) {
       return value;
     }
-    return `${value} ${this.getUnitLabel()}`;
+    return `${value} ${this.getUnitLabel(resolvedUnit)}`;
   }
 
   updateInputsForUnit() {
