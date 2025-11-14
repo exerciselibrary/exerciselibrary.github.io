@@ -79,6 +79,7 @@
           <div class="view-links">
             <button type="button" id="tabLibrary" class="view-link active" data-target="libraryPanel">Exercise Library</button>
             <button type="button" id="tabBuilder" class="view-link" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
+            <button type="button" id="tabInsights" class="view-link" data-target="insightsPanel">Workout Insights</button>
             <button type="button" id="tabWorkout" class="view-link" data-target="workoutPanel">Workout Time</button>
           </div>
         </div>
@@ -106,7 +107,7 @@
               <div id="builderMuscles" class="muted small"></div>
             </div>
             <div class="builder-actions">
-              <button id="connectDropbox" class="btn small" title="Manage Dropbox connection">Connect Dropbox</button>
+              <button id="connectDropbox" class="btn small" data-role="connect-dropbox" title="Manage Dropbox connection">Connect Dropbox</button>
               <button id="exportWorkout" class="btn small" title="Download as Excel">Export to Excel</button>
               <button id="printWorkout" class="btn small" title="Print workout">Print</button>
               <button id="shareWorkout" class="btn small" title="Copy a shareable workout link">Share</button>
@@ -174,6 +175,101 @@
 
           <div id="builderList" class="builder-list"></div>
         </div>
+
+        <div id="insightsPanel" class="panel">
+          <div class="insights">
+            <div class="insights-hero">
+              <div class="insights-hero__copy">
+                <h2>Workout Insights</h2>
+                <p class="muted">
+                  Analyze your Vitruvian sessions, surface total volume trends, and spotlight the lifts that are driving your progress.
+                </p>
+              </div>
+              <div class="insights-hero__actions">
+                <button
+                  type="button"
+                  class="btn primary"
+                  data-role="connect-dropbox"
+                  aria-pressed="false"
+                >Connect Dropbox</button>
+              </div>
+            </div>
+
+            <div class="insights-controls" aria-label="Workout insights filters">
+              <label class="insights-control">
+                <span class="label">Exercise</span>
+                <select id="insightsExerciseSelect" aria-label="Select exercise to analyze">
+                  <option value="__all__">All Exercises</option>
+                </select>
+              </label>
+              <div class="insights-control">
+                <span class="label">View</span>
+                <div id="insightsIntervalControls" class="seg" role="tablist" aria-label="Select time interval">
+                  <button type="button" class="seg-btn" data-interval="day" role="tab" aria-selected="false">Daily</button>
+                  <button type="button" class="seg-btn active" data-interval="week" role="tab" aria-selected="true">Weekly</button>
+                  <button type="button" class="seg-btn" data-interval="month" role="tab" aria-selected="false">Monthly</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="insightsEmptyState" class="insights-empty muted">
+              <p>No workout history found yet. Sync your Vitruvian data from the Workout Builder or via Dropbox to unlock insights.</p>
+            </div>
+
+            <div id="insightsBody" class="insights-body" aria-live="polite">
+              <section class="insights-metrics" aria-label="Key workout metrics">
+                <article class="metric-card">
+                  <span class="metric-label">Cumulative Load</span>
+                  <span id="insightsTotalVolume" class="metric-value">—</span>
+                  <span id="insightsTotalSessions" class="metric-sub">—</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Average Session Load</span>
+                  <span id="insightsAverageLoad" class="metric-value">—</span>
+                  <span id="insightsAverageDuration" class="metric-sub">Across selected interval</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Momentum</span>
+                  <span id="insightsChange" class="metric-value">—</span>
+                  <span id="insightsChangeDetail" class="metric-sub">vs. prior period</span>
+                </article>
+              </section>
+
+              <section class="insights-chart" aria-label="Total load over time">
+                <div class="insights-chart__header">
+                  <div>
+                    <h3>Total Load Over Time</h3>
+                    <p id="insightsChartSubtitle" class="muted small">Weekly cumulative load</p>
+                  </div>
+                  <div class="insights-chart__legend small">
+                    <span class="legend-dot legend-dot--overall" aria-hidden="true"></span>
+                    <span>All exercises</span>
+                    <span class="legend-dot legend-dot--selection" aria-hidden="true"></span>
+                    <span id="insightsLegendLabel">Selected exercise</span>
+                  </div>
+                </div>
+                <canvas id="insightsVolumeChart" height="240" role="img" aria-label="Cumulative load chart"></canvas>
+              </section>
+
+              <section class="insights-split">
+                <div class="insights-distribution" aria-label="Top exercises by load">
+                  <div class="insights-section-head">
+                    <h3>Top Exercises</h3>
+                    <p class="muted small">Sorted by cumulative load</p>
+                  </div>
+                  <canvas id="insightsDistributionChart" height="240" role="img" aria-label="Top exercises chart"></canvas>
+                </div>
+                <div class="insights-recent" aria-label="Recent sessions">
+                  <div class="insights-section-head">
+                    <h3>Recent Sessions</h3>
+                    <p class="muted small">Latest six workouts in the current view</p>
+                  </div>
+                  <ul id="insightsRecentList" class="insights-recent__list"></ul>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
       </section>
 
     </main>
@@ -199,6 +295,7 @@
 
     <script src="https://unpkg.com/dropbox@10.34.0/dist/Dropbox-sdk.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="workout-time/dropbox.js"></script>
     <script type="module" src="js/main.js"></script>
   </body>

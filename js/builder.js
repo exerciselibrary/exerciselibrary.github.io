@@ -1538,19 +1538,28 @@ export const updateBuilderBadge = () => {
   if (els.builderCount) els.builderCount.textContent = count;
 
   const isBuilder = state.activeTab === 'builder';
-  const isLibrary = !isBuilder;
+  const isLibrary = state.activeTab === 'library';
+  const isInsights = state.activeTab === 'insights';
 
   if (els.tabBuilder) els.tabBuilder.classList.toggle('active', isBuilder);
   if (els.tabLibrary) els.tabLibrary.classList.toggle('active', isLibrary);
+  if (els.tabInsights) els.tabInsights.classList.toggle('active', isInsights);
 
   if (els.builderPanel) els.builderPanel.classList.toggle('active', isBuilder);
   if (els.libraryPanel) els.libraryPanel.classList.toggle('active', isLibrary);
+  if (els.insightsPanel) els.insightsPanel.classList.toggle('active', isInsights);
 
   document.body.classList.toggle('builder-active', isBuilder);
+  document.body.classList.toggle('insights-active', isInsights);
 };
 
 export const switchTab = (tab) => {
-  state.activeTab = tab === 'builder' ? 'builder' : 'library';
+  const normalized = typeof tab === 'string' ? tab.trim().toLowerCase() : 'library';
+  if (normalized === 'builder' || normalized === 'insights') {
+    state.activeTab = normalized;
+  } else {
+    state.activeTab = 'library';
+  }
   updateBuilderBadge();
   persistState();
   triggerRender();

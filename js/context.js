@@ -10,6 +10,18 @@ const todayISO = (() => {
   return `${year}-${month}-${day}`;
 })();
 
+const queryAll = (selector) => {
+  if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') {
+    return [];
+  }
+  try {
+    return Array.from(document.querySelectorAll(selector));
+  } catch (error) {
+    console.warn('queryAll failed for selector', selector, error);
+    return [];
+  }
+};
+
 export const state = {
   data: [],
   muscles: [],
@@ -47,6 +59,10 @@ export const state = {
       repeatInterval: 1,
       daysOfWeek: new Set()
     }
+  },
+  insights: {
+    exercise: '__all__',
+    interval: 'week'
   }
 };
 
@@ -79,8 +95,10 @@ export const els = {
   tabLibrary: document.getElementById('tabLibrary'),
   tabBuilder: document.getElementById('tabBuilder'),
   tabWorkout: document.getElementById('tabWorkout'),
+  tabInsights: document.getElementById('tabInsights'),
   libraryPanel: document.getElementById('libraryPanel'),
   builderPanel: document.getElementById('builderPanel'),
+  insightsPanel: document.getElementById('insightsPanel'),
   builderList: document.getElementById('builderList'),
   builderSummary: document.getElementById('builderSummary'),
   builderCount: document.getElementById('builderCount'),
@@ -105,7 +123,7 @@ export const els = {
   scheduleInterval: document.getElementById('scheduleInterval'),
   scheduleDays: document.getElementById('scheduleDays'),
   scheduleCalendar: document.getElementById('scheduleCalendar'),
-  connectDropbox: document.getElementById('connectDropbox'),
+  connectDropboxButtons: queryAll('[data-role="connect-dropbox"]'),
   syncToDropbox: document.getElementById('syncToDropbox'),
   builderSyncStatus: document.getElementById('builderSyncStatus'),
   modal: document.getElementById('modal'),
@@ -113,7 +131,22 @@ export const els = {
   modalNotice: document.getElementById('modalNotice'),
   modalClose: document.getElementById('modalClose'),
   scrollUp: document.getElementById('scrollUp'),
-  scrollDown: document.getElementById('scrollDown')
+  scrollDown: document.getElementById('scrollDown'),
+  insightsEmptyState: document.getElementById('insightsEmptyState'),
+  insightsExerciseSelect: document.getElementById('insightsExerciseSelect'),
+  insightsIntervalControls: document.getElementById('insightsIntervalControls'),
+  insightsTotalVolume: document.getElementById('insightsTotalVolume'),
+  insightsTotalSessions: document.getElementById('insightsTotalSessions'),
+  insightsAverageLoad: document.getElementById('insightsAverageLoad'),
+  insightsAverageDuration: document.getElementById('insightsAverageDuration'),
+  insightsChange: document.getElementById('insightsChange'),
+  insightsChangeDetail: document.getElementById('insightsChangeDetail'),
+  insightsChartSubtitle: document.getElementById('insightsChartSubtitle'),
+  insightsLegendLabel: document.getElementById('insightsLegendLabel'),
+  insightsRecentList: document.getElementById('insightsRecentList'),
+  insightsVolumeChart: document.getElementById('insightsVolumeChart'),
+  insightsDistributionChart: document.getElementById('insightsDistributionChart'),
+  insightsBody: document.getElementById('insightsBody')
 };
 
 export const groupColorMap = new Map();

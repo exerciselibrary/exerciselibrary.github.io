@@ -57,6 +57,7 @@ import {
   removePlanLocally,
   loadLocalPlanEntries
 } from './plan-storage.js';
+import { initializeInsights, renderInsights } from './insights.js';
 
 const dropboxManager = typeof DropboxManager !== 'undefined' ? new DropboxManager() : null;
 let dropboxInitialized = false;
@@ -415,6 +416,7 @@ function render() {
   refreshDropboxButton();
   if (els.includeCheckboxes) els.includeCheckboxes.checked = state.includeCheckboxes;
   handleScrollButtons();
+  renderInsights();
 }
 
 registerBuilderRender(render);
@@ -467,6 +469,9 @@ function bindGlobalEvents() {
 
   els.tabLibrary.addEventListener('click', () => switchTab('library'));
   els.tabBuilder.addEventListener('click', () => switchTab('builder'));
+  if (els.tabInsights) {
+    els.tabInsights.addEventListener('click', () => switchTab('insights'));
+  }
   if (els.tabWorkout) {
     els.tabWorkout.addEventListener('click', () => {
       window.location.href = 'workout-time/index.html';
@@ -550,8 +555,10 @@ function bindGlobalEvents() {
     });
   }
 
-  if (els.connectDropbox) {
-    els.connectDropbox.addEventListener('click', handleDropboxButtonClick);
+  if (els.connectDropboxButtons && els.connectDropboxButtons.length) {
+    els.connectDropboxButtons.forEach((button) => {
+      button.addEventListener('click', handleDropboxButtonClick);
+    });
   }
   if (els.syncToDropbox) {
     els.syncToDropbox.addEventListener('click', handleSyncToDropbox);
@@ -637,21 +644,28 @@ const setSyncButtonDisabled = (disabled) => {
 };
 
 const refreshDropboxButton = () => {
-  if (!els.connectDropbox) return;
+  const buttons = Array.isArray(els.connectDropboxButtons) ? els.connectDropboxButtons : [];
+  if (!buttons.length) return;
   if (!dropboxManager) {
-    els.connectDropbox.disabled = true;
-    els.connectDropbox.textContent = 'Dropbox unavailable';
+    buttons.forEach((button) => {
+      button.disabled = true;
+      button.textContent = 'Dropbox unavailable';
+      button.setAttribute('aria-pressed', 'false');
+    });
     return;
   }
-  els.connectDropbox.disabled = false;
-  if (dropboxManager.isConnected) {
-    const name = dropboxManager.account?.name?.display_name || 'Dropbox';
-    els.connectDropbox.textContent = `Disconnect ${name}`;
-    els.connectDropbox.setAttribute('aria-pressed', 'true');
-  } else {
-    els.connectDropbox.textContent = 'Connect Dropbox';
-    els.connectDropbox.setAttribute('aria-pressed', 'false');
-  }
+  const isConnected = dropboxManager.isConnected;
+  const name = dropboxManager.account?.name?.display_name || 'Dropbox';
+  buttons.forEach((button) => {
+    button.disabled = false;
+    if (isConnected) {
+      button.textContent = `Disconnect ${name}`;
+      button.setAttribute('aria-pressed', 'true');
+    } else {
+      button.textContent = 'Connect Dropbox';
+      button.setAttribute('aria-pressed', 'false');
+    }
+  });
 };
 
 const initializeDropbox = async () => {
@@ -790,6 +804,7 @@ async function init() {
       updateUnitToggle();
       updateBuilderFilterControl();
       updateGroupingButtons();
+      initializeInsights();
       if (els.includeCheckboxes) els.includeCheckboxes.checked = state.includeCheckboxes;
       if (els.searchInput && state.search) {
         els.searchInput.value = state.search;

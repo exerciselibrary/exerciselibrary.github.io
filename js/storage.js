@@ -237,6 +237,8 @@ export const applyBuilderSnapshot = (snapshot) => {
 
 export const persistState = (options = {}) => {
   try {
+    const insightsInterval = typeof state.insights?.interval === 'string' ? state.insights.interval : 'week';
+    const insightsExercise = typeof state.insights?.exercise === 'string' ? state.insights.exercise : '__all__';
     const snapshot = {
       builder: getBuilderSnapshot(),
       plan: {
@@ -259,6 +261,10 @@ export const persistState = (options = {}) => {
         groupByEquipment: state.groupByEquipment,
         groupByMuscles: state.groupByMuscles,
         groupByMuscleGroups: state.groupByMuscleGroups
+      },
+      insights: {
+        interval: insightsInterval,
+        exercise: insightsExercise
       }
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
@@ -297,8 +303,9 @@ export const loadPersistedState = () => {
     if (parsed?.flags) {
       state.showWorkoutOnly = Boolean(parsed.flags.showWorkoutOnly);
       state.includeCheckboxes = Boolean(parsed.flags.includeCheckboxes);
-      if (parsed.flags.activeTab === 'builder') {
-        state.activeTab = 'builder';
+      const activeTab = typeof parsed.flags.activeTab === 'string' ? parsed.flags.activeTab : '';
+      if (activeTab === 'builder' || activeTab === 'insights') {
+        state.activeTab = activeTab;
       } else {
         state.activeTab = 'library';
       }
@@ -321,6 +328,14 @@ export const loadPersistedState = () => {
       else if (musclesActive) setActiveGrouping('muscles');
       else if (muscleGroupsActive) setActiveGrouping('muscleGroups');
       else setActiveGrouping(null);
+    }
+    if (parsed?.insights) {
+      const interval = typeof parsed.insights.interval === 'string' ? parsed.insights.interval.toLowerCase() : '';
+      if (interval === 'day' || interval === 'week' || interval === 'month') {
+        state.insights.interval = interval;
+      }
+      const exercise = typeof parsed.insights.exercise === 'string' ? parsed.insights.exercise : '__all__';
+      state.insights.exercise = exercise || '__all__';
     }
     if (parsed?.builder) applyBuilderSnapshot(parsed.builder);
   } catch (err) {
