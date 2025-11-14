@@ -9,37 +9,7 @@ const HISTORY_STORAGE_KEYS = [
   'vitruvian.history'
 ];
 
-const createSample = (timestamp, label, totalLoadKg, { weightKg, reps, planName } = {}) => ({
-  timestamp,
-  label,
-  totalLoadKg,
-  weightKg,
-  reps,
-  planName
-});
-
-const FALLBACK_HISTORY = [
-  createSample('2024-01-04T10:00:00Z', 'Back Squat', 1040, { weightKg: 130, reps: 8, planName: 'Lower A' }),
-  createSample('2024-01-08T10:00:00Z', 'Flat Bench Press', 840, { weightKg: 105, reps: 8, planName: 'Upper A' }),
-  createSample('2024-01-10T11:00:00Z', 'Conventional Deadlift', 1180, { weightKg: 148, reps: 8, planName: 'Lower B' }),
-  createSample('2024-01-15T10:45:00Z', 'Seated Shoulder Press', 620, { weightKg: 78, reps: 8, planName: 'Upper B' }),
-  createSample('2024-01-18T09:30:00Z', 'Lat Pulldown', 560, { weightKg: 70, reps: 8, planName: 'Accessory' }),
-  createSample('2024-02-02T10:05:00Z', 'Back Squat', 1120, { weightKg: 140, reps: 8, planName: 'Lower A' }),
-  createSample('2024-02-05T10:12:00Z', 'Flat Bench Press', 880, { weightKg: 110, reps: 8, planName: 'Upper A' }),
-  createSample('2024-02-14T11:10:00Z', 'Conventional Deadlift', 1240, { weightKg: 155, reps: 8, planName: 'Lower B' }),
-  createSample('2024-02-19T10:40:00Z', 'Seated Shoulder Press', 660, { weightKg: 82.5, reps: 8, planName: 'Upper B' }),
-  createSample('2024-02-22T09:20:00Z', 'Lat Pulldown', 600, { weightKg: 75, reps: 8, planName: 'Accessory' }),
-  createSample('2024-03-04T10:00:00Z', 'Back Squat', 1180, { weightKg: 147.5, reps: 8, planName: 'Lower A' }),
-  createSample('2024-03-07T10:08:00Z', 'Flat Bench Press', 910, { weightKg: 113.75, reps: 8, planName: 'Upper A' }),
-  createSample('2024-03-13T11:15:00Z', 'Conventional Deadlift', 1290, { weightKg: 161.25, reps: 8, planName: 'Lower B' }),
-  createSample('2024-03-18T10:35:00Z', 'Seated Shoulder Press', 700, { weightKg: 87.5, reps: 8, planName: 'Upper B' }),
-  createSample('2024-03-25T09:25:00Z', 'Lat Pulldown', 640, { weightKg: 80, reps: 8, planName: 'Accessory' }),
-  createSample('2024-04-02T10:05:00Z', 'Back Squat', 1220, { weightKg: 152.5, reps: 8, planName: 'Lower A' }),
-  createSample('2024-04-04T10:12:00Z', 'Flat Bench Press', 940, { weightKg: 117.5, reps: 8, planName: 'Upper A' }),
-  createSample('2024-04-10T11:18:00Z', 'Conventional Deadlift', 1340, { weightKg: 167.5, reps: 8, planName: 'Lower B' }),
-  createSample('2024-04-15T10:42:00Z', 'Seated Shoulder Press', 730, { weightKg: 91.25, reps: 8, planName: 'Upper B' }),
-  createSample('2024-04-18T09:28:00Z', 'Lat Pulldown', 660, { weightKg: 82.5, reps: 8, planName: 'Accessory' })
-];
+const HISTORY_PERSIST_KEY = HISTORY_STORAGE_KEYS[0];
 
 const formatters = {
   integer: new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }),
@@ -106,7 +76,8 @@ const moduleState = {
   exerciseTotals: new Map(),
   volumeChart: null,
   distributionChart: null,
-  chartsAvailable: typeof window !== 'undefined' && typeof window.Chart !== 'undefined'
+  chartsAvailable: typeof window !== 'undefined' && typeof window.Chart !== 'undefined',
+  dropboxConnected: false
 };
 
 const chartFallbacks = new Map();
@@ -137,6 +108,27 @@ const hideChartFallback = (canvas, key) => {
 };
 
 const getDisplayUnit = () => (state.weightUnit === 'KG' ? 'kg' : 'lb');
+
+const setEmptyStateMessage = (message) => {
+  if (!els.insightsEmptyState) return;
+  const target =
+    typeof els.insightsEmptyState.querySelector === 'function'
+      ? els.insightsEmptyState.querySelector('p')
+      : null;
+  if (target) {
+    target.textContent = message;
+  } else {
+    els.insightsEmptyState.textContent = message;
+  }
+};
+
+const refreshEmptyStateCopy = (hasHistory) => {
+  if (hasHistory) return;
+  const message = moduleState.dropboxConnected
+    ? 'No exercises logged yet. Complete a workout and sync from Dropbox to populate insights.'
+    : 'Connect Dropbox to sync your Vitruvian workout history and unlock insights.';
+  setEmptyStateMessage(message);
+};
 
 const toNumber = (value) => {
   const numeric = Number(value);
@@ -183,6 +175,77 @@ const normalizeWorkout = (workout) => {
   };
 };
 
+const toSerializableEntry = (entry) => {
+  const timestamp =
+    entry.timestamp instanceof Date
+      ? entry.timestamp.toISOString()
+      : toDate(entry.timestamp)?.toISOString();
+  return {
+    id: entry.id,
+    key: entry.key,
+    label: entry.label,
+    timestamp,
+    totalLoadKg: entry.totalLoadKg,
+    reps: entry.reps ?? null,
+    weightKg: entry.weightKg ?? null,
+    planName: entry.planName ?? ''
+  };
+};
+
+const persistHistoryLocally = (history) => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  try {
+    if (!history.length) {
+      window.localStorage.removeItem(HISTORY_PERSIST_KEY);
+      return;
+    }
+    const serializable = history
+      .map((entry) => toSerializableEntry(entry))
+      .filter((entry) => entry.timestamp);
+    if (!serializable.length) {
+      window.localStorage.removeItem(HISTORY_PERSIST_KEY);
+      return;
+    }
+    window.localStorage.setItem(HISTORY_PERSIST_KEY, JSON.stringify(serializable));
+  } catch (error) {
+    console.warn('Failed to persist workout history for insights view', error);
+  }
+};
+
+const normalizeHistoryEntries = (entries) => {
+  if (!Array.isArray(entries) || !entries.length) {
+    return [];
+  }
+  const normalized = entries
+    .map((entry) => normalizeWorkout(entry))
+    .filter(Boolean)
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const deduped = new Map();
+  normalized.forEach((entry) => {
+    const key = `${entry.key}-${entry.timestamp.toISOString()}-${Math.round(entry.totalLoadKg * 1000)}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, entry);
+    }
+  });
+  return Array.from(deduped.values());
+};
+
+const applyHistory = (entries, options = {}) => {
+  const normalized = normalizeHistoryEntries(entries);
+  moduleState.history = normalized;
+  moduleState.exerciseTotals = summariseByExercise(normalized);
+  ensureExerciseSelect();
+  if (options.persist === true) {
+    persistHistoryLocally(normalized);
+  }
+  if (moduleState.initialized) {
+    renderInsights();
+  }
+  return normalized;
+};
+
 const readLocalHistory = () => {
   if (typeof window === 'undefined' || !window.localStorage) {
     return [];
@@ -207,24 +270,7 @@ const readLocalHistory = () => {
   return collected;
 };
 
-const loadHistory = () => {
-  const rawEntries = [...readLocalHistory()];
-  if (!rawEntries.length) {
-    rawEntries.push(...FALLBACK_HISTORY);
-  }
-  const normalized = rawEntries
-    .map((entry) => normalizeWorkout(entry))
-    .filter(Boolean)
-    .sort((a, b) => a.timestamp - b.timestamp);
-  const deduped = new Map();
-  normalized.forEach((entry) => {
-    const key = `${entry.key}-${entry.timestamp.toISOString()}-${Math.round(entry.totalLoadKg)}`;
-    if (!deduped.has(key)) {
-      deduped.set(key, entry);
-    }
-  });
-  return Array.from(deduped.values());
-};
+const loadHistory = () => normalizeHistoryEntries(readLocalHistory());
 
 const summariseByExercise = (history) => {
   const totals = new Map();
@@ -403,11 +449,15 @@ const renderRecentSessions = (workouts, unit) => {
   if (!workouts.length) {
     const empty = document.createElement('li');
     empty.className = 'insights-recent__item';
-    empty.textContent = 'No sessions match this view yet.';
+    empty.textContent = 'No exercises match this view yet.';
     list.appendChild(empty);
     return;
   }
-  const fragment = document.createDocumentFragment();
+  const fragment =
+    typeof document !== 'undefined' && typeof document.createDocumentFragment === 'function'
+      ? document.createDocumentFragment()
+      : null;
+  const target = fragment || list;
   workouts
     .slice(-6)
     .reverse()
@@ -421,33 +471,39 @@ const renderRecentSessions = (workouts, unit) => {
       const date = document.createElement('span');
       date.className = 'muted small';
       date.textContent = formatters.dateLong.format(item.timestamp);
-      title.append(name, date);
+      title.appendChild(name);
+      title.appendChild(date);
       const meta = document.createElement('div');
       meta.className = 'insights-recent__meta';
       const volume = document.createElement('span');
       const volumeDisplay = formatWeightValue(item.totalLoadKg, unit, item.totalLoadKg >= 1000 ? 0 : 1);
       volume.textContent = `${volumeDisplay} ${unit} total`;
-      meta.append(volume);
+      meta.appendChild(volume);
       if (item.reps) {
         const reps = document.createElement('span');
         reps.textContent = `${item.reps} reps`;
-        meta.append(reps);
+        meta.appendChild(reps);
       }
       if (item.weightKg) {
         const perCable = formatWeightValue(item.weightKg, unit, item.weightKg >= 200 ? 0 : 1);
         const weight = document.createElement('span');
         weight.textContent = `${perCable} ${unit} per cable`;
-        meta.append(weight);
+        meta.appendChild(weight);
       }
       if (item.planName) {
         const plan = document.createElement('span');
         plan.textContent = item.planName;
-        meta.append(plan);
+        meta.appendChild(plan);
       }
-      li.append(title, meta);
-      fragment.append(li);
+      li.appendChild(title);
+      li.appendChild(meta);
+      if (typeof target.appendChild === 'function') {
+        target.appendChild(li);
+      }
     });
-  list.append(fragment);
+  if (fragment) {
+    list.appendChild(fragment);
+  }
 };
 
 const renderVolumeChart = (allSeries, selectedSeries, intervalKey, unit, selectedKey) => {
@@ -639,6 +695,7 @@ const renderDistributionChart = (unit, selectedKey) => {
 export const renderInsights = () => {
   if (!moduleState.initialized) return;
   const history = moduleState.history;
+  refreshEmptyStateCopy(history.length > 0);
   if (!history.length) {
     toggleEmptyState(true);
     renderRecentSessions([], getDisplayUnit());
@@ -667,12 +724,35 @@ export const renderInsights = () => {
   renderRecentSessions(filtered, unit);
 };
 
+export const setInsightsDropboxStatus = (isConnected) => {
+  moduleState.dropboxConnected = Boolean(isConnected);
+  if (moduleState.initialized) {
+    refreshEmptyStateCopy(moduleState.history.length > 0);
+  }
+};
+
+export const syncInsightsFromDropbox = async (dropboxManager, options = {}) => {
+  if (!dropboxManager || !dropboxManager.isConnected) {
+    return moduleState.history;
+  }
+  try {
+    const workouts = await dropboxManager.loadWorkouts({
+      maxEntries: options.maxEntries ?? Infinity
+    });
+    const combined = Array.isArray(workouts)
+      ? [...moduleState.history, ...workouts]
+      : moduleState.history;
+    return applyHistory(combined, { persist: true });
+  } catch (error) {
+    console.error('Failed to load Dropbox workouts for insights:', error);
+    throw error;
+  }
+};
+
 export const initializeInsights = () => {
   if (!els.insightsPanel || moduleState.initialized) return;
-  moduleState.history = loadHistory();
-  moduleState.exerciseTotals = summariseByExercise(moduleState.history);
+  applyHistory(loadHistory());
   state.insights.interval = normalizeInterval(state.insights.interval);
-  ensureExerciseSelect();
   updateIntervalControls();
   if (els.insightsExerciseSelect) {
     els.insightsExerciseSelect.addEventListener('change', (event) => {
@@ -702,5 +782,7 @@ export const initializeInsights = () => {
 
 export default {
   initializeInsights,
-  renderInsights
+  renderInsights,
+  syncInsightsFromDropbox,
+  setInsightsDropboxStatus
 };

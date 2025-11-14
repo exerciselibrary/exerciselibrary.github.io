@@ -57,10 +57,17 @@ import {
   removePlanLocally,
   loadLocalPlanEntries
 } from './plan-storage.js';
-import { initializeInsights, renderInsights } from './insights.js';
+import {
+  initializeInsights,
+  renderInsights,
+  syncInsightsFromDropbox,
+  setInsightsDropboxStatus
+} from './insights.js';
 
 const dropboxManager = typeof DropboxManager !== 'undefined' ? new DropboxManager() : null;
 let dropboxInitialized = false;
+
+setInsightsDropboxStatus(Boolean(dropboxManager && dropboxManager.isConnected));
 
 const planCache = new Map(); // name -> { source, items }
 
@@ -177,7 +184,15 @@ const refreshPlanNameSources = (options = {}) => {
   loadLocalPlansIntoCache();
   refreshPlanNameOptions();
   if (dropboxManager && dropboxManager.isConnected) {
-    return fetchDropboxPlans(options);
+    const tasks = [fetchDropboxPlans(options)];
+    if (!options.skipInsights) {
+      tasks.push(
+        syncInsightsFromDropbox(dropboxManager).catch((error) => {
+          console.error('Failed to refresh insights from Dropbox:', error);
+        })
+      );
+    }
+    return Promise.all(tasks);
   }
   return Promise.resolve();
 };
@@ -674,8 +689,9 @@ const initializeDropbox = async () => {
     return;
   }
 
-  dropboxManager.onConnectionChange = () => {
+  dropboxManager.onConnectionChange = async () => {
     refreshDropboxButton();
+    setInsightsDropboxStatus(dropboxManager.isConnected);
     if (!dropboxManager.isConnected) {
       setSyncButtonDisabled(false);
       updateSyncStatus('Disconnected from Dropbox.', null);
@@ -685,7 +701,14 @@ const initializeDropbox = async () => {
     } else {
       const name = dropboxManager.account?.name?.display_name || 'Dropbox';
       updateSyncStatus(`Connected to Dropbox as ${name}.`, 'success');
-      fetchDropboxPlans({ silent: true });
+      try {
+        await Promise.all([
+          fetchDropboxPlans({ silent: true }),
+          syncInsightsFromDropbox(dropboxManager)
+        ]);
+      } catch (error) {
+        console.error('Dropbox refresh after connect failed:', error);
+      }
     }
   };
   dropboxManager.onLog = (message, type) => {
@@ -697,13 +720,22 @@ const initializeDropbox = async () => {
   try {
     await dropboxManager.init();
     dropboxInitialized = true;
+    setInsightsDropboxStatus(dropboxManager.isConnected);
     if (dropboxManager.isConnected) {
       await dropboxManager.initializeFolderStructure();
-      await fetchDropboxPlans({ silent: true });
+      try {
+        await Promise.all([
+          fetchDropboxPlans({ silent: true }),
+          syncInsightsFromDropbox(dropboxManager)
+        ]);
+      } catch (error) {
+        console.error('Dropbox initialization refresh failed:', error);
+      }
     }
   } catch (error) {
     console.error('Dropbox initialization failed:', error);
     updateSyncStatus(`Dropbox init failed: ${error.message}`, 'error');
+    setInsightsDropboxStatus(false);
   } finally {
     setSyncButtonDisabled(false);
     refreshDropboxButton();
@@ -759,7 +791,7 @@ const handleSyncToDropbox = async () => {
       successCount += 1;
     }
     updateSyncStatus(`Synced ${successCount} plan${successCount === 1 ? '' : 's'} to Dropbox.`, 'success');
-    await fetchDropboxPlans({ silent: true });
+    await refreshPlanNameSources({ silent: true });
   } catch (error) {
     updateSyncStatus(`Dropbox sync failed: ${error.message}`, 'error');
   } finally {
@@ -778,7 +810,7 @@ async function init() {
   refreshPlanNameOptions();
   await initializeDropbox();
   if (dropboxManager && dropboxManager.isConnected) {
-    await fetchDropboxPlans({ silent: true });
+    await refreshPlanNameSources({ silent: true, skipInsights: true });
   }
   fetch('exercise_dump.json')
     .then((res) => res.json())
