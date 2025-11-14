@@ -3371,6 +3371,11 @@ class VitruvianApp {
       }
     }
 
+    if (Object.prototype.hasOwnProperty.call(workout, "exerciseIdNew")) {
+      const numeric = this.toNumericExerciseId(workout.exerciseIdNew);
+      workout.exerciseIdNew = numeric;
+    }
+
     if (typeof workout.mode === "string") {
       workout.mode = workout.mode.trim();
     }
@@ -3607,10 +3612,22 @@ class VitruvianApp {
   getWorkoutIdentityInfo(workout) {
     if (!workout) return null;
 
+    const numericId = this.toNumericExerciseId(
+      workout?.exerciseIdNew ??
+        workout?.planExerciseIdNew ??
+        workout?.builderMeta?.exerciseIdNew ??
+        workout?.builderMeta?.exerciseNumericId,
+    );
     const setName =
       typeof workout.setName === "string" && workout.setName.trim().length > 0
         ? workout.setName.trim()
         : null;
+    if (numericId !== null) {
+      return {
+        key: `exercise:${numericId}`,
+        label: setName || `Exercise ${numericId}`,
+      };
+    }
     if (setName) {
       return { key: `set:${setName.toLowerCase()}`, label: setName };
     }
@@ -5260,6 +5277,10 @@ class VitruvianApp {
           ? this.currentWorkout.originalWeightKg
           : this.currentWorkout.weightKg,
         reps: this.workingReps,
+        exerciseId: typeof this.currentWorkout.exerciseId === "string"
+          ? this.currentWorkout.exerciseId
+          : null,
+        exerciseIdNew: this.toNumericExerciseId(this.currentWorkout.exerciseIdNew),
         timestamp: endTime,
         startTime: this.currentWorkout.startTime,
         warmupEndTime: this.currentWorkout.warmupEndTime,
@@ -6456,6 +6477,7 @@ class VitruvianApp {
           ? activePlanName.trim()
           : null;
       const planExerciseId = this.getPlanExerciseId(planItem);
+      const planExerciseNumericId = this.getPlanExerciseNumericId(planItem);
       const cableCount = this.getPlanCableCount(planItem);
       const totalLoadKg = Number.isFinite(perCableKg)
         ? perCableKg * cableCount
@@ -6477,6 +6499,7 @@ class VitruvianApp {
         itemType: planItem?.type || "exercise",
         planName,
         exerciseId: planExerciseId,
+        exerciseIdNew: planExerciseNumericId,
         cableCount,
         totalLoadKg,
       };
@@ -6586,6 +6609,7 @@ class VitruvianApp {
           ? activePlanName.trim()
           : null;
       const planExerciseId = this.getPlanExerciseId(planItem);
+      const planExerciseNumericId = this.getPlanExerciseNumericId(planItem);
       const cableCount = this.getPlanCableCount(planItem);
       const plannedPerCableKg = Number(planItem?.perCableKg);
       const totalLoadKg =
@@ -6609,6 +6633,7 @@ class VitruvianApp {
         itemType: planItem?.type || "echo",
         planName,
         exerciseId: planExerciseId,
+        exerciseIdNew: planExerciseNumericId,
         cableCount,
         totalLoadKg,
       };
@@ -6778,6 +6803,47 @@ class VitruvianApp {
     } else {
       console.log(output);
     }
+  }
+
+  toNumericExerciseId(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return null;
+    }
+    const integer = Math.trunc(numeric);
+    if (integer !== numeric) {
+      return null;
+    }
+    if (integer < 0 || integer > 0xffff) {
+      return null;
+    }
+    return integer;
+  }
+
+  getPlanExerciseNumericId(planItem) {
+    if (!planItem || typeof planItem !== "object") {
+      return null;
+    }
+
+    const candidates = [
+      planItem.exerciseIdNew,
+      planItem.id_new,
+      planItem.builderMeta?.exerciseIdNew,
+      planItem.builderMeta?.exerciseNumericId,
+      planItem.builderMeta?.exercise?.id_new,
+    ];
+
+    for (const candidate of candidates) {
+      const numeric = this.toNumericExerciseId(candidate);
+      if (numeric !== null) {
+        return numeric;
+      }
+    }
+
+    return null;
   }
 
   getPlanExerciseId(planItem) {

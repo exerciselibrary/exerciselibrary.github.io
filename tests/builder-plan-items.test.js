@@ -23,6 +23,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
         {
           exercise: {
             id: 'exercise-1',
+            id_new: 101,
             name: 'Echo Combo',
             videos: ['https://example.com/echo']
           },
@@ -46,6 +47,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
         {
           exercise: {
             id: 'exercise-2',
+            id_new: 102,
             name: 'Tempo Pull',
             videos: ['https://example.com/pull']
           },
@@ -84,8 +86,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       stopAtTop: true,
       videos: ['https://example.com/echo'],
       weightUnit: 'LBS',
+      exerciseIdNew: 101,
       builderMeta: {
         exerciseId: 'exercise-1',
+        exerciseIdNew: 101,
         exerciseName: 'Echo Combo',
         videos: ['https://example.com/echo'],
         order: 0,
@@ -134,8 +138,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       cables: 2,
       videos: ['https://example.com/echo'],
       weightUnit: 'LBS',
+      exerciseIdNew: 101,
       builderMeta: {
         exerciseId: 'exercise-1',
+        exerciseIdNew: 101,
         exerciseName: 'Echo Combo',
         videos: ['https://example.com/echo'],
         order: 0,
@@ -173,8 +179,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       stopAtTop: false,
       videos: ['https://example.com/pull'],
       weightUnit: 'LBS',
+      exerciseIdNew: 102,
       builderMeta: {
         exerciseId: 'exercise-2',
+        exerciseIdNew: 102,
         exerciseName: 'Tempo Pull',
         videos: ['https://example.com/pull'],
         order: 1,
@@ -223,8 +231,10 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       cables: 2,
       videos: ['https://example.com/pull'],
       weightUnit: 'LBS',
+      exerciseIdNew: 102,
       builderMeta: {
         exerciseId: 'exercise-2',
+        exerciseIdNew: 102,
         exerciseName: 'Tempo Pull',
         videos: ['https://example.com/pull'],
         order: 1,

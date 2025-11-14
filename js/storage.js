@@ -22,6 +22,45 @@ const PROGRESSION_FREQUENCY_VALUES = new Set(Object.values(PROGRESSION_FREQUENCI
 export const DEFAULT_PROGRESSION_MODE = PROGRESSION_MODES.PERCENT;
 export const DEFAULT_PROGRESSION_FREQUENCY = PROGRESSION_FREQUENCIES.WORKOUT;
 
+const MAX_UNSIGNED_16 = 0xffff;
+
+const toNumericExerciseId = (value) => {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const integer = Math.trunc(numeric);
+  if (integer !== numeric) return null;
+  if (integer < 0 || integer > MAX_UNSIGNED_16) return null;
+  return integer;
+};
+
+const findCatalogueExercise = (legacyId, numericId) => {
+  if (!Array.isArray(state.data)) return null;
+  const numeric = toNumericExerciseId(numericId);
+  if (numeric !== null) {
+    const match = state.data.find((ex) => toNumericExerciseId(ex.id_new) === numeric);
+    if (match) return match;
+  }
+  if (legacyId) {
+    return state.data.find((ex) => ex.id === legacyId);
+  }
+  return null;
+};
+
+const attachExerciseIdentifiers = (exercise, identifiers = {}) => {
+  const resolved = { ...exercise };
+  const numericFromSource = toNumericExerciseId(resolved.id_new);
+  const numericFromIdentifiers = toNumericExerciseId(identifiers.numericId);
+  if (numericFromIdentifiers !== null) {
+    resolved.id_new = numericFromIdentifiers;
+  } else if (numericFromSource !== null) {
+    resolved.id_new = numericFromSource;
+  } else {
+    delete resolved.id_new;
+  }
+  return resolved;
+};
+
 export const normalizeProgressionMode = (value) => {
   if (typeof value !== 'string') return null;
   const upper = value.toUpperCase();
@@ -57,8 +96,10 @@ export const getBuilderSnapshot = () => ({
     .map((id) => {
       const entry = state.builder.items.get(id);
       if (!entry) return null;
+      const numericId = toNumericExerciseId(entry.exercise?.id_new);
       return {
         i: id,
+        ...(numericId !== null ? { ni: numericId } : {}),
         n: entry.exercise.name,
         g: entry.exercise.muscleGroups || [],
         m: entry.exercise.muscles || [],
@@ -113,13 +154,17 @@ export const applyBuilderSnapshot = (snapshot) => {
   snapshot.items.forEach((item) => {
     if (!item) return;
     if (Array.isArray(item.s)) {
+      const numericId = toNumericExerciseId(item.ni ?? item.id_new);
       itemMap.set(item.i || item.id, {
         ...item,
+        ni: numericId,
         m: Array.isArray(item.m) ? item.m : []
       });
     } else if (Array.isArray(item.sets)) {
+      const numericId = toNumericExerciseId(item.ni ?? item.exercise?.id_new);
       itemMap.set(item.id, {
         i: item.id,
+        ni: numericId,
         n: item.exercise?.name,
         g: item.exercise?.muscleGroups || [],
         m: item.exercise?.muscles || [],
@@ -202,28 +247,37 @@ export const applyBuilderSnapshot = (snapshot) => {
     });
     if (!sets.length) sets.push(createSet());
 
-    const catalogue = state.data.find((ex) => ex.id === id);
+    const numericId = toNumericExerciseId(item?.ni);
+    const catalogue = findCatalogueExercise(id, numericId);
     const musclesFromItem = Array.isArray(item.m) ? item.m : [];
-    const baseExercise = catalogue || {
-      id,
-      name: item.n || 'Exercise',
-      muscleGroups: item.g || [],
-      muscles: musclesFromItem,
-      equipment: item.q || [],
-      videos: item.v || []
-    };
-    const exercise = {
-      ...baseExercise,
-      muscleGroups: baseExercise.muscleGroups || [],
-      muscles: Array.isArray(baseExercise.muscles) ? baseExercise.muscles : musclesFromItem,
-      equipment: baseExercise.equipment || [],
-      videos: baseExercise.videos || []
-    };
+    const baseExercise = catalogue || (() => {
+      const fallback = {
+        id,
+        name: item.n || 'Exercise',
+        muscleGroups: item.g || [],
+        muscles: musclesFromItem,
+        equipment: item.q || [],
+        videos: item.v || []
+      };
+      if (numericId !== null) fallback.id_new = numericId;
+      return fallback;
+    })();
+    const exercise = attachExerciseIdentifiers(
+      {
+        ...baseExercise,
+        muscleGroups: baseExercise.muscleGroups || [],
+        muscles: Array.isArray(baseExercise.muscles) ? baseExercise.muscles : musclesFromItem,
+        equipment: baseExercise.equipment || [],
+        videos: baseExercise.videos || []
+      },
+      { numericId }
+    );
 
-    state.builder.order.push(id);
-    state.builder.items.set(id, {
+    state.builder.order.push(exercise.id);
+    state.builder.items.set(exercise.id, {
       exercise: {
         id: exercise.id,
+        id_new: exercise.id_new,
         name: exercise.name,
         muscleGroups: exercise.muscleGroups || [],
         muscles: exercise.muscles || musclesFromItem,

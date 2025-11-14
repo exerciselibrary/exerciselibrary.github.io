@@ -33,6 +33,7 @@ This document orients automation and human collaborators to the structure, conve
 - For styling adjustments, prefer editing `styles.css` or component-level `<style>` blocks; avoid inline styles unless scoped to dynamic states.
 - If any UI changes are made, take screenshots of new UI changes to ensure everything is working accordingly
 - Always run tests
+- When updating the workout builder (`js/`) or workout-time app (`workout-time/`), use the numeric `id_new` exercise identifier for new logic and persistence, keeping the legacy `id` only for backward compatibility.
 
 ## Outstanding Opportunities
 - Wire the lint/test commands into CI (GitHub Actions or similar) so regressions are blocked automatically.
