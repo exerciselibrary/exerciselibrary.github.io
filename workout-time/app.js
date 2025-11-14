@@ -47,6 +47,8 @@ const HEADER_STYLE = {
 };
 const WORKOUT_TAB_COLOR = { rgb: "FF2E75B6" };
 const PR_TAB_COLOR = { rgb: "FFF1C232" };
+const PLAN_SUMMARY_FLAT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
+const PLAN_SUMMARY_PERCENT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
 
 class VitruvianApp {
   constructor() {
@@ -1170,20 +1172,16 @@ class VitruvianApp {
     this._planSummaryPercentSelect = document.getElementById(
       "planSummaryPercentSelect",
     );
-    this._planSummaryFlatOptions = this._planSummaryFlatSelect
-      ? Array.from(
-          this._planSummaryFlatSelect.querySelectorAll(
-            "option[data-plan-summary-flat]",
-          ),
-        )
-      : [];
-    this._planSummaryPercentOptions = this._planSummaryPercentSelect
-      ? Array.from(
-          this._planSummaryPercentSelect.querySelectorAll(
-            "option[data-plan-summary-percent]",
-          ),
-        )
-      : [];
+    this._planSummaryFlatOptions = this.populatePlanSummaryOptions(
+      this._planSummaryFlatSelect,
+      PLAN_SUMMARY_FLAT_AMOUNTS,
+      "flat",
+    );
+    this._planSummaryPercentOptions = this.populatePlanSummaryOptions(
+      this._planSummaryPercentSelect,
+      PLAN_SUMMARY_PERCENT_AMOUNTS,
+      "percent",
+    );
 
     if (this._planSummaryAdjustmentsEl) {
       this._planSummaryFlatGroup = this._planSummaryAdjustmentsEl.querySelector(
@@ -1373,14 +1371,6 @@ class VitruvianApp {
       this._planSummaryFlatUnitEl.textContent = normalizedUnit;
     }
 
-    if (this._planSummaryFlatLabelEl) {
-      this._planSummaryFlatLabelEl.textContent = "Add weight per cable";
-    }
-
-    if (this._planSummaryPercentLabelEl) {
-      this._planSummaryPercentLabelEl.textContent = "Increase by percentage";
-    }
-
     if (this._planSummaryAdjustmentsHintEl) {
       const friendly = this.getFriendlyUnitLabel(normalizedUnit);
       this._planSummaryAdjustmentsHintEl.textContent = `Increase every weighted set for this plan by a flat amount in ${friendly} or by a percentage.`;
@@ -1474,6 +1464,38 @@ class VitruvianApp {
       this._planSummaryAdjustmentsHintEl.textContent =
         "Add at least one weighted exercise to adjust your next plan.";
     }
+  }
+
+  populatePlanSummaryOptions(selectElement, values, mode = "flat") {
+    if (!selectElement || !Array.isArray(values) || values.length === 0) {
+      return [];
+    }
+
+    const normalizedMode = mode === "percent" ? "percent" : "flat";
+    const dataAttribute = `data-plan-summary-${normalizedMode}`;
+    selectElement
+      .querySelectorAll(`option[${dataAttribute}]`)
+      .forEach((option) => option.remove());
+
+    const doc = selectElement.ownerDocument || document;
+    const createdOptions = [];
+
+    values.forEach((value) => {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue) || numericValue <= 0) {
+        return;
+      }
+
+      const textValue = numericValue.toString();
+      const option = doc.createElement("option");
+      option.value = textValue;
+      option.textContent = textValue;
+      option.setAttribute(dataAttribute, textValue);
+      selectElement.appendChild(option);
+      createdOptions.push(option);
+    });
+
+    return createdOptions;
   }
 
   setPlanSummaryAdjustmentMode(mode = "flat", options = {}) {
