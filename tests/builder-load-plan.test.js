@@ -122,6 +122,7 @@ test('collapses grouped plan items into a single builder entry with ordered sets
   state.data = [
     {
       id: 'deadlift',
+      id_new: 501,
       name: 'Catalogue Deadlift',
       muscleGroups: ['Back'],
       muscles: ['Lats'],
@@ -135,6 +136,7 @@ test('collapses grouped plan items into a single builder entry with ordered sets
       name: 'Deadlift Variation',
       builderMeta: {
         exerciseId: 'deadlift',
+        exerciseIdNew: 501,
         exerciseName: 'Meta Deadlift',
         order: 3,
         videos: ['shared-deadlift.mp4'],
@@ -152,6 +154,7 @@ test('collapses grouped plan items into a single builder entry with ordered sets
       name: 'Deadlift Variation',
       builderMeta: {
         exerciseId: 'deadlift',
+        exerciseIdNew: 501,
         exerciseName: 'Meta Deadlift',
         order: 3,
         videos: ['shared-deadlift.mp4'],
@@ -169,6 +172,7 @@ test('collapses grouped plan items into a single builder entry with ordered sets
       name: 'Deadlift Variation',
       builderMeta: {
         exerciseId: 'deadlift',
+        exerciseIdNew: 501,
         exerciseName: 'Meta Deadlift',
         order: 3,
         videos: ['shared-deadlift.mp4'],
@@ -194,6 +198,7 @@ test('collapses grouped plan items into a single builder entry with ordered sets
 
   assert.deepStrictEqual(entry.exercise, {
     id: 'deadlift',
+    id_new: 501,
     name: 'Catalogue Deadlift',
     muscleGroups: ['Back'],
     muscles: ['Lats'],
@@ -258,6 +263,7 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
   state.data = [
     {
       id: 'press',
+      id_new: 502,
       name: 'Overhead Press',
       muscleGroups: ['Shoulders'],
       muscles: ['Delts'],
@@ -271,6 +277,7 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
       name: 'Press Builder Item',
       builderMeta: {
         exerciseId: 'press',
+        exerciseIdNew: 502,
         exerciseName: 'Meta Press',
         order: 4,
         videos: ['press-meta.mp4'],
@@ -351,6 +358,7 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
   assert(groupedEntry, 'expected grouped press entry to be added');
   assert.deepStrictEqual(groupedEntry.exercise, {
     id: 'press',
+    id_new: 502,
     name: 'Overhead Press',
     muscleGroups: ['Shoulders'],
     muscles: ['Delts'],
@@ -411,6 +419,7 @@ test('rehydrates progression mode and cadence from builder metadata', () => {
   state.data = [
     {
       id: 'press',
+      id_new: 503,
       name: 'Overhead Press',
       muscleGroups: [],
       muscles: [],
@@ -425,6 +434,7 @@ test('rehydrates progression mode and cadence from builder metadata', () => {
       name: 'Overhead Press',
       builderMeta: {
         exerciseId: 'press',
+        exerciseIdNew: 503,
         exerciseName: 'Overhead Press',
         order: 0,
         totalSets: 2,
@@ -452,6 +462,7 @@ test('rehydrates progression mode and cadence from builder metadata', () => {
       name: 'Overhead Press',
       builderMeta: {
         exerciseId: 'press',
+        exerciseIdNew: 503,
         exerciseName: 'Overhead Press',
         order: 0,
         totalSets: 2,
@@ -492,6 +503,7 @@ test('adjusts builder unit to match plan metadata from workout-time payloads', (
   state.data = [
     {
       id: 'metric',
+      id_new: 504,
       name: 'Metric Row',
       muscleGroups: [],
       muscles: [],
@@ -510,6 +522,7 @@ test('adjusts builder unit to match plan metadata from workout-time payloads', (
       weightUnit: 'KG',
       builderMeta: {
         exerciseId: 'metric',
+        exerciseIdNew: 504,
         exerciseName: 'Metric Row',
         order: 0,
         videos: [],

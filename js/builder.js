@@ -98,6 +98,45 @@ const PROGRESSION_FREQUENCY_LABELS = {
   [PROGRESSION_FREQUENCIES.MONTHLY]: 'Month to month'
 };
 
+const MAX_UNSIGNED_16 = 0xffff;
+
+const toNumericExerciseId = (value) => {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const integer = Math.trunc(numeric);
+  if (integer !== numeric) return null;
+  if (integer < 0 || integer > MAX_UNSIGNED_16) return null;
+  return integer;
+};
+
+const findCatalogueExercise = (legacyId, numericId) => {
+  if (!Array.isArray(state.data)) return null;
+  const numeric = toNumericExerciseId(numericId);
+  if (numeric !== null) {
+    const match = state.data.find((ex) => toNumericExerciseId(ex.id_new) === numeric);
+    if (match) return match;
+  }
+  if (legacyId) {
+    return state.data.find((ex) => ex.id === legacyId);
+  }
+  return null;
+};
+
+const attachExerciseIdentifiers = (exercise, identifiers = {}) => {
+  const resolved = { ...exercise };
+  const numericFromSource = toNumericExerciseId(resolved.id_new);
+  const numericFromIdentifiers = toNumericExerciseId(identifiers.numericId);
+  if (numericFromIdentifiers !== null) {
+    resolved.id_new = numericFromIdentifiers;
+  } else if (numericFromSource !== null) {
+    resolved.id_new = numericFromSource;
+  } else {
+    delete resolved.id_new;
+  }
+  return resolved;
+};
+
 const inferProgressionModeFromValues = (set) => {
   if (!set) return PROGRESSION_MODES.NONE;
   const normalized = normalizeProgressionMode(set.progressionMode);
@@ -465,6 +504,7 @@ export const buildPlanItems = () => {
     if (!entry) return;
 
     const exerciseName = entry.exercise?.name || 'Exercise';
+    const exerciseNumericId = toNumericExerciseId(entry.exercise?.id_new);
     const sets = Array.isArray(entry.sets) ? entry.sets : [];
     if (!sets.length) return;
 
@@ -474,7 +514,8 @@ export const buildPlanItems = () => {
       exerciseName,
       videos,
       order: orderIndex,
-      totalSets: sets.length
+      totalSets: sets.length,
+      exerciseIdNew: exerciseNumericId
     };
 
     sets.forEach((set, setIndex) => {
@@ -538,7 +579,8 @@ export const buildPlanItems = () => {
           stopAtTop,
           videos,
           builderMeta,
-          weightUnit: currentUnit
+          weightUnit: currentUnit,
+          exerciseIdNew: exerciseNumericId
         });
       } else {
         const perCableKg = roundKg(Math.max(0, toPerCableKg(set.weight)));
@@ -581,7 +623,8 @@ export const buildPlanItems = () => {
           cables: 2,
           videos,
           builderMeta,
-          weightUnit: currentUnit
+          weightUnit: currentUnit,
+          exerciseIdNew: exerciseNumericId
         });
       }
     });
@@ -619,10 +662,18 @@ const createEntryFromPlanItem = (item, index) => {
     : Array.isArray(meta?.videos)
       ? meta.videos
       : [];
-  const exerciseId =
+  const numericIdFromItem =
+    toNumericExerciseId(item?.exerciseIdNew) ??
+    toNumericExerciseId(meta?.exerciseIdNew);
+  let exerciseId =
     meta && typeof meta.exerciseId === 'string' && meta.exerciseId.trim()
       ? meta.exerciseId.trim()
       : entryId;
+  const catalogueMatch = findCatalogueExercise(exerciseId, numericIdFromItem);
+  const resolvedNumericId = toNumericExerciseId(catalogueMatch?.id_new) ?? numericIdFromItem;
+  if ((!exerciseId || exerciseId === entryId) && catalogueMatch?.id) {
+    exerciseId = catalogueMatch.id;
+  }
 
   const baseExercise = {
     id: exerciseId,
@@ -632,6 +683,9 @@ const createEntryFromPlanItem = (item, index) => {
     equipment: [],
     videos: sourceVideos
   };
+  if (resolvedNumericId !== null) {
+    baseExercise.id_new = resolvedNumericId;
+  }
 
   const modeValue = Number.isFinite(Number(item?.mode)) ? Number(item.mode) : null;
   const targetUnit = getStateWeightUnit();
@@ -749,7 +803,7 @@ const createEntryFromPlanItem = (item, index) => {
 
   return {
     id: entryId,
-    exercise: baseExercise,
+    exercise: attachExerciseIdentifiers(baseExercise, { numericId: resolvedNumericId }),
     sets
   };
 };
@@ -838,20 +892,28 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             ? primaryItem.item.videos
             : [];
         const exerciseName = group.meta?.exerciseName || primaryItem.item?.name || `Exercise`;
-        const catalogue = state.data?.find ? state.data.find((ex) => ex.id === exerciseId) : null;
-        const resolvedExercise = catalogue
-          ? {
-              ...catalogue,
-              videos: videos.length ? videos : Array.isArray(catalogue.videos) ? catalogue.videos : []
-            }
-          : {
-              id: exerciseId,
-              name: exerciseName,
-              muscleGroups: [],
-              muscles: [],
-              equipment: [],
-              videos
-            };
+        const fallbackNumericId = toNumericExerciseId(group.meta?.exerciseIdNew);
+        const catalogue = findCatalogueExercise(exerciseId, fallbackNumericId);
+        const resolvedExercise = attachExerciseIdentifiers(
+          catalogue
+            ? {
+                ...catalogue,
+                videos: videos.length ? videos : Array.isArray(catalogue.videos) ? catalogue.videos : []
+              }
+            : (() => {
+                const base = {
+                  id: exerciseId,
+                  name: exerciseName,
+                  muscleGroups: [],
+                  muscles: [],
+                  equipment: [],
+                  videos
+                };
+                if (fallbackNumericId !== null) base.id_new = fallbackNumericId;
+                return base;
+              })(),
+          { numericId: fallbackNumericId }
+        );
 
         const sortedSets = group.items
           .slice()
@@ -927,6 +989,7 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
         state.builder.items.set(resolvedExercise.id, {
           exercise: {
             id: resolvedExercise.id,
+            id_new: resolvedExercise.id_new,
             name: resolvedExercise.name,
             muscleGroups: resolvedExercise.muscleGroups || [],
             muscles: Array.isArray(resolvedExercise.muscles) ? resolvedExercise.muscles : [],
@@ -940,7 +1003,7 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
         const legacyEntry = createEntryFromPlanItem(item, index);
         state.builder.order.push(legacyEntry.exercise.id);
         state.builder.items.set(legacyEntry.exercise.id, {
-          exercise: legacyEntry.exercise,
+          exercise: attachExerciseIdentifiers(legacyEntry.exercise),
           sets: legacyEntry.sets
         });
       }
@@ -1477,19 +1540,22 @@ export const renderSetRow = (exerciseId, set, index) => {
 };
 
 export const addExerciseToBuilder = (exercise) => {
-  if (state.builder.items.has(exercise.id)) return;
+  const normalized = attachExerciseIdentifiers(exercise);
+  const targetId = normalized.id;
+  if (!targetId || state.builder.items.has(targetId)) return;
   const entry = {
     exercise: {
-      id: exercise.id,
-      name: exercise.name,
-      muscleGroups: exercise.muscleGroups || [],
-      muscles: exercise.muscles || [],
-      equipment: exercise.equipment || [],
-      videos: exercise.videos || []
+      id: normalized.id,
+      id_new: normalized.id_new,
+      name: normalized.name,
+      muscleGroups: normalized.muscleGroups || [],
+      muscles: normalized.muscles || [],
+      equipment: normalized.equipment || [],
+      videos: normalized.videos || []
     },
     sets: [createSet()]
   };
-  state.builder.items.set(exercise.id, entry);
+  state.builder.items.set(targetId, entry);
 
   const grouping = getActiveGrouping();
   if (grouping) {
@@ -1507,15 +1573,15 @@ export const addExerciseToBuilder = (exercise) => {
           if (!nextEntry || getGroupingKey(nextEntry.exercise, grouping) !== key) break;
           insertPos += 1;
         }
-        state.builder.order.splice(insertPos, 0, exercise.id);
+        state.builder.order.splice(insertPos, 0, targetId);
         inserted = true;
         break;
       }
     }
-    if (!inserted) state.builder.order.push(exercise.id);
+    if (!inserted) state.builder.order.push(targetId);
     applyGrouping(grouping);
   } else {
-    state.builder.order.push(exercise.id);
+    state.builder.order.push(targetId);
   }
   persistState();
 };
