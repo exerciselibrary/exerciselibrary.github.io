@@ -791,6 +791,9 @@ const createEntryFromPlanItem = (item, index) => {
       typeof setData.stopAtTop === 'boolean'
         ? setData.stopAtTop
         : Boolean(item?.stopAtTop);
+    if (set.mode === 'ECHO') {
+      set.stopAtTop = false;
+    }
     applyStoredProgressionConfig(set, setData, item);
     return set;
   };
@@ -979,6 +982,9 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
               typeof setData.stopAtTop === 'boolean'
                 ? setData.stopAtTop
                 : Boolean(item?.stopAtTop);
+            if (set.mode === 'ECHO') {
+              set.stopAtTop = false;
+            }
 
             return set;
           });
@@ -1149,6 +1155,9 @@ export const renderSetRow = (exerciseId, set, index) => {
   if (typeof set.stopAtTop !== 'boolean') {
     set.stopAtTop =
       set.stopAtTop === true || set.stopAtTop === 'true' || set.stopAtTop === 1 || set.stopAtTop === '1';
+  }
+  if (set.mode === 'ECHO') {
+    set.stopAtTop = false;
   }
 
   const setCell = document.createElement('td');
@@ -1458,7 +1467,11 @@ export const renderSetRow = (exerciseId, set, index) => {
     persistState();
   });
   stopAtTopWrapper.appendChild(stopAtTopCheckbox);
-  stopAtTopCell.appendChild(stopAtTopWrapper);
+  const stopAtTopNote = document.createElement('div');
+  stopAtTopNote.className = 'flag-note muted small';
+  stopAtTopNote.textContent = 'Disabled in Echo Mode';
+  stopAtTopNote.style.display = 'none';
+  stopAtTopCell.append(stopAtTopWrapper, stopAtTopNote);
 
   const updateWeightVisibility = () => {
     const isEcho = set.mode === 'ECHO';
@@ -1498,10 +1511,25 @@ export const renderSetRow = (exerciseId, set, index) => {
     justLiftNote.style.display = isEcho ? '' : 'none';
   };
 
+  const updateStopAtTopControl = () => {
+    const isEcho = set.mode === 'ECHO';
+    stopAtTopWrapper.style.display = isEcho ? 'none' : '';
+    stopAtTopCheckbox.disabled = isEcho;
+    stopAtTopNote.style.display = isEcho ? '' : 'none';
+    if (isEcho && set.stopAtTop) {
+      set.stopAtTop = false;
+      stopAtTopCheckbox.checked = false;
+    }
+  };
+
   modeSelect.addEventListener('change', () => {
     set.mode = modeSelect.value;
     if (set.mode === 'ECHO' && !Number.isFinite(Number.parseInt(set.eccentricPct, 10))) {
       set.eccentricPct = 100;
+    }
+    if (set.mode === 'ECHO' && set.stopAtTop) {
+      set.stopAtTop = false;
+      stopAtTopCheckbox.checked = false;
     }
     persistState();
     triggerRender();
@@ -1510,6 +1538,7 @@ export const renderSetRow = (exerciseId, set, index) => {
   updateWeightVisibility();
   updateRepEditor();
   updateJustLiftControl();
+  updateStopAtTopControl();
 
   const actionsCell = document.createElement('td');
   actionsCell.className = 'set-actions';
@@ -2032,11 +2061,16 @@ export const printWorkout = () => {
 
   const printHtml = `<!doctype html><html><head><meta charset="utf-8"><title>Workout</title>
     <style>
+      @page {
+        size: landscape;
+        margin: 0.5in;
+      }
       body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
       h1 { margin-bottom: 8px; }
-      section { margin-bottom: 24px; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+      section { margin-bottom: 24px; page-break-inside: avoid; }
+      section table { margin-top: 8px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
       th { background: #f4f4f4; }
     </style>
   </head><body>
@@ -2699,9 +2733,11 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
     entry.sets.forEach((set) => {
       if (activeQuickMode === PROGRESSION_MODES.PERCENT) {
         set.progressionPercent = chosen;
+        set.overloadValue = '';
         set.progressionMode = PROGRESSION_MODES.PERCENT;
       } else {
-        set.progression = chosen;
+        set.overloadValue = chosen;
+        set.progressionPercent = '';
         set.progressionMode = PROGRESSION_MODES.FLAT;
       }
     });
