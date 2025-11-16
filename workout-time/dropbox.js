@@ -301,6 +301,12 @@ class DropboxManager {
             workout.endTime = new Date(workout.endTime);
           }
 
+          this.attachDropboxMetadata(workout, {
+            path: file.path_lower,
+            name: file.name,
+            id: file.id,
+            rev: downloadResponse?.result?.rev || downloadResponse?.result?.metadata?.rev || file.rev || null,
+          });
           workouts.push(workout);
         } catch (error) {
           this.log(`Failed to load ${file.name}: ${error.message}`, "error");
@@ -320,6 +326,46 @@ class DropboxManager {
       this.log(`Failed to load workouts: ${error.message}`, "error");
       throw error;
     }
+  }
+
+  attachDropboxMetadata(workout, metadata = {}) {
+    if (!workout || typeof workout !== "object") {
+      return;
+    }
+    const descriptor = {
+      path: metadata.path || null,
+      name: metadata.name || null,
+      id: metadata.id || null,
+      rev: metadata.rev || null,
+    };
+    Object.defineProperty(workout, "_dropboxMetadata", {
+      value: descriptor,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+  }
+
+  async overwriteWorkoutFile(path, workout) {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Dropbox");
+    }
+    const normalizedPath = typeof path === "string" ? path.trim() : "";
+    if (!normalizedPath) {
+      throw new Error("Invalid Dropbox workout path");
+    }
+    const contents = JSON.stringify(workout, null, 2);
+    const response = await this.dbx.filesUpload({
+      path: normalizedPath,
+      contents,
+      mode: { ".tag": "overwrite" },
+    });
+    if (workout && typeof workout === "object" && workout._dropboxMetadata) {
+      workout._dropboxMetadata.rev =
+        response?.result?.rev || response?.result?.metadata?.rev || workout._dropboxMetadata.rev || null;
+    }
+    this.log(`Updated workout: ${normalizedPath}`, "success");
+    return response;
   }
 
   plansIndexPath() {

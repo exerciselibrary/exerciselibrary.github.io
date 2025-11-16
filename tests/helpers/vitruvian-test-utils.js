@@ -282,6 +282,10 @@ export function createDropboxManagerStub(options = {}) {
       return Promise.resolve();
     }
 
+    overwriteWorkoutFile() {
+      return Promise.resolve();
+    }
+
     loadPlansIndex() {
       return Promise.resolve({ plans: {} });
     }

@@ -1632,19 +1632,24 @@ export const updateBuilderBadge = () => {
   const count = state.builder.order.length;
   if (els.builderCount) els.builderCount.textContent = count;
 
-  const isBuilder = state.activeTab === 'builder';
-  const isLibrary = !isBuilder;
+  const isAnalytics = state.activePanel === 'analytics';
+  const isBuilder = !isAnalytics && state.activeTab === 'builder';
+  const isLibrary = !isAnalytics && !isBuilder;
 
   if (els.tabBuilder) els.tabBuilder.classList.toggle('active', isBuilder);
   if (els.tabLibrary) els.tabLibrary.classList.toggle('active', isLibrary);
+  if (els.tabAnalytics) els.tabAnalytics.classList.toggle('active', isAnalytics);
 
   if (els.builderPanel) els.builderPanel.classList.toggle('active', isBuilder);
   if (els.libraryPanel) els.libraryPanel.classList.toggle('active', isLibrary);
+  if (els.analyticsPanel) els.analyticsPanel.classList.toggle('active', isAnalytics);
 
   document.body.classList.toggle('builder-active', isBuilder);
+  document.body.classList.toggle('analytics-active', isAnalytics);
 };
 
 export const switchTab = (tab) => {
+  state.activePanel = 'library';
   state.activeTab = tab === 'builder' ? 'builder' : 'library';
   updateBuilderBadge();
   persistState();

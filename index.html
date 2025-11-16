@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="styles.css" />
     <link
       rel="stylesheet"
+      href="https://leeoniya.github.io/uPlot/dist/uPlot.min.css"
+    />
+    <link
+      rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
     />
   </head>
@@ -79,6 +83,7 @@
           <div class="view-links">
             <button type="button" id="tabLibrary" class="view-link active" data-target="libraryPanel">Exercise Library</button>
             <button type="button" id="tabBuilder" class="view-link" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
+            <button type="button" id="tabAnalytics" class="view-link" data-target="analyticsPanel">Analytics Dashboard</button>
             <button type="button" id="tabWorkout" class="view-link" data-target="workoutPanel">Workout Time</button>
           </div>
         </div>
@@ -174,6 +179,129 @@
 
           <div id="builderList" class="builder-list"></div>
         </div>
+
+        <div id="analyticsPanel" class="panel">
+          <div class="analytics-dashboard">
+            <div class="analytics-header">
+              <div>
+                <h2>Analytics Dashboard</h2>
+                <p class="muted">
+                  Sync Vitruvian workout files from your personal Dropbox account to track personal records and strength changes.
+                </p>
+              </div>
+              <div class="analytics-sync">
+                <button id="analyticsConnectDropbox" class="btn small" type="button">
+                  Connect Dropbox
+                </button>
+                <button id="analyticsSyncButton" class="btn small primary" type="button">
+                  Sync Dropbox Data
+                </button>
+                <button
+                  id="analyticsAlignIdsButton"
+                  class="btn small"
+                  type="button"
+                  title="Backfill missing exercise IDs in earlier workouts using set names from newer logs."
+                >
+                  Align Workout IDs
+                </button>
+                <div id="analyticsSyncStatus" class="analytics-sync-status" aria-live="polite"></div>
+              </div>
+            </div>
+
+            <div class="analytics-filter-grid">
+              <div class="analytics-filter">
+                <label for="analyticsExerciseFilter">Exercise filter</label>
+                <select id="analyticsExerciseFilter" class="analytics-select" disabled>
+                  <option value="">Connect Dropbox to load workouts</option>
+                </select>
+                <p class="analytics-filter-hint">
+                  Exercises leverage the newest <code>id_new</code> identifiers from Dropbox workout exports. This filter will be reused as more charts roll out.
+                </p>
+              </div>
+              <div class="analytics-filter">
+                <div class="analytics-filter-label">Time range</div>
+                <div class="analytics-range-buttons" id="analyticsRangeButtons" role="group" aria-label="Analytics time range">
+                  <button type="button" class="analytics-range-btn is-active" data-analytics-range="30">Past Month</button>
+                  <button type="button" class="analytics-range-btn" data-analytics-range="90">Past 3 Months</button>
+                  <button type="button" class="analytics-range-btn" data-analytics-range="180">Past 6 Months</button>
+                  <button type="button" class="analytics-range-btn" data-analytics-range="365">Past Year</button>
+                </div>
+                <p class="analytics-filter-hint">These filters stay in sync for future analytics cards.</p>
+              </div>
+            </div>
+
+            <div class="analytics-chart-card">
+              <div class="analytics-chart-header">
+                <div>
+                  <h3>Personal Record Trend</h3>
+                  <p id="analyticsSelectionLabel">Select an exercise to visualize daily PRs.</p>
+                </div>
+                <div class="analytics-metrics">
+                  <div class="analytics-metric">
+                    <span class="analytics-metric-label">Peak PR</span>
+                    <strong id="analyticsPeakValue">—</strong>
+                    <small id="analyticsPeakDate"></small>
+                  </div>
+                  <div class="analytics-metric">
+                    <span class="analytics-metric-label">Baseline</span>
+                    <strong id="analyticsMinValue">—</strong>
+                    <small id="analyticsMinDate"></small>
+                  </div>
+                  <div class="analytics-metric analytics-metric--gain">
+                    <span class="analytics-metric-label">Strength Gain</span>
+                    <strong id="analyticsDeltaPct">0%</strong>
+                    <small id="analyticsDeltaValue">—</small>
+                  </div>
+                </div>
+              </div>
+              <div class="analytics-chart-meta">
+                <span id="analyticsRangeLabel">Past 30 days</span>
+                <span>&middot;</span>
+                <span id="analyticsPointCount">0 days recorded</span>
+                <span>&middot;</span>
+                <span id="analyticsChartUnit">kg</span>
+              </div>
+              <div class="analytics-chart-wrapper" id="analyticsChartWrapper">
+                <div class="analytics-empty-state" id="analyticsEmptyState">
+                  Connect Dropbox and sync to populate analytics.
+                </div>
+                <div id="analyticsPrChart" class="analytics-chart" role="img" aria-label="Personal record analytics chart"></div>
+              </div>
+            </div>
+
+            <div class="analytics-chart-card">
+              <div class="analytics-chart-header">
+                <div>
+                  <h3>Monthly Volume Breakdown</h3>
+                  <p>Stacked bars show monthly total volume (weight × reps), grouped by exercise.</p>
+                </div>
+                <div class="analytics-metrics analytics-metrics--legend" id="analyticsMonthlyLegend"></div>
+              </div>
+              <div class="analytics-chart-meta">
+                <span>Ordered by heaviest exercises first</span>
+              </div>
+              <div class="analytics-bar-chart" id="analyticsMonthlyChartWrapper">
+                <div class="analytics-empty-state" id="analyticsMonthlyEmpty">
+                  No workouts available for this period.
+                </div>
+                <div class="analytics-bar-chart__content">
+                  <div class="analytics-axis-column">
+                    <div id="analyticsMonthlyAxis" class="analytics-bar-chart__axis"></div>
+                    <div class="analytics-axis-spacer" aria-hidden="true"></div>
+                  </div>
+                  <div class="analytics-bar-chart__viewport">
+                    <div class="analytics-bar-chart__bars-wrapper">
+                      <div id="analyticsMonthlyPeakLine" class="analytics-peak-line" aria-hidden="true"></div>
+                      <div id="analyticsMonthlyChart" class="analytics-bar-chart__bars"></div>
+                      <div id="analyticsMonthlyPeakLabel" class="analytics-axis-total analytics-peak-label"></div>
+                    </div>
+                    <div id="analyticsMonthlyXAxis" class="analytics-bar-chart__x"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
     </main>
@@ -200,6 +328,7 @@
     <script src="https://unpkg.com/dropbox@10.34.0/dist/Dropbox-sdk.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="workout-time/dropbox.js"></script>
+    <script src="https://leeoniya.github.io/uPlot/dist/uPlot.iife.js"></script>
     <script type="module" src="js/main.js"></script>
   </body>
   </html>

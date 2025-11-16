@@ -1,6 +1,7 @@
 // app.js - Main application logic and UI management
 
 const sharedWeights = window.WeightUtils || {};
+const sharedEchoTelemetry = window.EchoTelemetry || {};
 const LB_PER_KG = sharedWeights.LB_PER_KG || 2.2046226218488;
 const KG_PER_LB = sharedWeights.KG_PER_LB || 1 / LB_PER_KG;
 const fallbackConvertKgToUnit = (kg, unit = "kg") => {
@@ -23,6 +24,16 @@ const sharedConvertUnitToKg =
   typeof sharedWeights.convertUnitToKg === "function"
     ? sharedWeights.convertUnitToKg
     : fallbackConvertUnitToKg;
+const sharedAnalyzePhases =
+  typeof sharedEchoTelemetry.analyzeMovementPhases === "function"
+    ? sharedEchoTelemetry.analyzeMovementPhases
+    : typeof sharedEchoTelemetry.analyzeEchoWorkout === "function"
+      ? sharedEchoTelemetry.analyzeEchoWorkout
+      : null;
+const sharedIsEchoWorkout =
+  typeof sharedEchoTelemetry.isEchoWorkout === "function"
+    ? sharedEchoTelemetry.isEchoWorkout
+    : null;
 const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
 const MIN_ACTIVE_CABLE_RANGE = 35; // minimum delta between red/green markers to treat a cable as engaged for load tracking
 const AUTO_STOP_RANGE_THRESHOLD = 50; // slightly higher buffer for safety before auto-stop logic activates
@@ -4113,6 +4124,7 @@ class VitruvianApp {
     this.applyCableActivationToMovementData(workout.movementData);
 
     this.calculateTotalLoadPeakKg(workout);
+    this.ensurePhaseAnalysis(workout);
     return workout;
   }
 
@@ -4176,6 +4188,10 @@ class VitruvianApp {
 
     // Personal records track the heaviest load on any single cable during a set.
     let peak = Number(workout.cablePeakKg);
+    const analysis = this.ensurePhaseAnalysis(workout);
+    if (analysis?.hasReps && Number.isFinite(analysis.maxConcentricKg) && analysis.maxConcentricKg > 0) {
+      peak = analysis.maxConcentricKg;
+    }
     if (!Number.isFinite(peak) || peak <= 0) {
       peak = 0;
 
@@ -4283,7 +4299,10 @@ class VitruvianApp {
       return;
     }
 
-    const identity = this.getWorkoutIdentityInfo(this.currentWorkout);
+    const baseIdentity = this.getWorkoutIdentityInfo(this.currentWorkout);
+    const identity = this.isEchoWorkout(this.currentWorkout)
+      ? this.getEchoPhaseIdentity(baseIdentity, "concentric", this.currentWorkout) || baseIdentity
+      : baseIdentity;
     if (identity) {
       this.currentWorkout.identityKey = identity.key;
       this.currentWorkout.identityLabel = identity.label;
@@ -4293,6 +4312,12 @@ class VitruvianApp {
       this.currentWorkout.identityKey = null;
       this.currentWorkout.identityLabel = null;
       this.currentWorkout.priorBestTotalLoadKg = 0;
+    }
+    if (this.isEchoWorkout(this.currentWorkout)) {
+      this.currentWorkout.echoEccentricIdentity =
+        this.getEchoPhaseIdentity(baseIdentity, "eccentric", this.currentWorkout) || null;
+    } else {
+      this.currentWorkout.echoEccentricIdentity = null;
     }
 
     this.currentWorkout.livePeakTotalLoadKg = 0;
@@ -4320,14 +4345,22 @@ class VitruvianApp {
       typeof workout.setName === "string" && workout.setName.trim().length > 0
         ? workout.setName.trim()
         : null;
+    const addEchoSuffix = (label) => {
+      if (!this.isEchoWorkout(workout)) {
+        return label;
+      }
+      const workoutId = this.getWorkoutDisplayId(workout);
+      return `${label} (Echo Mode · ${workoutId})`;
+    };
+
     if (numericId !== null) {
       return {
         key: `exercise:${numericId}`,
-        label: setName || `Exercise ${numericId}`,
+        label: addEchoSuffix(setName || `Exercise ${numericId}`),
       };
     }
     if (setName) {
-      return { key: `set:${setName.toLowerCase()}`, label: setName };
+      return { key: `set:${setName.toLowerCase()}`, label: addEchoSuffix(setName) };
     }
 
     const mode =
@@ -4335,10 +4368,74 @@ class VitruvianApp {
         ? workout.mode.trim()
         : null;
     if (mode) {
-      return { key: `mode:${mode.toLowerCase()}`, label: mode };
+      return { key: `mode:${mode.toLowerCase()}`, label: addEchoSuffix(mode) };
     }
 
     return null;
+  }
+
+  getWorkoutDisplayId(workout) {
+    if (!workout || typeof workout !== "object") {
+      return "unknown";
+    }
+    const candidates = [
+      workout.workoutId,
+      workout.id,
+      workout.builderMeta?.workoutId,
+      workout.builderMeta?.workout_id,
+      workout.dropboxId,
+    ];
+    for (const value of candidates) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    const timestamp = this.getWorkoutTimestamp(workout);
+    return timestamp ? timestamp.toISOString() : "unknown";
+  }
+
+  isEchoWorkout(workout) {
+    if (!workout) return false;
+    if (typeof sharedIsEchoWorkout === "function") {
+      return sharedIsEchoWorkout(workout);
+    }
+    const type = String(workout.itemType || "").toLowerCase();
+    if (type.includes("echo")) return true;
+    const mode = String(workout.mode || "").toLowerCase();
+    return mode.includes("echo");
+  }
+
+  ensurePhaseAnalysis(workout) {
+    if (!workout || typeof sharedAnalyzePhases !== "function") {
+      return null;
+    }
+    if (workout.phaseAnalysis && Array.isArray(workout.phaseAnalysis.reps)) {
+      return workout.phaseAnalysis;
+    }
+    const analysis = sharedAnalyzePhases(workout) || null;
+    if (analysis) {
+      workout.phaseAnalysis = analysis;
+      if (analysis.range) {
+        workout.phaseRange = analysis.range;
+      }
+      if (analysis.isEcho) {
+        workout.echoAnalysis = analysis;
+        if (analysis.range) {
+          workout.echoRange = analysis.range;
+        }
+      }
+    }
+    return workout.phaseAnalysis || workout.echoAnalysis || null;
+  }
+
+  getEchoPhaseIdentity(identity, phase, workout) {
+    if (!identity) return null;
+    const suffix = phase === "eccentric" ? "Eccentric" : "Concentric";
+    return {
+      key: `${identity.key}|echo-${phase}`,
+      label: `${identity.label} · ${suffix}`,
+      workoutId: this.getWorkoutDisplayId(workout),
+    };
   }
 
   getWorkoutHistoryKey(workout) {
@@ -4965,7 +5062,10 @@ class VitruvianApp {
       return false;
     }
 
-    const identity = this.getWorkoutIdentityInfo(workout);
+    const baseIdentity = this.getWorkoutIdentityInfo(workout);
+    const identity = this.isEchoWorkout(workout)
+      ? this.getEchoPhaseIdentity(baseIdentity, "concentric", workout) || baseIdentity
+      : baseIdentity;
     if (!identity) {
       this.clearPersonalRecordCandidate();
       return false;
@@ -4989,6 +5089,24 @@ class VitruvianApp {
       timestamp,
       { reason: options.reason || "workout-complete" },
     );
+
+    if (this.isEchoWorkout(workout)) {
+      const analysis = this.ensurePhaseAnalysis(workout);
+      const eccIdentity = this.getEchoPhaseIdentity(baseIdentity, "eccentric", workout);
+      if (
+        analysis &&
+        eccIdentity &&
+        Number.isFinite(analysis.maxEccentricKg) &&
+        analysis.maxEccentricKg > 0
+      ) {
+        this.applyPersonalRecordCandidate(
+          eccIdentity,
+          analysis.maxEccentricKg,
+          timestamp,
+          { reason: "echo-workout-complete" },
+        );
+      }
+    }
 
     this.clearPersonalRecordCandidate();
     return updated;
@@ -5080,9 +5198,45 @@ class VitruvianApp {
     const bestByIdentity = new Map();
     const epsilon = 0.0001;
 
+    const registerBest = (identity, weightKg, timestamp) => {
+      if (!identity || !Number.isFinite(weightKg) || weightKg <= 0) {
+        return;
+      }
+      const existing = bestByIdentity.get(identity.key);
+      if (!existing) {
+        bestByIdentity.set(identity.key, { identity, weightKg, timestamp });
+        return;
+      }
+      const delta = weightKg - existing.weightKg;
+      const tsMs = timestamp instanceof Date ? timestamp.getTime() : 0;
+      const existingMs =
+        existing.timestamp instanceof Date ? existing.timestamp.getTime() : 0;
+
+      if (delta > epsilon || (Math.abs(delta) <= epsilon && tsMs > existingMs)) {
+        bestByIdentity.set(identity.key, { identity, weightKg, timestamp });
+      }
+    };
+
     for (const workout of workouts) {
       const identity = this.getWorkoutIdentityInfo(workout);
       if (!identity) {
+        continue;
+      }
+
+      const timestamp = this.getWorkoutTimestamp(workout);
+      if (this.isEchoWorkout(workout)) {
+        const analysis = this.ensurePhaseAnalysis(workout);
+        if (analysis) {
+          const concIdentity =
+            this.getEchoPhaseIdentity(identity, "concentric", workout) || identity;
+          if (Number.isFinite(analysis.maxConcentricKg) && analysis.maxConcentricKg > 0) {
+            registerBest(concIdentity, analysis.maxConcentricKg, timestamp);
+          }
+          const eccIdentity = this.getEchoPhaseIdentity(identity, "eccentric", workout);
+          if (eccIdentity && Number.isFinite(analysis.maxEccentricKg) && analysis.maxEccentricKg > 0) {
+            registerBest(eccIdentity, analysis.maxEccentricKg, timestamp);
+          }
+        }
         continue;
       }
 
@@ -5091,21 +5245,7 @@ class VitruvianApp {
         continue;
       }
 
-      const timestamp = this.getWorkoutTimestamp(workout);
-      const existing = bestByIdentity.get(identity.key);
-      if (!existing) {
-        bestByIdentity.set(identity.key, { identity, weightKg: peakKg, timestamp });
-        continue;
-      }
-
-      const delta = peakKg - existing.weightKg;
-      const tsMs = timestamp instanceof Date ? timestamp.getTime() : 0;
-      const existingMs =
-        existing.timestamp instanceof Date ? existing.timestamp.getTime() : 0;
-
-      if (delta > epsilon || (Math.abs(delta) <= epsilon && tsMs > existingMs)) {
-        bestByIdentity.set(identity.key, { identity, weightKg: peakKg, timestamp });
-      }
+      registerBest(identity, peakKg, timestamp);
     }
 
     let updated = false;

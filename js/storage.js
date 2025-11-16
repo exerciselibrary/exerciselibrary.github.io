@@ -307,6 +307,7 @@ export const persistState = (options = {}) => {
         showWorkoutOnly: state.showWorkoutOnly,
         includeCheckboxes: state.includeCheckboxes,
         activeTab: state.activeTab,
+        activePanel: state.activePanel === 'analytics' ? 'analytics' : 'library',
         weightUnit: state.weightUnit,
         sortMode: state.sortMode,
         shuffleMode: state.shuffleMode,
@@ -351,6 +352,7 @@ export const loadPersistedState = () => {
     if (parsed?.flags) {
       state.showWorkoutOnly = Boolean(parsed.flags.showWorkoutOnly);
       state.includeCheckboxes = Boolean(parsed.flags.includeCheckboxes);
+      state.activePanel = parsed.flags.activePanel === 'analytics' ? 'analytics' : 'library';
       if (parsed.flags.activeTab === 'builder') {
         state.activeTab = 'builder';
       } else {
@@ -433,6 +435,7 @@ export const applyWorkoutFromParam = (encoded) => {
       state.showWorkoutOnly = Boolean(payload.f);
       state.includeCheckboxes = Boolean(payload.c);
       state.activeTab = 'builder';
+      state.activePanel = 'library';
       const snapshot = {
         order: payload.b.o || payload.b.order || [],
         items: payload.b.i || payload.b.items || []
@@ -440,11 +443,13 @@ export const applyWorkoutFromParam = (encoded) => {
       applyBuilderSnapshot(snapshot);
     } else if (payload?.builder) {
       applyBuilderSnapshot(payload.builder);
+      state.activePanel = 'library';
       if (payload.flags) {
         state.showWorkoutOnly = Boolean(payload.flags.showWorkoutOnly);
         state.includeCheckboxes = Boolean(payload.flags.includeCheckboxes);
         if (payload.flags.activeTab === 'builder') state.activeTab = 'builder';
         if (payload.flags.weightUnit === 'KG') state.weightUnit = 'KG';
+        state.activePanel = payload.flags.activePanel === 'analytics' ? 'analytics' : 'library';
         if (Object.prototype.hasOwnProperty.call(payload.flags, 'groupByEquipment')
           || Object.prototype.hasOwnProperty.call(payload.flags, 'groupByMuscles')
           || Object.prototype.hasOwnProperty.call(payload.flags, 'groupByMuscleGroups')) {
