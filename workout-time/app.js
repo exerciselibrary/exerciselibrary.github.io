@@ -54,6 +54,10 @@ class VitruvianApp {
   constructor() {
     this.device = new VitruvianDevice();
     this.chartManager = new ChartManager("loadGraph");
+    this._boundMonitorListener = null;
+    this._boundRepListener = null;
+    this._monitorListenerRegistered = false;
+    this._repListenerRegistered = false;
     this._pendingChartResizeFrame = null;
     this._delayedChartResizeTimeout = null;
     this.dropboxManager = new DropboxManager(); // Dropbox cloud storage
@@ -114,6 +118,7 @@ class VitruvianApp {
     this.applyAppVersion();
     this.registerAppVersionListener();
     this.setupLogging();
+    this.registerDeviceListeners();
     this.setupChart();
     this.setupUnitControls();
     this.planItems = [];        // array of {type: 'exercise'|'echo', fields...}
@@ -262,6 +267,40 @@ class VitruvianApp {
     this.device.onLog = (message, type) => {
       this.addLogEntry(message, type);
     };
+  }
+
+  registerDeviceListeners() {
+    if (!this.device) {
+      return;
+    }
+
+    if (!this._boundMonitorListener) {
+      this._boundMonitorListener = (sample) => {
+        this.updateLiveStats(sample);
+      };
+    }
+
+    if (
+      !this._monitorListenerRegistered &&
+      typeof this.device.addMonitorListener === "function"
+    ) {
+      this.device.addMonitorListener(this._boundMonitorListener);
+      this._monitorListenerRegistered = true;
+    }
+
+    if (!this._boundRepListener) {
+      this._boundRepListener = (data) => {
+        this.handleRepNotification(data);
+      };
+    }
+
+    if (
+      !this._repListenerRegistered &&
+      typeof this.device.addRepListener === "function"
+    ) {
+      this.device.addRepListener(this._boundRepListener);
+      this._repListenerRegistered = true;
+    }
   }
 
   setupChart() {
@@ -7178,16 +7217,6 @@ class VitruvianApp {
 
       await this.device.startProgram(params);
 
-      // Set up monitor listener
-      this.device.addMonitorListener((sample) => {
-        this.updateLiveStats(sample);
-      });
-
-      // Set up rep listener
-      this.device.addRepListener((data) => {
-        this.handleRepNotification(data);
-      });
-
       // Update stop button state
       this.updateStopButtonState();
 
@@ -7307,16 +7336,6 @@ class VitruvianApp {
       this.updateAutoStopTimerVisibility(isJustLift);
 
       await this.device.startEcho(params);
-
-      // Set up monitor listener
-      this.device.addMonitorListener((sample) => {
-        this.updateLiveStats(sample);
-      });
-
-      // Set up rep listener
-      this.device.addRepListener((data) => {
-        this.handleRepNotification(data);
-      });
 
       // Update stop button state
       this.updateStopButtonState();
