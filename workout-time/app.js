@@ -5888,12 +5888,13 @@ class VitruvianApp {
 
     const selectedIndex = this.getSelectedHistoryIndex();
     const hasSelection = selectedIndex >= 0;
+    const hasHistorySelection = hasSelection && this.selectedHistoryKey !== null;
 
     exportBtn.textContent = hasSelection ? "Export Workout CSV" : "Export CSV";
     exportBtn.title = hasSelection
       ? "Export detailed movement data for the selected workout to Dropbox."
       : "Export the current load history window as a CSV file.";
-    exportBtn.classList.toggle("export-selected", hasSelection);
+    exportBtn.classList.toggle("export-selected", hasHistorySelection);
   }
 
   completeWorkout(options = {}) {
