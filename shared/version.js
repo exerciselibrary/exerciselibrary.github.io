@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.0.1";
+export const APP_VERSION = "0.0.2";
 
 export const getVersionLabel = (options = {}) => {
   const prefix = typeof options.prefix === "string" ? options.prefix : "v";

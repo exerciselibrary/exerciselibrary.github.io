@@ -216,6 +216,7 @@
             /* Main content area */
             .main-content {
                 flex: 1;
+                min-width: 0;
                 overflow-y: auto;
                 padding: 20px;
                 background: var(--main-bg);
@@ -2158,11 +2159,21 @@
             }
 
             /* Load graph */
+            #graphHistoryContainer,
+            #graphHistoryContainer > div {
+                min-width: 0;
+            }
+
             #loadGraphContainer {
                 background: var(--surface-subtle);
                 border-radius: 8px;
                 margin-bottom: 20px;
                 padding: 15px;
+                overflow: hidden;
+            }
+
+            #loadGraph {
+                width: 100%;
             }
 
             /* uPlot customization */
@@ -2298,6 +2309,10 @@
             }
 
             /* Workout history */
+            #historyList {
+                min-width: 0;
+            }
+
             .history-item {
                 background: white;
                 padding: 12px 15px;
