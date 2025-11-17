@@ -5323,35 +5323,29 @@ class VitruvianApp {
 
     const epsilon = 0.0001;
     const nextRecords = {};
-
-    for (const workout of workouts) {
-      const identity = this.getWorkoutIdentityInfo(workout);
-      if (!identity) {
-        continue;
+    const updateRecord = (identity, weightKg, isoTimestamp) => {
+      if (
+        !identity ||
+        typeof identity.key !== "string" ||
+        !Number.isFinite(weightKg) ||
+        weightKg <= 0
+      ) {
+        return;
       }
 
-      const peakKg = this.calculateTotalLoadPeakKg(workout);
-      if (!Number.isFinite(peakKg) || peakKg <= 0) {
-        continue;
-      }
-
-      const timestamp = this.getWorkoutTimestamp(workout);
-      const isoTimestamp = timestamp instanceof Date
-        ? timestamp.toISOString()
-        : new Date(timestamp || Date.now()).toISOString();
-
-      const existing = nextRecords[identity.key];
+      const key = identity.key;
+      const existing = nextRecords[key];
       if (!existing) {
-        nextRecords[identity.key] = {
-          key: identity.key,
+        nextRecords[key] = {
+          key,
           label: identity.label,
-          weightKg: peakKg,
+          weightKg,
           timestamp: isoTimestamp,
         };
-        continue;
+        return;
       }
 
-      const delta = peakKg - existing.weightKg;
+      const delta = weightKg - existing.weightKg;
       const timestampMs = new Date(isoTimestamp).getTime();
       const existingMs = existing.timestamp
         ? new Date(existing.timestamp).getTime()
@@ -5361,12 +5355,39 @@ class VitruvianApp {
         delta > epsilon ||
         (Math.abs(delta) <= epsilon && timestampMs > existingMs)
       ) {
-        nextRecords[identity.key] = {
-          key: identity.key,
+        nextRecords[key] = {
+          key,
           label: identity.label,
-          weightKg: peakKg,
+          weightKg,
           timestamp: isoTimestamp,
         };
+      }
+    };
+
+    for (const workout of workouts) {
+      const baseIdentity = this.getWorkoutIdentityInfo(workout);
+      if (!baseIdentity) {
+        continue;
+      }
+
+      const timestamp = this.getWorkoutTimestamp(workout);
+      const isoTimestamp = timestamp instanceof Date
+        ? timestamp.toISOString()
+        : new Date(timestamp || Date.now()).toISOString();
+
+      const isEcho = this.isEchoWorkout(workout);
+      const concentricIdentity = isEcho
+        ? this.getEchoPhaseIdentity(baseIdentity, "concentric", workout) || baseIdentity
+        : baseIdentity;
+
+      const peakKg = this.calculateTotalLoadPeakKg(workout);
+      updateRecord(concentricIdentity, peakKg, isoTimestamp);
+
+      if (isEcho) {
+        const analysis = this.ensurePhaseAnalysis(workout);
+        const eccIdentity = this.getEchoPhaseIdentity(baseIdentity, "eccentric", workout);
+        const eccPeakKg = analysis ? Number(analysis.maxEccentricKg) : NaN;
+        updateRecord(eccIdentity, eccPeakKg, isoTimestamp);
       }
     }
 
