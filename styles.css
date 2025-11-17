@@ -798,6 +798,47 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .analytics-bar-chart__x { display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; min-height: 32px; width: 100%; }
 .analytics-bar-chart__x.hidden { display: none; }
 .analytics-x-label { flex: 0 0 60px; min-width: 48px; text-align: center; display: flex; align-items: center; justify-content: center; height: 100%; }
+.analytics-bar-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: rgba(12, 16, 26, 0.95);
+  border: 1px solid #2a3244;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+  z-index: 20;
+  min-width: 160px;
+}
+.analytics-bar-tooltip.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+.analytics-bar-tooltip__label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.analytics-bar-tooltip__value {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 4px;
+  color: #ffffff;
+}
+.analytics-bar-tooltip__meta {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
 
 /* Modal */
 .modal { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; z-index: 1000; }

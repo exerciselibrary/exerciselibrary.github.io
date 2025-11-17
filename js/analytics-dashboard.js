@@ -44,6 +44,7 @@ export class AnalyticsDashboard {
     this.minDateEl = null;
     this.deltaValueEl = null;
     this.deltaPctEl = null;
+    this.monthlyChartWrapper = null;
     this.monthlyChartEl = null;
     this.monthlyLegendEl = null;
     this.monthlyEmptyEl = null;
@@ -51,6 +52,11 @@ export class AnalyticsDashboard {
     this.monthlyPeakLineEl = null;
     this.monthlyPeakLabelEl = null;
     this.monthlyXAxisEl = null;
+    this.monthlyTooltipEl = null;
+    this.monthlyTooltipLabelEl = null;
+    this.monthlyTooltipValueEl = null;
+    this.monthlyTooltipMetaEl = null;
+    this.activeMonthlyTooltipSegment = null;
     this.cachedAt = null;
     this.resizeObserver = null;
     this.boundResizeHandler = null;
@@ -65,6 +71,11 @@ export class AnalyticsDashboard {
     this._autoSyncRequested = false;
     this.pendingDropboxWrite = false;
     this.alignPromptState = null;
+    this.boundMonthlySegmentEnter = this.handleMonthlySegmentEnter.bind(this);
+    this.boundMonthlySegmentMove = this.handleMonthlySegmentMove.bind(this);
+    this.boundMonthlySegmentLeave = this.handleMonthlySegmentLeave.bind(this);
+    this.boundMonthlySegmentFocus = this.handleMonthlySegmentFocus.bind(this);
+    this.boundMonthlySegmentBlur = this.handleMonthlySegmentBlur.bind(this);
   }
 
   init() {
@@ -89,6 +100,7 @@ export class AnalyticsDashboard {
     this.minDateEl = document.getElementById('analyticsMinDate');
     this.deltaValueEl = document.getElementById('analyticsDeltaValue');
     this.deltaPctEl = document.getElementById('analyticsDeltaPct');
+    this.monthlyChartWrapper = document.getElementById('analyticsMonthlyChartWrapper');
     this.monthlyChartEl = document.getElementById('analyticsMonthlyChart');
     this.monthlyLegendEl = document.getElementById('analyticsMonthlyLegend');
     this.monthlyEmptyEl = document.getElementById('analyticsMonthlyEmpty');
@@ -1111,6 +1123,7 @@ export class AnalyticsDashboard {
       this.clearMonthlyAxis();
       this.clearMonthlyXAxis();
       this.renderPeakLine(null, null);
+      this.hideMonthlyTooltip();
       return;
     }
 
@@ -1122,10 +1135,12 @@ export class AnalyticsDashboard {
       this.clearMonthlyAxis();
       this.clearMonthlyXAxis();
       this.renderPeakLine(null, null);
+      this.hideMonthlyTooltip();
       return;
     }
 
     this.monthlyEmptyEl.classList.add('hidden');
+    this.hideMonthlyTooltip();
 
     const fragment = document.createDocumentFragment();
     const maxTotalKg = Math.max(...series.months.map((month) => month.totalKg), 1);
@@ -1152,11 +1167,24 @@ export class AnalyticsDashboard {
         segment.style.backgroundColor = this.getExerciseColor(entry.key, colorIndex);
         const stackShare = month.totalKg > 0 ? (valueKg / month.totalKg) * 100 : 0;
         segment.style.height = `${Math.max(2, stackShare)}%`;
+        const exerciseLabel = entry.label || this.getFallbackLabelForKey(entry.key);
+        const formattedWeight = this.formatMonthlyWeight(valueKg);
+        const monthLabel = month.label || '';
+        const ariaLabel = monthLabel ? `${exerciseLabel}: ${formattedWeight} in ${monthLabel}` : `${exerciseLabel}: ${formattedWeight}`;
         if (stackShare >= 20) {
-          segment.textContent = this.formatWeight(valueKg);
-        } else {
-          segment.setAttribute('aria-label', `${entry.label}: ${this.formatWeight(valueKg)}`);
+          segment.textContent = formattedWeight;
         }
+        segment.setAttribute('aria-label', ariaLabel);
+        segment.setAttribute('role', 'img');
+        segment.dataset.exerciseLabel = exerciseLabel;
+        segment.dataset.monthLabel = monthLabel;
+        segment.dataset.valueKg = String(valueKg);
+        segment.tabIndex = 0;
+        segment.addEventListener('pointerenter', this.boundMonthlySegmentEnter);
+        segment.addEventListener('pointermove', this.boundMonthlySegmentMove);
+        segment.addEventListener('pointerleave', this.boundMonthlySegmentLeave);
+        segment.addEventListener('focus', this.boundMonthlySegmentFocus);
+        segment.addEventListener('blur', this.boundMonthlySegmentBlur);
         stack.appendChild(segment);
       });
 
@@ -1192,6 +1220,159 @@ export class AnalyticsDashboard {
     this.monthlyLegendEl.appendChild(legendFragment);
     this.renderMonthlyXAxis(series.months);
     this.renderPeakLine(series.peakMonth, maxTotalKg);
+  }
+
+  ensureMonthlyTooltip() {
+    if (this.monthlyTooltipEl) {
+      return this.monthlyTooltipEl;
+    }
+    if (!this.monthlyChartWrapper) {
+      return null;
+    }
+    const tooltip = document.createElement('div');
+    tooltip.className = 'analytics-bar-tooltip';
+    tooltip.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'analytics-bar-tooltip__label';
+    const value = document.createElement('strong');
+    value.className = 'analytics-bar-tooltip__value';
+    const meta = document.createElement('span');
+    meta.className = 'analytics-bar-tooltip__meta';
+    meta.hidden = true;
+    tooltip.appendChild(label);
+    tooltip.appendChild(value);
+    tooltip.appendChild(meta);
+    this.monthlyChartWrapper.appendChild(tooltip);
+    this.monthlyTooltipEl = tooltip;
+    this.monthlyTooltipLabelEl = label;
+    this.monthlyTooltipValueEl = value;
+    this.monthlyTooltipMetaEl = meta;
+    return tooltip;
+  }
+
+  setMonthlyTooltipVisibility(visible) {
+    const tooltip = visible ? this.ensureMonthlyTooltip() : this.monthlyTooltipEl;
+    if (!tooltip) {
+      return;
+    }
+    if (visible) {
+      tooltip.classList.add('is-visible');
+      tooltip.setAttribute('aria-hidden', 'false');
+    } else {
+      tooltip.classList.remove('is-visible');
+      tooltip.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  updateMonthlyTooltipContent(segment) {
+    if (!segment) {
+      return;
+    }
+    if (!this.ensureMonthlyTooltip() || !this.monthlyTooltipLabelEl || !this.monthlyTooltipValueEl || !this.monthlyTooltipMetaEl) {
+      return;
+    }
+    const exerciseLabel = segment.dataset.exerciseLabel || 'Exercise';
+    const rawValue = Number(segment.dataset.valueKg);
+    const safeValue = Number.isFinite(rawValue) && rawValue > 0 ? rawValue : 0;
+    const monthLabel = segment.dataset.monthLabel || '';
+    this.monthlyTooltipLabelEl.textContent = exerciseLabel;
+    this.monthlyTooltipValueEl.textContent = this.formatMonthlyWeight(safeValue);
+    if (monthLabel) {
+      this.monthlyTooltipMetaEl.hidden = false;
+      this.monthlyTooltipMetaEl.textContent = monthLabel;
+    } else {
+      this.monthlyTooltipMetaEl.hidden = true;
+      this.monthlyTooltipMetaEl.textContent = '';
+    }
+  }
+
+  positionMonthlyTooltip(event, segment) {
+    const tooltip = this.monthlyTooltipEl;
+    if (!tooltip || !this.monthlyChartWrapper) {
+      return;
+    }
+    const wrapperRect = this.monthlyChartWrapper.getBoundingClientRect();
+    const tooltipWidth = tooltip.offsetWidth || 0;
+    const tooltipHeight = tooltip.offsetHeight || 0;
+    let clientX;
+    let clientY;
+    if (event && typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+      clientX = event.clientX;
+      clientY = event.clientY;
+    } else if (segment) {
+      const rect = segment.getBoundingClientRect();
+      clientX = rect.left + rect.width / 2;
+      clientY = rect.top + rect.height / 2;
+    } else {
+      return;
+    }
+    const offset = 16;
+    const padding = 8;
+    let left = clientX - wrapperRect.left - tooltipWidth / 2;
+    let top = clientY - wrapperRect.top - tooltipHeight - offset;
+    if (top < padding) {
+      top = clientY - wrapperRect.top + offset;
+    }
+    const maxLeft = wrapperRect.width - tooltipWidth - padding;
+    const maxTop = wrapperRect.height - tooltipHeight - padding;
+    if (!Number.isFinite(left)) {
+      left = padding;
+    }
+    if (!Number.isFinite(top)) {
+      top = padding;
+    }
+    left = Math.max(padding, Math.min(maxLeft, left));
+    top = Math.max(padding, Math.min(maxTop, top));
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  }
+
+  handleMonthlySegmentEnter(event) {
+    const segment = event?.currentTarget;
+    if (!segment) {
+      return;
+    }
+    this.activeMonthlyTooltipSegment = segment;
+    this.updateMonthlyTooltipContent(segment);
+    this.positionMonthlyTooltip(event, segment);
+    this.setMonthlyTooltipVisibility(true);
+  }
+
+  handleMonthlySegmentMove(event) {
+    if (!this.activeMonthlyTooltipSegment) {
+      return;
+    }
+    this.positionMonthlyTooltip(event, this.activeMonthlyTooltipSegment);
+  }
+
+  handleMonthlySegmentLeave(event) {
+    if (event?.currentTarget !== this.activeMonthlyTooltipSegment) {
+      return;
+    }
+    this.hideMonthlyTooltip();
+  }
+
+  handleMonthlySegmentFocus(event) {
+    const segment = event?.currentTarget;
+    if (!segment) {
+      return;
+    }
+    this.activeMonthlyTooltipSegment = segment;
+    this.updateMonthlyTooltipContent(segment);
+    this.positionMonthlyTooltip(null, segment);
+    this.setMonthlyTooltipVisibility(true);
+  }
+
+  handleMonthlySegmentBlur(event) {
+    if (event?.currentTarget !== this.activeMonthlyTooltipSegment) {
+      return;
+    }
+    this.hideMonthlyTooltip();
+  }
+
+  hideMonthlyTooltip() {
+    this.activeMonthlyTooltipSegment = null;
+    this.setMonthlyTooltipVisibility(false);
   }
 
   buildMonthlyTotals(workouts) {
@@ -1343,7 +1524,7 @@ export class AnalyticsDashboard {
     }
     const ratio = Math.min(1, Math.max(0, peakMonth.totalKg / maxTotalKg));
     const offset = ratio * MONTHLY_BAR_MAX_HEIGHT;
-    const text = `${peakMonth.label || 'Peak'}: ${this.formatWeight(peakMonth.totalKg)}`;
+    const text = `${peakMonth.label || 'Peak'}: ${this.formatMonthlyWeight(peakMonth.totalKg)}`;
     this.monthlyPeakLineEl.style.bottom = `${offset}px`;
     this.monthlyPeakLineEl.classList.add('visible');
     this.monthlyPeakLineEl.setAttribute('aria-label', text);
@@ -1694,6 +1875,16 @@ export class AnalyticsDashboard {
     const value = this.convertKgToDisplay(kg, unit);
     const decimals = this.getDisplayDecimals();
     return `${value.toFixed(decimals)} ${unit}`;
+  }
+
+  formatMonthlyWeight(kg) {
+    const unit = this.getUnitLabel();
+    const display = this.convertKgToDisplay(kg, unit);
+    if (!Number.isFinite(display)) {
+      return `0 ${unit}`;
+    }
+    const rounded = Math.round(display);
+    return `${rounded} ${unit}`;
   }
 
   convertKgToDisplay(kg, unit = this.getUnitLabel()) {
