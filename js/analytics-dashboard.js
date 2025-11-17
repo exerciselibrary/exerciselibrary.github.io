@@ -1445,13 +1445,78 @@ export class AnalyticsDashboard {
     return null;
   }
 
+  cloneSerializable(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (error) {
+      console.warn('Failed to clone analytics data for cache', error);
+    }
+    return null;
+  }
+
+  serializeMovementTelemetry(movementData) {
+    if (!Array.isArray(movementData) || !movementData.length) {
+      return null;
+    }
+    const trimmed = movementData
+      .map((point) => {
+        if (!point || typeof point !== 'object') {
+          return null;
+        }
+        const loadA = Number(point.loadA);
+        const loadB = Number(point.loadB);
+        const payload = {};
+        if (Number.isFinite(loadA)) {
+          payload.loadA = loadA;
+        }
+        if (Number.isFinite(loadB)) {
+          payload.loadB = loadB;
+        }
+        return Object.keys(payload).length ? payload : null;
+      })
+      .filter(Boolean);
+    return trimmed.length ? trimmed : null;
+  }
+
+  deserializeMovementTelemetry(data) {
+    if (!Array.isArray(data) || !data.length) {
+      return null;
+    }
+    const restored = data
+      .map((point) => {
+        if (!point || typeof point !== 'object') {
+          return null;
+        }
+        const loadA = Number(point.loadA);
+        const loadB = Number(point.loadB);
+        const payload = {};
+        if (Number.isFinite(loadA)) {
+          payload.loadA = loadA;
+        }
+        if (Number.isFinite(loadB)) {
+          payload.loadB = loadB;
+        }
+        return Object.keys(payload).length ? payload : null;
+      })
+      .filter(Boolean);
+    return restored.length ? restored : null;
+  }
+
   serializeCachedWorkout(workout) {
     try {
       const timestamp = this.getWorkoutTimestamp(workout);
+      const phaseAnalysis =
+        this.cloneSerializable(workout.phaseAnalysis || workout.echoAnalysis || null);
       return {
         timestamp: timestamp instanceof Date ? timestamp.toISOString() : null,
         weightKg: Number(workout.weightKg) || 0,
         totalLoadKg: Number(workout.totalLoadKg) || 0,
+        cablePeakKg: Number(workout.cablePeakKg) || 0,
+        totalLoadPeakKg:
+          Number(workout.totalLoadPeakKg) || Number(workout.cablePeakKg) || 0,
         reps: Number(workout.reps) || 0,
         cableCount: Number(workout.cableCount ?? workout.cables) || null,
         setName: workout.setName || null,
@@ -1462,6 +1527,11 @@ export class AnalyticsDashboard {
           ? workout.exerciseIdNew
           : workout.exerciseIdNew ?? null,
         itemType: workout.itemType || null,
+        movementData: this.serializeMovementTelemetry(workout.movementData),
+        phaseAnalysis,
+        echoAnalysis: this.cloneSerializable(workout.echoAnalysis || null),
+        phaseRange: this.cloneSerializable(workout.phaseRange || null),
+        echoRange: this.cloneSerializable(workout.echoRange || null),
       };
     } catch (error) {
       console.warn('Failed to serialize cached workout', error);
@@ -1477,10 +1547,14 @@ export class AnalyticsDashboard {
     if (timestamp && Number.isNaN(timestamp.getTime())) {
       return null;
     }
+    const movementData = this.deserializeMovementTelemetry(entry.movementData);
     return {
       timestamp,
       weightKg: Number(entry.weightKg) || 0,
       totalLoadKg: Number(entry.totalLoadKg) || 0,
+      cablePeakKg: Number(entry.cablePeakKg) || 0,
+      totalLoadPeakKg:
+        Number(entry.totalLoadPeakKg) || Number(entry.cablePeakKg) || 0,
       reps: Number(entry.reps) || 0,
       cableCount: Number(entry.cableCount) || Number(entry.cables) || null,
       setName: entry.setName || null,
@@ -1489,6 +1563,19 @@ export class AnalyticsDashboard {
       exerciseId: entry.exerciseId || null,
       exerciseIdNew: entry.exerciseIdNew ?? null,
       itemType: entry.itemType || null,
+      movementData,
+      phaseAnalysis: entry.phaseAnalysis && typeof entry.phaseAnalysis === 'object'
+        ? entry.phaseAnalysis
+        : null,
+      echoAnalysis: entry.echoAnalysis && typeof entry.echoAnalysis === 'object'
+        ? entry.echoAnalysis
+        : null,
+      phaseRange: entry.phaseRange && typeof entry.phaseRange === 'object'
+        ? entry.phaseRange
+        : null,
+      echoRange: entry.echoRange && typeof entry.echoRange === 'object'
+        ? entry.echoRange
+        : null,
     };
   }
 
