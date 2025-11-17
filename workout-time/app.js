@@ -1,7 +1,17 @@
 // app.js - Main application logic and UI management
 
 const sharedWeights = window.WeightUtils || {};
-const sharedEchoTelemetry = window.EchoTelemetry || {};
+let sharedEchoTelemetry = typeof window !== "undefined" ? window.EchoTelemetry || null : null;
+const resolveSharedEchoTelemetry = () => {
+  if (typeof window === "undefined") {
+    sharedEchoTelemetry = null;
+    return sharedEchoTelemetry;
+  }
+  if (window.EchoTelemetry && window.EchoTelemetry !== sharedEchoTelemetry) {
+    sharedEchoTelemetry = window.EchoTelemetry;
+  }
+  return sharedEchoTelemetry;
+};
 const LB_PER_KG = sharedWeights.LB_PER_KG || 2.2046226218488;
 const KG_PER_LB = sharedWeights.KG_PER_LB || 1 / LB_PER_KG;
 const fallbackConvertKgToUnit = (kg, unit = "kg") => {
@@ -24,16 +34,22 @@ const sharedConvertUnitToKg =
   typeof sharedWeights.convertUnitToKg === "function"
     ? sharedWeights.convertUnitToKg
     : fallbackConvertUnitToKg;
-const sharedAnalyzePhases =
-  typeof sharedEchoTelemetry.analyzeMovementPhases === "function"
-    ? sharedEchoTelemetry.analyzeMovementPhases
-    : typeof sharedEchoTelemetry.analyzeEchoWorkout === "function"
-      ? sharedEchoTelemetry.analyzeEchoWorkout
+let sharedAnalyzePhases = null;
+let sharedIsEchoWorkout = null;
+const refreshSharedEchoTelemetryHelpers = () => {
+  const telemetry = resolveSharedEchoTelemetry();
+  sharedAnalyzePhases =
+    typeof telemetry?.analyzeMovementPhases === "function"
+      ? telemetry.analyzeMovementPhases
+      : typeof telemetry?.analyzeEchoWorkout === "function"
+        ? telemetry.analyzeEchoWorkout
+        : null;
+  sharedIsEchoWorkout =
+    typeof telemetry?.isEchoWorkout === "function"
+      ? telemetry.isEchoWorkout
       : null;
-const sharedIsEchoWorkout =
-  typeof sharedEchoTelemetry.isEchoWorkout === "function"
-    ? sharedEchoTelemetry.isEchoWorkout
-    : null;
+};
+refreshSharedEchoTelemetryHelpers();
 const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
 const MIN_ACTIVE_CABLE_RANGE = 35; // minimum delta between red/green markers to treat a cable as engaged for load tracking
 const AUTO_STOP_RANGE_THRESHOLD = 50; // slightly higher buffer for safety before auto-stop logic activates
@@ -4396,6 +4412,9 @@ class VitruvianApp {
 
   isEchoWorkout(workout) {
     if (!workout) return false;
+    if (typeof sharedIsEchoWorkout !== "function") {
+      refreshSharedEchoTelemetryHelpers();
+    }
     if (typeof sharedIsEchoWorkout === "function") {
       return sharedIsEchoWorkout(workout);
     }
@@ -4406,7 +4425,13 @@ class VitruvianApp {
   }
 
   ensurePhaseAnalysis(workout) {
-    if (!workout || typeof sharedAnalyzePhases !== "function") {
+    if (!workout) {
+      return null;
+    }
+    if (typeof sharedAnalyzePhases !== "function") {
+      refreshSharedEchoTelemetryHelpers();
+    }
+    if (typeof sharedAnalyzePhases !== "function") {
       return null;
     }
     if (workout.phaseAnalysis && Array.isArray(workout.phaseAnalysis.reps)) {
