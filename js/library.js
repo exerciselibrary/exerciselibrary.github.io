@@ -56,6 +56,7 @@ const setMode = (group, mode) => {
     els.equipmentModeAND.setAttribute('aria-selected', mode === 'AND');
   }
   triggerRender();
+  persistState();
 };
 
 const buildButtonGroup = (values, registry, container, onClick, useNiceName = false) => {

@@ -38,6 +38,7 @@ import {
   applyDeepLink,
   shuffleBuilderOrder
 } from './builder.js';
+import { AnalyticsDashboard } from './analytics-dashboard.js';
 import {
   registerRenderHandler as registerLibraryRender,
   buildFilters,
@@ -61,7 +62,36 @@ import {
 const dropboxManager = typeof DropboxManager !== 'undefined' ? new DropboxManager() : null;
 let dropboxInitialized = false;
 
+const analyticsDashboard =
+  typeof AnalyticsDashboard === 'function'
+    ? new AnalyticsDashboard({
+        dropboxManager,
+        getWeightUnit: () => (state.weightUnit === 'KG' ? 'KG' : 'LBS')
+      })
+    : null;
+
 const planCache = new Map(); // name -> { source, items }
+
+const showAnalyticsPanel = () => {
+  if (state.activePanel === 'analytics') return;
+  state.activePanel = 'analytics';
+  updateBuilderBadge();
+  persistState();
+  if (analyticsDashboard && typeof window !== 'undefined') {
+    window.requestAnimationFrame(() => analyticsDashboard.refreshChartSize());
+  }
+};
+
+const notifyAnalyticsDropboxState = () => {
+  if (!analyticsDashboard) return;
+  analyticsDashboard.handleDropboxStateChange(Boolean(dropboxManager && dropboxManager.isConnected));
+};
+
+const initAnalyticsDashboard = () => {
+  if (!analyticsDashboard) return;
+  analyticsDashboard.init();
+  notifyAnalyticsDropboxState();
+};
 
 const setLocalPlanCacheEntry = (name, items) => {
   const trimmed = normalizePlanName(name);
@@ -455,7 +485,12 @@ function bindGlobalEvents() {
   }
 
   if (els.unitToggle) {
-    els.unitToggle.addEventListener('click', toggleWeightUnit);
+    els.unitToggle.addEventListener('click', () => {
+      toggleWeightUnit();
+      if (analyticsDashboard) {
+        analyticsDashboard.handleUnitChange();
+      }
+    });
   }
 
   els.toggleBuilderFilter.addEventListener('click', () => {
@@ -467,6 +502,9 @@ function bindGlobalEvents() {
 
   els.tabLibrary.addEventListener('click', () => switchTab('library'));
   els.tabBuilder.addEventListener('click', () => switchTab('builder'));
+  if (els.tabAnalytics) {
+    els.tabAnalytics.addEventListener('click', showAnalyticsPanel);
+  }
   if (els.tabWorkout) {
     els.tabWorkout.addEventListener('click', () => {
       window.location.href = 'workout-time/index.html';
@@ -553,6 +591,9 @@ function bindGlobalEvents() {
   if (els.connectDropbox) {
     els.connectDropbox.addEventListener('click', handleDropboxButtonClick);
   }
+  if (els.analyticsConnectDropbox) {
+    els.analyticsConnectDropbox.addEventListener('click', handleDropboxButtonClick);
+  }
   if (els.syncToDropbox) {
     els.syncToDropbox.addEventListener('click', handleSyncToDropbox);
   }
@@ -637,21 +678,28 @@ const setSyncButtonDisabled = (disabled) => {
 };
 
 const refreshDropboxButton = () => {
-  if (!els.connectDropbox) return;
+  const buttons = [els.connectDropbox, els.analyticsConnectDropbox].filter(Boolean);
+  if (!buttons.length) return;
   if (!dropboxManager) {
-    els.connectDropbox.disabled = true;
-    els.connectDropbox.textContent = 'Dropbox unavailable';
+    buttons.forEach((button) => {
+      button.disabled = true;
+      button.textContent = 'Dropbox unavailable';
+      button.removeAttribute('aria-pressed');
+    });
     return;
   }
-  els.connectDropbox.disabled = false;
-  if (dropboxManager.isConnected) {
-    const name = dropboxManager.account?.name?.display_name || 'Dropbox';
-    els.connectDropbox.textContent = `Disconnect ${name}`;
-    els.connectDropbox.setAttribute('aria-pressed', 'true');
-  } else {
-    els.connectDropbox.textContent = 'Connect Dropbox';
-    els.connectDropbox.setAttribute('aria-pressed', 'false');
-  }
+  const connected = dropboxManager.isConnected;
+  const name = dropboxManager.account?.name?.display_name || 'Dropbox';
+  buttons.forEach((button) => {
+    button.disabled = false;
+    if (connected) {
+      button.textContent = `Disconnect ${name}`;
+      button.setAttribute('aria-pressed', 'true');
+    } else {
+      button.textContent = 'Connect Dropbox';
+      button.setAttribute('aria-pressed', 'false');
+    }
+  });
 };
 
 const initializeDropbox = async () => {
@@ -662,6 +710,7 @@ const initializeDropbox = async () => {
 
   dropboxManager.onConnectionChange = () => {
     refreshDropboxButton();
+    notifyAnalyticsDropboxState();
     if (!dropboxManager.isConnected) {
       setSyncButtonDisabled(false);
       updateSyncStatus('Disconnected from Dropbox.', null);
@@ -803,6 +852,7 @@ async function init() {
     });
 }
 
+initAnalyticsDashboard();
 setSyncButtonDisabled(false);
 refreshDropboxButton();
 init();

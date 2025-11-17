@@ -8,6 +8,7 @@
     "test": "npm run test:unit && npm run test:local",
     "test:unit": "node --test",
     "test:local": "node scripts/run-local-tests.mjs",
+    "analyze:echo": "node scripts/analyze-echo-workout.mjs",
     "lint": "node scripts/run-eslint.mjs",
     "format": "node scripts/run-prettier.mjs",
     "build": "echo \"Static site; no bundler\""

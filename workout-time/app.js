@@ -1,6 +1,17 @@
 // app.js - Main application logic and UI management
 
 const sharedWeights = window.WeightUtils || {};
+let sharedEchoTelemetry = typeof window !== "undefined" ? window.EchoTelemetry || null : null;
+const resolveSharedEchoTelemetry = () => {
+  if (typeof window === "undefined") {
+    sharedEchoTelemetry = null;
+    return sharedEchoTelemetry;
+  }
+  if (window.EchoTelemetry && window.EchoTelemetry !== sharedEchoTelemetry) {
+    sharedEchoTelemetry = window.EchoTelemetry;
+  }
+  return sharedEchoTelemetry;
+};
 const LB_PER_KG = sharedWeights.LB_PER_KG || 2.2046226218488;
 const KG_PER_LB = sharedWeights.KG_PER_LB || 1 / LB_PER_KG;
 const fallbackConvertKgToUnit = (kg, unit = "kg") => {
@@ -23,6 +34,22 @@ const sharedConvertUnitToKg =
   typeof sharedWeights.convertUnitToKg === "function"
     ? sharedWeights.convertUnitToKg
     : fallbackConvertUnitToKg;
+let sharedAnalyzePhases = null;
+let sharedIsEchoWorkout = null;
+const refreshSharedEchoTelemetryHelpers = () => {
+  const telemetry = resolveSharedEchoTelemetry();
+  sharedAnalyzePhases =
+    typeof telemetry?.analyzeMovementPhases === "function"
+      ? telemetry.analyzeMovementPhases
+      : typeof telemetry?.analyzeEchoWorkout === "function"
+        ? telemetry.analyzeEchoWorkout
+        : null;
+  sharedIsEchoWorkout =
+    typeof telemetry?.isEchoWorkout === "function"
+      ? telemetry.isEchoWorkout
+      : null;
+};
+refreshSharedEchoTelemetryHelpers();
 const DEFAULT_PER_CABLE_KG = 4; // ≈8.8 lb baseline when nothing is loaded
 const MIN_ACTIVE_CABLE_RANGE = 35; // minimum delta between red/green markers to treat a cable as engaged for load tracking
 const AUTO_STOP_RANGE_THRESHOLD = 50; // slightly higher buffer for safety before auto-stop logic activates
@@ -49,6 +76,16 @@ const WORKOUT_TAB_COLOR = { rgb: "FF2E75B6" };
 const PR_TAB_COLOR = { rgb: "FFF1C232" };
 const PLAN_SUMMARY_FLAT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
 const PLAN_SUMMARY_PERCENT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
+
+const escapeHtml = (value) => {
+  const str = value === null || value === undefined ? '' : String(value);
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
 
 class VitruvianApp {
   constructor() {
@@ -200,6 +237,7 @@ class VitruvianApp {
     this._planSummaryPercentUnitEl = null;
     this._planSummaryAdjustmentFeedbackEl = null;
     this._planSummaryDisplayUnit = null;
+    this._planSummarySource = null;
     this._planSummaryReopenBtn = null;
 
     this._wakeLockSentinel = null;
@@ -1647,6 +1685,75 @@ class VitruvianApp {
     }
   }
 
+  capturePlanSourceInfo() {
+    const items = Array.isArray(this.planItems) ? this.planItems : [];
+    return {
+      loadedName: this._loadedPlanName || null,
+      itemCount: items.length,
+      signature: this.computePlanItemsSignature(items),
+    };
+  }
+
+  computePlanItemsSignature(items) {
+    if (!Array.isArray(items)) {
+      return null;
+    }
+    if (items.length === 0) {
+      return "empty";
+    }
+    try {
+      const canonical = this.canonicalizePlanValue(items);
+      const json = JSON.stringify(canonical);
+      let hash = 0;
+      for (let i = 0; i < json.length; i += 1) {
+        hash = (hash * 31 + json.charCodeAt(i)) >>> 0;
+      }
+      return hash.toString(16);
+    } catch (error) {
+      console.warn("Failed to compute plan signature", error);
+      return null;
+    }
+  }
+
+  canonicalizePlanValue(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.canonicalizePlanValue(entry));
+    }
+    if (typeof value === "object") {
+      const result = {};
+      Object.keys(value)
+        .sort()
+        .forEach((key) => {
+          const current = value[key];
+          if (typeof current === "function") {
+            return;
+          }
+          result[key] = this.canonicalizePlanValue(current);
+        });
+      return result;
+    }
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      return null;
+    }
+    return value;
+  }
+
+  isPlanSourceMatching(a, b) {
+    if (!a || !b) {
+      return false;
+    }
+    if (a.signature && b.signature) {
+      return a.signature === b.signature;
+    }
+    if (!a.signature && !b.signature) {
+      return a.itemCount === b.itemCount && a.loadedName === b.loadedName;
+    }
+    return false;
+  }
+
   applyPlanSummaryAdjustment(options = {}) {
     const mode = options.mode === "percent" ? "percent" : "flat";
 
@@ -1662,6 +1769,20 @@ class VitruvianApp {
     if (!Array.isArray(this.planItems) || this.planItems.length === 0) {
       this.showPlanSummaryAdjustmentFeedback(
         "No saved plan is loaded to adjust.",
+        "error",
+      );
+      return;
+    }
+
+    const sourceInfo = this._planSummarySource;
+    const currentSource = this.capturePlanSourceInfo();
+    if (!this.isPlanSourceMatching(sourceInfo, currentSource)) {
+      const label =
+        summary.planName ||
+        sourceInfo?.loadedName ||
+        "this plan";
+      this.showPlanSummaryAdjustmentFeedback(
+        `Load "${label}" so it matches the completed workout before applying adjustments.`,
         "error",
       );
       return;
@@ -1700,6 +1821,7 @@ class VitruvianApp {
           }.`,
           "success",
         );
+        this._planSummarySource = this.capturePlanSourceInfo();
       } else {
         this.showPlanSummaryAdjustmentFeedback(
           "No weighted sets were available to adjust.",
@@ -1727,6 +1849,7 @@ class VitruvianApp {
         } by ${percentText} percent per cable.`,
         "success",
       );
+      this._planSummarySource = this.capturePlanSourceInfo();
     } else {
       this.showPlanSummaryAdjustmentFeedback(
         "No weighted sets were available to adjust.",
@@ -2057,6 +2180,7 @@ class VitruvianApp {
     };
     this._lastPlanSummary = null;
     this._planSummaryDisplayUnit = null;
+    this._planSummarySource = this.capturePlanSourceInfo();
     this.hidePlanSummary();
     this.resetPlanSummaryAdjustments();
     this.updatePlanSummaryReopenVisibility();
@@ -4113,6 +4237,7 @@ class VitruvianApp {
     this.applyCableActivationToMovementData(workout.movementData);
 
     this.calculateTotalLoadPeakKg(workout);
+    this.ensurePhaseAnalysis(workout);
     return workout;
   }
 
@@ -4176,6 +4301,10 @@ class VitruvianApp {
 
     // Personal records track the heaviest load on any single cable during a set.
     let peak = Number(workout.cablePeakKg);
+    const analysis = this.ensurePhaseAnalysis(workout);
+    if (analysis?.hasReps && Number.isFinite(analysis.maxConcentricKg) && analysis.maxConcentricKg > 0) {
+      peak = analysis.maxConcentricKg;
+    }
     if (!Number.isFinite(peak) || peak <= 0) {
       peak = 0;
 
@@ -4283,7 +4412,10 @@ class VitruvianApp {
       return;
     }
 
-    const identity = this.getWorkoutIdentityInfo(this.currentWorkout);
+    const baseIdentity = this.getWorkoutIdentityInfo(this.currentWorkout);
+    const identity = this.isEchoWorkout(this.currentWorkout)
+      ? this.getEchoPhaseIdentity(baseIdentity, "concentric", this.currentWorkout) || baseIdentity
+      : baseIdentity;
     if (identity) {
       this.currentWorkout.identityKey = identity.key;
       this.currentWorkout.identityLabel = identity.label;
@@ -4293,6 +4425,12 @@ class VitruvianApp {
       this.currentWorkout.identityKey = null;
       this.currentWorkout.identityLabel = null;
       this.currentWorkout.priorBestTotalLoadKg = 0;
+    }
+    if (this.isEchoWorkout(this.currentWorkout)) {
+      this.currentWorkout.echoEccentricIdentity =
+        this.getEchoPhaseIdentity(baseIdentity, "eccentric", this.currentWorkout) || null;
+    } else {
+      this.currentWorkout.echoEccentricIdentity = null;
     }
 
     this.currentWorkout.livePeakTotalLoadKg = 0;
@@ -4320,14 +4458,22 @@ class VitruvianApp {
       typeof workout.setName === "string" && workout.setName.trim().length > 0
         ? workout.setName.trim()
         : null;
+    const addEchoSuffix = (label) => {
+      if (!this.isEchoWorkout(workout)) {
+        return label;
+      }
+      const workoutId = this.getWorkoutDisplayId(workout);
+      return `${label} (Echo Mode · ${workoutId})`;
+    };
+
     if (numericId !== null) {
       return {
         key: `exercise:${numericId}`,
-        label: setName || `Exercise ${numericId}`,
+        label: addEchoSuffix(setName || `Exercise ${numericId}`),
       };
     }
     if (setName) {
-      return { key: `set:${setName.toLowerCase()}`, label: setName };
+      return { key: `set:${setName.toLowerCase()}`, label: addEchoSuffix(setName) };
     }
 
     const mode =
@@ -4335,10 +4481,83 @@ class VitruvianApp {
         ? workout.mode.trim()
         : null;
     if (mode) {
-      return { key: `mode:${mode.toLowerCase()}`, label: mode };
+      return { key: `mode:${mode.toLowerCase()}`, label: addEchoSuffix(mode) };
     }
 
     return null;
+  }
+
+  getWorkoutDisplayId(workout) {
+    if (!workout || typeof workout !== "object") {
+      return "unknown";
+    }
+    const candidates = [
+      workout.workoutId,
+      workout.id,
+      workout.builderMeta?.workoutId,
+      workout.builderMeta?.workout_id,
+      workout.dropboxId,
+    ];
+    for (const value of candidates) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    const timestamp = this.getWorkoutTimestamp(workout);
+    return timestamp ? timestamp.toISOString() : "unknown";
+  }
+
+  isEchoWorkout(workout) {
+    if (!workout) return false;
+    if (typeof sharedIsEchoWorkout !== "function") {
+      refreshSharedEchoTelemetryHelpers();
+    }
+    if (typeof sharedIsEchoWorkout === "function") {
+      return sharedIsEchoWorkout(workout);
+    }
+    const type = String(workout.itemType || "").toLowerCase();
+    if (type.includes("echo")) return true;
+    const mode = String(workout.mode || "").toLowerCase();
+    return mode.includes("echo");
+  }
+
+  ensurePhaseAnalysis(workout) {
+    if (!workout) {
+      return null;
+    }
+    if (typeof sharedAnalyzePhases !== "function") {
+      refreshSharedEchoTelemetryHelpers();
+    }
+    if (typeof sharedAnalyzePhases !== "function") {
+      return null;
+    }
+    if (workout.phaseAnalysis && Array.isArray(workout.phaseAnalysis.reps)) {
+      return workout.phaseAnalysis;
+    }
+    const analysis = sharedAnalyzePhases(workout) || null;
+    if (analysis) {
+      workout.phaseAnalysis = analysis;
+      if (analysis.range) {
+        workout.phaseRange = analysis.range;
+      }
+      if (analysis.isEcho) {
+        workout.echoAnalysis = analysis;
+        if (analysis.range) {
+          workout.echoRange = analysis.range;
+        }
+      }
+    }
+    return workout.phaseAnalysis || workout.echoAnalysis || null;
+  }
+
+  getEchoPhaseIdentity(identity, phase, workout) {
+    if (!identity) return null;
+    const suffix = phase === "eccentric" ? "Eccentric" : "Concentric";
+    return {
+      key: `${identity.key}|echo-${phase}`,
+      label: `${identity.label} · ${suffix}`,
+      workoutId: this.getWorkoutDisplayId(workout),
+    };
   }
 
   getWorkoutHistoryKey(workout) {
@@ -4965,7 +5184,10 @@ class VitruvianApp {
       return false;
     }
 
-    const identity = this.getWorkoutIdentityInfo(workout);
+    const baseIdentity = this.getWorkoutIdentityInfo(workout);
+    const identity = this.isEchoWorkout(workout)
+      ? this.getEchoPhaseIdentity(baseIdentity, "concentric", workout) || baseIdentity
+      : baseIdentity;
     if (!identity) {
       this.clearPersonalRecordCandidate();
       return false;
@@ -4989,6 +5211,24 @@ class VitruvianApp {
       timestamp,
       { reason: options.reason || "workout-complete" },
     );
+
+    if (this.isEchoWorkout(workout)) {
+      const analysis = this.ensurePhaseAnalysis(workout);
+      const eccIdentity = this.getEchoPhaseIdentity(baseIdentity, "eccentric", workout);
+      if (
+        analysis &&
+        eccIdentity &&
+        Number.isFinite(analysis.maxEccentricKg) &&
+        analysis.maxEccentricKg > 0
+      ) {
+        this.applyPersonalRecordCandidate(
+          eccIdentity,
+          analysis.maxEccentricKg,
+          timestamp,
+          { reason: "echo-workout-complete" },
+        );
+      }
+    }
 
     this.clearPersonalRecordCandidate();
     return updated;
@@ -5080,9 +5320,45 @@ class VitruvianApp {
     const bestByIdentity = new Map();
     const epsilon = 0.0001;
 
+    const registerBest = (identity, weightKg, timestamp) => {
+      if (!identity || !Number.isFinite(weightKg) || weightKg <= 0) {
+        return;
+      }
+      const existing = bestByIdentity.get(identity.key);
+      if (!existing) {
+        bestByIdentity.set(identity.key, { identity, weightKg, timestamp });
+        return;
+      }
+      const delta = weightKg - existing.weightKg;
+      const tsMs = timestamp instanceof Date ? timestamp.getTime() : 0;
+      const existingMs =
+        existing.timestamp instanceof Date ? existing.timestamp.getTime() : 0;
+
+      if (delta > epsilon || (Math.abs(delta) <= epsilon && tsMs > existingMs)) {
+        bestByIdentity.set(identity.key, { identity, weightKg, timestamp });
+      }
+    };
+
     for (const workout of workouts) {
       const identity = this.getWorkoutIdentityInfo(workout);
       if (!identity) {
+        continue;
+      }
+
+      const timestamp = this.getWorkoutTimestamp(workout);
+      if (this.isEchoWorkout(workout)) {
+        const analysis = this.ensurePhaseAnalysis(workout);
+        if (analysis) {
+          const concIdentity =
+            this.getEchoPhaseIdentity(identity, "concentric", workout) || identity;
+          if (Number.isFinite(analysis.maxConcentricKg) && analysis.maxConcentricKg > 0) {
+            registerBest(concIdentity, analysis.maxConcentricKg, timestamp);
+          }
+          const eccIdentity = this.getEchoPhaseIdentity(identity, "eccentric", workout);
+          if (eccIdentity && Number.isFinite(analysis.maxEccentricKg) && analysis.maxEccentricKg > 0) {
+            registerBest(eccIdentity, analysis.maxEccentricKg, timestamp);
+          }
+        }
         continue;
       }
 
@@ -5091,21 +5367,7 @@ class VitruvianApp {
         continue;
       }
 
-      const timestamp = this.getWorkoutTimestamp(workout);
-      const existing = bestByIdentity.get(identity.key);
-      if (!existing) {
-        bestByIdentity.set(identity.key, { identity, weightKg: peakKg, timestamp });
-        continue;
-      }
-
-      const delta = peakKg - existing.weightKg;
-      const tsMs = timestamp instanceof Date ? timestamp.getTime() : 0;
-      const existingMs =
-        existing.timestamp instanceof Date ? existing.timestamp.getTime() : 0;
-
-      if (delta > epsilon || (Math.abs(delta) <= epsilon && tsMs > existingMs)) {
-        bestByIdentity.set(identity.key, { identity, weightKg: peakKg, timestamp });
-      }
+      registerBest(identity, peakKg, timestamp);
     }
 
     let updated = false;
@@ -5158,35 +5420,29 @@ class VitruvianApp {
 
     const epsilon = 0.0001;
     const nextRecords = {};
-
-    for (const workout of workouts) {
-      const identity = this.getWorkoutIdentityInfo(workout);
-      if (!identity) {
-        continue;
+    const updateRecord = (identity, weightKg, isoTimestamp) => {
+      if (
+        !identity ||
+        typeof identity.key !== "string" ||
+        !Number.isFinite(weightKg) ||
+        weightKg <= 0
+      ) {
+        return;
       }
 
-      const peakKg = this.calculateTotalLoadPeakKg(workout);
-      if (!Number.isFinite(peakKg) || peakKg <= 0) {
-        continue;
-      }
-
-      const timestamp = this.getWorkoutTimestamp(workout);
-      const isoTimestamp = timestamp instanceof Date
-        ? timestamp.toISOString()
-        : new Date(timestamp || Date.now()).toISOString();
-
-      const existing = nextRecords[identity.key];
+      const key = identity.key;
+      const existing = nextRecords[key];
       if (!existing) {
-        nextRecords[identity.key] = {
-          key: identity.key,
+        nextRecords[key] = {
+          key,
           label: identity.label,
-          weightKg: peakKg,
+          weightKg,
           timestamp: isoTimestamp,
         };
-        continue;
+        return;
       }
 
-      const delta = peakKg - existing.weightKg;
+      const delta = weightKg - existing.weightKg;
       const timestampMs = new Date(isoTimestamp).getTime();
       const existingMs = existing.timestamp
         ? new Date(existing.timestamp).getTime()
@@ -5196,12 +5452,39 @@ class VitruvianApp {
         delta > epsilon ||
         (Math.abs(delta) <= epsilon && timestampMs > existingMs)
       ) {
-        nextRecords[identity.key] = {
-          key: identity.key,
+        nextRecords[key] = {
+          key,
           label: identity.label,
-          weightKg: peakKg,
+          weightKg,
           timestamp: isoTimestamp,
         };
+      }
+    };
+
+    for (const workout of workouts) {
+      const baseIdentity = this.getWorkoutIdentityInfo(workout);
+      if (!baseIdentity) {
+        continue;
+      }
+
+      const timestamp = this.getWorkoutTimestamp(workout);
+      const isoTimestamp = timestamp instanceof Date
+        ? timestamp.toISOString()
+        : new Date(timestamp || Date.now()).toISOString();
+
+      const isEcho = this.isEchoWorkout(workout);
+      const concentricIdentity = isEcho
+        ? this.getEchoPhaseIdentity(baseIdentity, "concentric", workout) || baseIdentity
+        : baseIdentity;
+
+      const peakKg = this.calculateTotalLoadPeakKg(workout);
+      updateRecord(concentricIdentity, peakKg, isoTimestamp);
+
+      if (isEcho) {
+        const analysis = this.ensurePhaseAnalysis(workout);
+        const eccIdentity = this.getEchoPhaseIdentity(baseIdentity, "eccentric", workout);
+        const eccPeakKg = analysis ? Number(analysis.maxEccentricKg) : NaN;
+        updateRecord(eccIdentity, eccPeakKg, isoTimestamp);
       }
     }
 
@@ -7673,6 +7956,15 @@ class VitruvianApp {
     const items = Array.isArray(this.planItems) ? this.planItems : [];
 
     const unit = this.getUnitLabelShort();
+    const toAttrValue = (raw) =>
+      escapeHtml(raw === null || raw === undefined ? "" : String(raw));
+    const toNumberString = (value) => {
+      if (value === null || value === undefined) {
+        return "";
+      }
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? String(numeric) : "";
+    };
 
     const makeRow = (item, i) => {
       const card = document.createElement("div");
@@ -7686,7 +7978,7 @@ class VitruvianApp {
       const title = document.createElement("div");
       title.className = "plan-card__header";
       title.innerHTML = `
-        <div class="plan-card__header-title">${sectionTitle}</div>
+        <div class="plan-card__header-title">${escapeHtml(sectionTitle)}</div>
         <div class="plan-card__actions">
           <button class="secondary plan-card__action" onclick="app.movePlanItem(${i}, -1)">Move Up</button>
           <button class="secondary plan-card__action" onclick="app.movePlanItem(${i}, 1)">Move Down</button>
@@ -7699,20 +7991,24 @@ class VitruvianApp {
       grid.className = "plan-card__grid";
 
       // Common: Name, Sets, Rest, JL, StopAtTop
+      const nameValue = toAttrValue(item.name || "");
+      const setsValue = toAttrValue(toNumberString(item.sets));
+      const restValue = toAttrValue(toNumberString(item.restSec));
+
       const commonHtml = `
         <div class="form-group">
           <label>Name</label>
-          <input type="text" value="${item.name || ""}" oninput="app.updatePlanField(${i}, 'name', this.value)" />
+          <input type="text" value="${nameValue}" oninput="app.updatePlanField(${i}, 'name', this.value)" />
         </div>
 
         <div class="form-group">
           <label>Sets</label>
-          <input type="number" min="1" max="99" value="${item.sets}" oninput="app.updatePlanField(${i}, 'sets', parseInt(this.value)||1)" />
+          <input type="number" min="1" max="99" value="${setsValue}" oninput="app.updatePlanField(${i}, 'sets', parseInt(this.value)||1)" />
         </div>
 
         <div class="form-group">
           <label>Rest (sec)</label>
-          <input type="number" min="0" max="600" value="${item.restSec}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
+          <input type="number" min="0" max="600" value="${restValue}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
         </div>
 
         <div class="form-group plan-card__toggles">
@@ -7728,14 +8024,52 @@ class VitruvianApp {
       `;
 
       if (item.type === "exercise") {
-        const displayPerCable = this.formatWeightValue(item.perCableKg);
         const modeOptions = [
           [ProgramMode.OLD_SCHOOL, "Old School"],
           [ProgramMode.PUMP, "Pump"],
           [ProgramMode.TUT, "TUT"],
           [ProgramMode.TUT_BEAST, "TUT Beast"],
           [ProgramMode.ECCENTRIC_ONLY, "Eccentric Only"],
-        ].map(([val, label]) => `<option value="${val}" ${item.mode===val?"selected":""}>${label}</option>`).join("");
+        ]
+          .map(
+            ([val, label]) =>
+              `<option value="${toAttrValue(val)}" ${item.mode === val ? "selected" : ""}>${escapeHtml(label)}</option>`,
+          )
+          .join("");
+
+        let perCableDisplayRaw = "";
+        const numericPerCableKg = Number(item.perCableKg);
+        if (Number.isFinite(numericPerCableKg)) {
+          const converted = this.convertKgToDisplay(numericPerCableKg);
+          perCableDisplayRaw = Number.isFinite(converted)
+            ? converted.toFixed(this.getWeightInputDecimals())
+            : "";
+        }
+        const perCableAttr = toAttrValue(perCableDisplayRaw);
+
+        const repsValue = toAttrValue(toNumberString(item.reps));
+        const parsedCables = Number(item.cables);
+        const normalizedCables = Number.isFinite(parsedCables)
+          ? Math.min(2, Math.max(1, parsedCables))
+          : "";
+        const cablesValue = toAttrValue(
+          normalizedCables === "" ? "" : String(normalizedCables),
+        );
+
+        let progressionDisplayRaw = "";
+        const numericProgressionKg = Number(item.progressionKg);
+        if (Number.isFinite(numericProgressionKg)) {
+          const convertedProgression = this.convertKgToDisplay(numericProgressionKg);
+          progressionDisplayRaw = Number.isFinite(convertedProgression)
+            ? convertedProgression.toFixed(this.getProgressionInputDecimals())
+            : "";
+        }
+        const progressionAttr = toAttrValue(progressionDisplayRaw);
+
+        const progressionMin = toAttrValue(this.convertKgToDisplay(-3));
+        const progressionMax = toAttrValue(this.convertKgToDisplay(3));
+        const perCableStep = unit === "lb" ? "1" : "0.5";
+        const progressionStep = unit === "lb" ? "0.2" : "0.1";
 
         grid.innerHTML = `
           <div class="form-group">
@@ -7747,28 +8081,28 @@ class VitruvianApp {
 
           <div class="form-group">
             <label>Weight per cable (${unit})</label>
-            <input type="number" min="0" max="1000" step="${unit==='lb' ? 1 : 0.5}"
-                   value="${this.convertKgToDisplay(item.perCableKg).toFixed(this.getWeightInputDecimals())}"
+            <input type="number" min="0" max="1000" step="${perCableStep}"
+                   value="${perCableAttr}"
                    oninput="app.updatePlanPerCableDisplay(${i}, this.value)" />
           </div>
 
           <div class="form-group">
             <label>Reps</label>
-            <input type="number" min="0" max="100" value="${item.reps}" oninput="app.updatePlanField(${i}, 'reps', parseInt(this.value)||0)" />
+            <input type="number" min="0" max="100" value="${repsValue}" oninput="app.updatePlanField(${i}, 'reps', parseInt(this.value)||0)" />
           </div>
 
           <div class="form-group">
             <label>Cables</label>
-            <input type="number" min="1" max="2" value="${item.cables}" oninput="app.updatePlanField(${i}, 'cables', Math.min(2, Math.max(1, parseInt(this.value)||1)))" />
+            <input type="number" min="1" max="2" value="${cablesValue}" oninput="app.updatePlanField(${i}, 'cables', Math.min(2, Math.max(1, parseInt(this.value)||1)))" />
           </div>
 
           <div class="form-group">
             <label>Progression (${unit} per rep)</label>
             <input type="number"
-                   step="${unit==='lb' ? 0.2 : 0.1}"
-                   min="${this.convertKgToDisplay(-3)}"
-                   max="${this.convertKgToDisplay(3)}"
-                   value="${this.convertKgToDisplay(item.progressionKg).toFixed(this.getProgressionInputDecimals())}"
+                   step="${progressionStep}"
+                   min="${progressionMin}"
+                   max="${progressionMax}"
+                   value="${progressionAttr}"
                    oninput="app.updatePlanProgressionDisplay(${i}, this.value)" />
           </div>
 
@@ -7781,7 +8115,15 @@ class VitruvianApp {
           [EchoLevel.HARDER, "Harder"],
           [EchoLevel.HARDEST, "Hardest"],
           [EchoLevel.EPIC, "Epic"],
-        ].map(([val, label]) => `<option value="${val}" ${item.level===val?"selected":""}>${label}</option>`).join("");
+        ]
+          .map(
+            ([val, label]) =>
+              `<option value="${toAttrValue(val)}" ${item.level === val ? "selected" : ""}>${escapeHtml(label)}</option>`,
+          )
+          .join("");
+
+        const eccentricValue = toAttrValue(toNumberString(item.eccentricPct));
+        const targetRepsValue = toAttrValue(toNumberString(item.targetReps));
 
         grid.innerHTML = `
           <div class="form-group">
@@ -7793,12 +8135,12 @@ class VitruvianApp {
 
           <div class="form-group">
             <label>Eccentric %</label>
-            <input type="number" min="0" max="150" step="5" value="${item.eccentricPct}" oninput="app.updatePlanField(${i}, 'eccentricPct', parseInt(this.value)||0)" />
+            <input type="number" min="0" max="150" step="5" value="${eccentricValue}" oninput="app.updatePlanField(${i}, 'eccentricPct', parseInt(this.value)||0)" />
           </div>
 
           <div class="form-group">
             <label>Target Reps</label>
-            <input type="number" min="0" max="30" value="${item.targetReps}" oninput="app.updatePlanField(${i}, 'targetReps', parseInt(this.value)||0)" />
+            <input type="number" min="0" max="30" value="${targetRepsValue}" oninput="app.updatePlanField(${i}, 'targetReps', parseInt(this.value)||0)" />
           </div>
 
           ${commonHtml}
@@ -8341,7 +8683,12 @@ class VitruvianApp {
     const names = this.getAllPlanNames();
     const previous = sel.value;
     sel.innerHTML = names.length
-      ? names.map((n) => `<option value="${n}">${n}</option>`).join("")
+      ? names
+          .map((n) => {
+            const safe = escapeHtml(n);
+            return `<option value="${safe}">${safe}</option>`;
+          })
+          .join("")
       : `<option value="">(no saved plans)</option>`;
 
     if (names.length > 0) {
