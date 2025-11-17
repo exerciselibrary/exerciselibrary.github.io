@@ -77,6 +77,16 @@ const PR_TAB_COLOR = { rgb: "FFF1C232" };
 const PLAN_SUMMARY_FLAT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
 const PLAN_SUMMARY_PERCENT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
 
+const escapeHtml = (value) => {
+  const str = value === null || value === undefined ? '' : String(value);
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 class VitruvianApp {
   constructor() {
     this.device = new VitruvianDevice();
@@ -227,6 +237,7 @@ class VitruvianApp {
     this._planSummaryPercentUnitEl = null;
     this._planSummaryAdjustmentFeedbackEl = null;
     this._planSummaryDisplayUnit = null;
+    this._planSummarySource = null;
     this._planSummaryReopenBtn = null;
 
     this._wakeLockSentinel = null;
@@ -1674,6 +1685,75 @@ class VitruvianApp {
     }
   }
 
+  capturePlanSourceInfo() {
+    const items = Array.isArray(this.planItems) ? this.planItems : [];
+    return {
+      loadedName: this._loadedPlanName || null,
+      itemCount: items.length,
+      signature: this.computePlanItemsSignature(items),
+    };
+  }
+
+  computePlanItemsSignature(items) {
+    if (!Array.isArray(items)) {
+      return null;
+    }
+    if (items.length === 0) {
+      return "empty";
+    }
+    try {
+      const canonical = this.canonicalizePlanValue(items);
+      const json = JSON.stringify(canonical);
+      let hash = 0;
+      for (let i = 0; i < json.length; i += 1) {
+        hash = (hash * 31 + json.charCodeAt(i)) >>> 0;
+      }
+      return hash.toString(16);
+    } catch (error) {
+      console.warn("Failed to compute plan signature", error);
+      return null;
+    }
+  }
+
+  canonicalizePlanValue(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.canonicalizePlanValue(entry));
+    }
+    if (typeof value === "object") {
+      const result = {};
+      Object.keys(value)
+        .sort()
+        .forEach((key) => {
+          const current = value[key];
+          if (typeof current === "function") {
+            return;
+          }
+          result[key] = this.canonicalizePlanValue(current);
+        });
+      return result;
+    }
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      return null;
+    }
+    return value;
+  }
+
+  isPlanSourceMatching(a, b) {
+    if (!a || !b) {
+      return false;
+    }
+    if (a.signature && b.signature) {
+      return a.signature === b.signature;
+    }
+    if (!a.signature && !b.signature) {
+      return a.itemCount === b.itemCount && a.loadedName === b.loadedName;
+    }
+    return false;
+  }
+
   applyPlanSummaryAdjustment(options = {}) {
     const mode = options.mode === "percent" ? "percent" : "flat";
 
@@ -1689,6 +1769,20 @@ class VitruvianApp {
     if (!Array.isArray(this.planItems) || this.planItems.length === 0) {
       this.showPlanSummaryAdjustmentFeedback(
         "No saved plan is loaded to adjust.",
+        "error",
+      );
+      return;
+    }
+
+    const sourceInfo = this._planSummarySource;
+    const currentSource = this.capturePlanSourceInfo();
+    if (!this.isPlanSourceMatching(sourceInfo, currentSource)) {
+      const label =
+        summary.planName ||
+        sourceInfo?.loadedName ||
+        "this plan";
+      this.showPlanSummaryAdjustmentFeedback(
+        `Load "${label}" so it matches the completed workout before applying adjustments.`,
         "error",
       );
       return;
@@ -1727,6 +1821,7 @@ class VitruvianApp {
           }.`,
           "success",
         );
+        this._planSummarySource = this.capturePlanSourceInfo();
       } else {
         this.showPlanSummaryAdjustmentFeedback(
           "No weighted sets were available to adjust.",
@@ -1754,6 +1849,7 @@ class VitruvianApp {
         } by ${percentText} percent per cable.`,
         "success",
       );
+      this._planSummarySource = this.capturePlanSourceInfo();
     } else {
       this.showPlanSummaryAdjustmentFeedback(
         "No weighted sets were available to adjust.",
@@ -2084,6 +2180,7 @@ class VitruvianApp {
     };
     this._lastPlanSummary = null;
     this._planSummaryDisplayUnit = null;
+    this._planSummarySource = this.capturePlanSourceInfo();
     this.hidePlanSummary();
     this.resetPlanSummaryAdjustments();
     this.updatePlanSummaryReopenVisibility();
@@ -7859,6 +7956,15 @@ class VitruvianApp {
     const items = Array.isArray(this.planItems) ? this.planItems : [];
 
     const unit = this.getUnitLabelShort();
+    const toAttrValue = (raw) =>
+      escapeHtml(raw === null || raw === undefined ? "" : String(raw));
+    const toNumberString = (value) => {
+      if (value === null || value === undefined) {
+        return "";
+      }
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? String(numeric) : "";
+    };
 
     const makeRow = (item, i) => {
       const card = document.createElement("div");
@@ -7872,7 +7978,7 @@ class VitruvianApp {
       const title = document.createElement("div");
       title.className = "plan-card__header";
       title.innerHTML = `
-        <div class="plan-card__header-title">${sectionTitle}</div>
+        <div class="plan-card__header-title">${escapeHtml(sectionTitle)}</div>
         <div class="plan-card__actions">
           <button class="secondary plan-card__action" onclick="app.movePlanItem(${i}, -1)">Move Up</button>
           <button class="secondary plan-card__action" onclick="app.movePlanItem(${i}, 1)">Move Down</button>
@@ -7885,20 +7991,24 @@ class VitruvianApp {
       grid.className = "plan-card__grid";
 
       // Common: Name, Sets, Rest, JL, StopAtTop
+      const nameValue = toAttrValue(item.name || "");
+      const setsValue = toAttrValue(toNumberString(item.sets));
+      const restValue = toAttrValue(toNumberString(item.restSec));
+
       const commonHtml = `
         <div class="form-group">
           <label>Name</label>
-          <input type="text" value="${item.name || ""}" oninput="app.updatePlanField(${i}, 'name', this.value)" />
+          <input type="text" value="${nameValue}" oninput="app.updatePlanField(${i}, 'name', this.value)" />
         </div>
 
         <div class="form-group">
           <label>Sets</label>
-          <input type="number" min="1" max="99" value="${item.sets}" oninput="app.updatePlanField(${i}, 'sets', parseInt(this.value)||1)" />
+          <input type="number" min="1" max="99" value="${setsValue}" oninput="app.updatePlanField(${i}, 'sets', parseInt(this.value)||1)" />
         </div>
 
         <div class="form-group">
           <label>Rest (sec)</label>
-          <input type="number" min="0" max="600" value="${item.restSec}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
+          <input type="number" min="0" max="600" value="${restValue}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
         </div>
 
         <div class="form-group plan-card__toggles">
@@ -7914,14 +8024,52 @@ class VitruvianApp {
       `;
 
       if (item.type === "exercise") {
-        const displayPerCable = this.formatWeightValue(item.perCableKg);
         const modeOptions = [
           [ProgramMode.OLD_SCHOOL, "Old School"],
           [ProgramMode.PUMP, "Pump"],
           [ProgramMode.TUT, "TUT"],
           [ProgramMode.TUT_BEAST, "TUT Beast"],
           [ProgramMode.ECCENTRIC_ONLY, "Eccentric Only"],
-        ].map(([val, label]) => `<option value="${val}" ${item.mode===val?"selected":""}>${label}</option>`).join("");
+        ]
+          .map(
+            ([val, label]) =>
+              `<option value="${toAttrValue(val)}" ${item.mode === val ? "selected" : ""}>${escapeHtml(label)}</option>`,
+          )
+          .join("");
+
+        let perCableDisplayRaw = "";
+        const numericPerCableKg = Number(item.perCableKg);
+        if (Number.isFinite(numericPerCableKg)) {
+          const converted = this.convertKgToDisplay(numericPerCableKg);
+          perCableDisplayRaw = Number.isFinite(converted)
+            ? converted.toFixed(this.getWeightInputDecimals())
+            : "";
+        }
+        const perCableAttr = toAttrValue(perCableDisplayRaw);
+
+        const repsValue = toAttrValue(toNumberString(item.reps));
+        const parsedCables = Number(item.cables);
+        const normalizedCables = Number.isFinite(parsedCables)
+          ? Math.min(2, Math.max(1, parsedCables))
+          : "";
+        const cablesValue = toAttrValue(
+          normalizedCables === "" ? "" : String(normalizedCables),
+        );
+
+        let progressionDisplayRaw = "";
+        const numericProgressionKg = Number(item.progressionKg);
+        if (Number.isFinite(numericProgressionKg)) {
+          const convertedProgression = this.convertKgToDisplay(numericProgressionKg);
+          progressionDisplayRaw = Number.isFinite(convertedProgression)
+            ? convertedProgression.toFixed(this.getProgressionInputDecimals())
+            : "";
+        }
+        const progressionAttr = toAttrValue(progressionDisplayRaw);
+
+        const progressionMin = toAttrValue(this.convertKgToDisplay(-3));
+        const progressionMax = toAttrValue(this.convertKgToDisplay(3));
+        const perCableStep = unit === "lb" ? "1" : "0.5";
+        const progressionStep = unit === "lb" ? "0.2" : "0.1";
 
         grid.innerHTML = `
           <div class="form-group">
@@ -7933,28 +8081,28 @@ class VitruvianApp {
 
           <div class="form-group">
             <label>Weight per cable (${unit})</label>
-            <input type="number" min="0" max="1000" step="${unit==='lb' ? 1 : 0.5}"
-                   value="${this.convertKgToDisplay(item.perCableKg).toFixed(this.getWeightInputDecimals())}"
+            <input type="number" min="0" max="1000" step="${perCableStep}"
+                   value="${perCableAttr}"
                    oninput="app.updatePlanPerCableDisplay(${i}, this.value)" />
           </div>
 
           <div class="form-group">
             <label>Reps</label>
-            <input type="number" min="0" max="100" value="${item.reps}" oninput="app.updatePlanField(${i}, 'reps', parseInt(this.value)||0)" />
+            <input type="number" min="0" max="100" value="${repsValue}" oninput="app.updatePlanField(${i}, 'reps', parseInt(this.value)||0)" />
           </div>
 
           <div class="form-group">
             <label>Cables</label>
-            <input type="number" min="1" max="2" value="${item.cables}" oninput="app.updatePlanField(${i}, 'cables', Math.min(2, Math.max(1, parseInt(this.value)||1)))" />
+            <input type="number" min="1" max="2" value="${cablesValue}" oninput="app.updatePlanField(${i}, 'cables', Math.min(2, Math.max(1, parseInt(this.value)||1)))" />
           </div>
 
           <div class="form-group">
             <label>Progression (${unit} per rep)</label>
             <input type="number"
-                   step="${unit==='lb' ? 0.2 : 0.1}"
-                   min="${this.convertKgToDisplay(-3)}"
-                   max="${this.convertKgToDisplay(3)}"
-                   value="${this.convertKgToDisplay(item.progressionKg).toFixed(this.getProgressionInputDecimals())}"
+                   step="${progressionStep}"
+                   min="${progressionMin}"
+                   max="${progressionMax}"
+                   value="${progressionAttr}"
                    oninput="app.updatePlanProgressionDisplay(${i}, this.value)" />
           </div>
 
@@ -7967,7 +8115,15 @@ class VitruvianApp {
           [EchoLevel.HARDER, "Harder"],
           [EchoLevel.HARDEST, "Hardest"],
           [EchoLevel.EPIC, "Epic"],
-        ].map(([val, label]) => `<option value="${val}" ${item.level===val?"selected":""}>${label}</option>`).join("");
+        ]
+          .map(
+            ([val, label]) =>
+              `<option value="${toAttrValue(val)}" ${item.level === val ? "selected" : ""}>${escapeHtml(label)}</option>`,
+          )
+          .join("");
+
+        const eccentricValue = toAttrValue(toNumberString(item.eccentricPct));
+        const targetRepsValue = toAttrValue(toNumberString(item.targetReps));
 
         grid.innerHTML = `
           <div class="form-group">
@@ -7979,12 +8135,12 @@ class VitruvianApp {
 
           <div class="form-group">
             <label>Eccentric %</label>
-            <input type="number" min="0" max="150" step="5" value="${item.eccentricPct}" oninput="app.updatePlanField(${i}, 'eccentricPct', parseInt(this.value)||0)" />
+            <input type="number" min="0" max="150" step="5" value="${eccentricValue}" oninput="app.updatePlanField(${i}, 'eccentricPct', parseInt(this.value)||0)" />
           </div>
 
           <div class="form-group">
             <label>Target Reps</label>
-            <input type="number" min="0" max="30" value="${item.targetReps}" oninput="app.updatePlanField(${i}, 'targetReps', parseInt(this.value)||0)" />
+            <input type="number" min="0" max="30" value="${targetRepsValue}" oninput="app.updatePlanField(${i}, 'targetReps', parseInt(this.value)||0)" />
           </div>
 
           ${commonHtml}
@@ -8527,7 +8683,12 @@ class VitruvianApp {
     const names = this.getAllPlanNames();
     const previous = sel.value;
     sel.innerHTML = names.length
-      ? names.map((n) => `<option value="${n}">${n}</option>`).join("")
+      ? names
+          .map((n) => {
+            const safe = escapeHtml(n);
+            return `<option value="${safe}">${safe}</option>`;
+          })
+          .join("")
       : `<option value="">(no saved plans)</option>`;
 
     if (names.length > 0) {

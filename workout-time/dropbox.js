@@ -11,6 +11,9 @@ class DropboxManager {
     this.onLog = null; // Callback for logging
     this.onConnectionChange = null; // Callback when connection state changes
     this.account = null;
+    this._tokenStorageKey = "vitruvian.dropbox.token";
+    this._tokenInfo = null;
+    this._currentAccessToken = null;
   }
 
   log(message, type = "info") {
@@ -35,12 +38,23 @@ class DropboxManager {
     }
 
     // Check for existing token
-    const token = this.getStoredToken();
-    if (token) {
+    const storedToken = this.getStoredToken();
+    if (storedToken?.refreshToken && this.isTokenExpired(storedToken)) {
       try {
-        this.dbx = new Dropbox.Dropbox({ accessToken: token, fetch: window.fetch.bind(window) });
-        // Test token validity
-        const account = await this.dbx.usersGetCurrentAccount();
+        const refreshed = await this.refreshAccessToken(storedToken.refreshToken);
+        this.storeToken(refreshed);
+      } catch (error) {
+        this.log(`Stored token refresh failed: ${error.message}`, "error");
+        this.clearStoredToken();
+      }
+    }
+
+    const tokenInfo = this.getStoredToken();
+    if (tokenInfo?.accessToken) {
+      try {
+        this.applyTokenToClient(tokenInfo);
+        const client = await this.ensureDropboxClient();
+        const account = await client.usersGetCurrentAccount();
         this.account = account?.result || null;
         this.isConnected = true;
         this.log("Restored Dropbox connection from stored token", "success");
@@ -120,17 +134,22 @@ class DropboxManager {
       }
 
       const data = await response.json();
-      const accessToken = data.access_token;
+      const tokenInfo = {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || null,
+        expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : null,
+      };
 
       // Store token
-      this.storeToken(accessToken);
+      this.storeToken(tokenInfo);
 
       // Initialize Dropbox SDK
-      this.dbx = new Dropbox.Dropbox({ accessToken: accessToken, fetch: window.fetch.bind(window) });
+      this.applyTokenToClient(tokenInfo);
       this.isConnected = true;
 
       // Get user info
-      const account = await this.dbx.usersGetCurrentAccount();
+      const client = await this.ensureDropboxClient();
+      const account = await client.usersGetCurrentAccount();
       this.account = account?.result || null;
       this.log(`Connected to Dropbox as ${account.result.name.display_name}`, "success");
 
@@ -153,15 +172,17 @@ class DropboxManager {
     this.dbx = null;
     this.isConnected = false;
     this.account = null;
+    this._currentAccessToken = null;
     this.log("Disconnected from Dropbox", "info");
     this.notifyConnectionChange();
   }
 
   // Initialize folder structure in user's Dropbox
   async initializeFolderStructure() {
+    const client = await this.ensureDropboxClient();
     try {
       // Create /workouts folder if it doesn't exist
-      await this.dbx.filesCreateFolderV2({ path: "/workouts" });
+      await client.filesCreateFolderV2({ path: "/workouts" });
       this.log("Created /workouts folder", "success");
     } catch (error) {
       if (error.error?.error[".tag"] === "path" && error.error.error.path[".tag"] === "conflict") {
@@ -173,7 +194,7 @@ class DropboxManager {
     }
 
     try {
-      await this.dbx.filesCreateFolderV2({ path: "/plans" });
+      await client.filesCreateFolderV2({ path: "/plans" });
       this.log("Created /plans folder", "success");
     } catch (error) {
       if (error.error?.error[".tag"] === "path" && error.error.error.path[".tag"] === "conflict") {
@@ -191,6 +212,7 @@ class DropboxManager {
     }
 
     try {
+      const client = await this.ensureDropboxClient();
       // Generate filename with timestamp
       const timestamp = workout.timestamp || new Date();
       const filename = `workout_${timestamp.toISOString().replace(/[:.]/g, "-")}.json`;
@@ -200,7 +222,7 @@ class DropboxManager {
       const contents = JSON.stringify(workout, null, 2);
 
       // Upload to Dropbox
-      await this.dbx.filesUpload({
+      await client.filesUpload({
         path: path,
         contents: contents,
         mode: { ".tag": "add" },
@@ -222,6 +244,7 @@ class DropboxManager {
     }
 
     try {
+      const client = await this.ensureDropboxClient();
       this.log("Loading workouts from Dropbox...", "info");
 
       const requestedMax =
@@ -254,12 +277,12 @@ class DropboxManager {
         }
       };
 
-      let response = await this.dbx.filesListFolder({ path: "/workouts" });
+      let response = await client.filesListFolder({ path: "/workouts" });
       considerEntries(response.result.entries || []);
       let cursor = response.result.cursor;
 
       while (response.result.has_more) {
-        response = await this.dbx.filesListFolderContinue({ cursor });
+        response = await client.filesListFolderContinue({ cursor });
         cursor = response.result.cursor;
         considerEntries(response.result.entries || []);
       }
@@ -282,7 +305,7 @@ class DropboxManager {
       const workouts = [];
       for (const file of topFiles) {
         try {
-          const downloadResponse = await this.dbx.filesDownload({ path: file.path_lower });
+          const downloadResponse = await client.filesDownload({ path: file.path_lower });
           const fileBlob = downloadResponse.result.fileBlob;
           const text = await fileBlob.text();
           const workout = JSON.parse(text);
@@ -355,7 +378,8 @@ class DropboxManager {
       throw new Error("Invalid Dropbox workout path");
     }
     const contents = JSON.stringify(workout, null, 2);
-    const response = await this.dbx.filesUpload({
+    const client = await this.ensureDropboxClient();
+    const response = await client.filesUpload({
       path: normalizedPath,
       contents,
       mode: { ".tag": "overwrite" },
@@ -382,7 +406,8 @@ class DropboxManager {
     }
 
     try {
-      const response = await this.dbx.filesDownload({ path: this.plansIndexPath() });
+      const client = await this.ensureDropboxClient();
+      const response = await client.filesDownload({ path: this.plansIndexPath() });
       const fileBlob = response.result.fileBlob;
       const text = await fileBlob.text();
       const data = JSON.parse(text);
@@ -416,7 +441,8 @@ class DropboxManager {
       plans: plansMap || {},
     };
 
-    await this.dbx.filesUpload({
+    const client = await this.ensureDropboxClient();
+    await client.filesUpload({
       path: this.plansIndexPath(),
       contents: JSON.stringify(payload, null, 2),
       mode: { ".tag": "overwrite" },
@@ -431,7 +457,8 @@ class DropboxManager {
     }
 
     try {
-      const response = await this.dbx.filesDownload({ path: this.personalRecordsPath() });
+      const client = await this.ensureDropboxClient();
+      const response = await client.filesDownload({ path: this.personalRecordsPath() });
       const fileBlob = response.result.fileBlob;
       const text = await fileBlob.text();
       const data = JSON.parse(text);
@@ -469,7 +496,8 @@ class DropboxManager {
           : [],
     };
 
-    await this.dbx.filesUpload({
+    const client = await this.ensureDropboxClient();
+    await client.filesUpload({
       path: this.personalRecordsPath(),
       contents: JSON.stringify(payload, null, 2),
       mode: { ".tag": "overwrite" },
@@ -518,8 +546,9 @@ class DropboxManager {
     }
 
     try {
+      const client = await this.ensureDropboxClient();
       // Find the file with matching timestamp
-      const response = await this.dbx.filesListFolder({ path: "/workouts" });
+      const response = await client.filesListFolder({ path: "/workouts" });
       const timestampValue = workout.timestamp || workout.endTime;
       const timestamp =
         timestampValue instanceof Date
@@ -540,7 +569,7 @@ class DropboxManager {
       );
 
       if (file) {
-        await this.dbx.filesDeleteV2({ path: file.path_lower });
+        await client.filesDeleteV2({ path: file.path_lower });
         this.log(`Deleted workout: ${file.name}`, "success");
         return true;
       } else {
@@ -559,7 +588,8 @@ class DropboxManager {
     }
 
     try {
-      await this.dbx.filesUpload({
+      const client = await this.ensureDropboxClient();
+      await client.filesUpload({
         path: `/${filename}`,
         contents,
         mode: { ".tag": "overwrite" },
@@ -609,7 +639,8 @@ class DropboxManager {
       const filename = `workout_detailed_${mode}${setName}_${dateStr}.csv`;
 
       // Upload to Dropbox in /workouts folder
-      await this.dbx.filesUpload({
+      const client = await this.ensureDropboxClient();
+      await client.filesUpload({
         path: `/workouts/${filename}`,
         contents: csv,
         mode: { ".tag": "add" },
@@ -646,16 +677,132 @@ class DropboxManager {
   }
 
   // Token storage helpers
+  normalizeTokenPayload(token) {
+    if (!token) {
+      return null;
+    }
+    if (typeof token === "string") {
+      return { accessToken: token, refreshToken: null, expiresAt: null };
+    }
+    if (typeof token === "object") {
+      const payload = {
+        accessToken: token.accessToken || token.access_token || null,
+        refreshToken: token.refreshToken || token.refresh_token || null,
+        expiresAt: Number.isFinite(token.expiresAt) ? token.expiresAt : null,
+      };
+      return payload.accessToken ? payload : null;
+    }
+    return null;
+  }
+
   storeToken(token) {
-    localStorage.setItem("vitruvian.dropbox.token", token);
+    const payload = this.normalizeTokenPayload(token);
+    if (!payload) {
+      return null;
+    }
+    this._tokenInfo = payload;
+    try {
+      localStorage.setItem(this._tokenStorageKey, JSON.stringify(payload));
+    } catch (error) {
+      this.log("Unable to persist Dropbox token; continuing with in-memory token", "warning");
+    }
+    return payload;
   }
 
   getStoredToken() {
-    return localStorage.getItem("vitruvian.dropbox.token");
+    if (this._tokenInfo) {
+      return this._tokenInfo;
+    }
+    try {
+      const raw = localStorage.getItem(this._tokenStorageKey);
+      if (!raw) {
+        return null;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = raw;
+      }
+      const payload = this.normalizeTokenPayload(parsed);
+      this._tokenInfo = payload;
+      return payload;
+    } catch (error) {
+      this.log("Unable to read Dropbox token from storage", "warning");
+      return this._tokenInfo;
+    }
   }
 
   clearStoredToken() {
-    localStorage.removeItem("vitruvian.dropbox.token");
+    this._tokenInfo = null;
+    this._currentAccessToken = null;
+    try {
+      localStorage.removeItem(this._tokenStorageKey);
+    } catch {
+      /* ignore storage cleanup errors */
+    }
+  }
+
+  isTokenExpired(info) {
+    if (!info || !info.expiresAt) {
+      return false;
+    }
+    const safetyWindowMs = 60 * 1000;
+    return Date.now() >= info.expiresAt - safetyWindowMs;
+  }
+
+  async refreshAccessToken(refreshToken) {
+    if (!refreshToken) {
+      throw new Error("Missing refresh token");
+    }
+    const response = await fetch("https://api.dropbox.com/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+        client_id: this.clientId,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Refresh failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const payload = {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || refreshToken,
+      expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : null,
+    };
+    this.log("Refreshed Dropbox access token", "info");
+    return payload;
+  }
+
+  applyTokenToClient(tokenInfo) {
+    if (!tokenInfo || !tokenInfo.accessToken) {
+      return;
+    }
+    this.dbx = new Dropbox.Dropbox({
+      accessToken: tokenInfo.accessToken,
+      fetch: window.fetch.bind(window),
+    });
+    this._currentAccessToken = tokenInfo.accessToken;
+  }
+
+  async ensureDropboxClient() {
+    let tokenInfo = this.getStoredToken();
+    if (!tokenInfo || !tokenInfo.accessToken) {
+      throw new Error("Dropbox authentication required");
+    }
+    if (this.isTokenExpired(tokenInfo) && tokenInfo.refreshToken) {
+      tokenInfo = await this.refreshAccessToken(tokenInfo.refreshToken);
+      this.storeToken(tokenInfo);
+    }
+    if (!this.dbx || this._currentAccessToken !== tokenInfo.accessToken) {
+      this.applyTokenToClient(tokenInfo);
+    }
+    return this.dbx;
   }
 
   // Notify listeners of connection state change
@@ -667,9 +814,10 @@ class DropboxManager {
 
   // Get connection status
   getConnectionStatus() {
+    const token = this.getStoredToken();
     return {
       isConnected: this.isConnected,
-      hasToken: !!this.getStoredToken(),
+      hasToken: !!(token && token.accessToken),
     };
   }
 }
