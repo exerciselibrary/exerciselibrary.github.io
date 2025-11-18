@@ -177,9 +177,22 @@ const handleSaveCustomExercise = async (payload = {}) => {
     muscles: payload.muscles,
     equipment: payload.equipment
   });
+
+  let latestRemoteEntries = [];
+  try {
+    latestRemoteEntries = await dropboxManager.loadCustomExercises();
+  } catch (error) {
+    updateCustomExerciseSyncStatus(`Failed to fetch latest custom exercises: ${error.message}`, 'error');
+    throw error;
+  }
+
+  // Ensure local state reflects the freshest Dropbox data before appending.
+  setCustomExercises(latestRemoteEntries);
+
   const existing = getDropboxPayloadForCustomExercises();
   const entryPayload = getDropboxPayloadForCustomExercises([entry])[0];
   const nextPayload = existing.concat(entryPayload);
+
   await dropboxManager.saveCustomExercises(nextPayload);
   setCustomExercises(nextPayload);
   updateCustomExerciseSyncStatus(`Saved "${entry.name}" to Dropbox.`, 'success');
