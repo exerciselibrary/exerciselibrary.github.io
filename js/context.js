@@ -39,6 +39,7 @@ export const state = {
   groupByMuscleGroups: false,
   includeCheckboxes: false,
   weightUnit: 'LBS',
+  customExercises: [],
   plan: {
     name: '',
     selectedName: '',
@@ -119,7 +120,19 @@ export const els = {
   modalNotice: document.getElementById('modalNotice'),
   modalClose: document.getElementById('modalClose'),
   scrollUp: document.getElementById('scrollUp'),
-  scrollDown: document.getElementById('scrollDown')
+  scrollDown: document.getElementById('scrollDown'),
+  customExerciseSync: document.getElementById('customExerciseSync'),
+  customExerciseSyncStatus: document.getElementById('customExerciseSyncStatus'),
+  customExerciseBanner: document.getElementById('customExerciseBanner'),
+  customExerciseModal: document.getElementById('customExerciseModal'),
+  customExerciseName: document.getElementById('customExerciseName'),
+  customExerciseMuscleGroups: document.getElementById('customExerciseMuscleGroups'),
+  customExerciseMuscles: document.getElementById('customExerciseMuscles'),
+  customExerciseEquipment: document.getElementById('customExerciseEquipment'),
+  customExerciseSubmit: document.getElementById('customExerciseSubmit'),
+  customExerciseCancel: document.getElementById('customExerciseCancel'),
+  customExerciseClose: document.getElementById('customExerciseClose'),
+  customExerciseMessage: document.getElementById('customExerciseMessage')
 };
 
 export const groupColorMap = new Map();

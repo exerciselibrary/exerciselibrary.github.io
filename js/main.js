@@ -1,8 +1,7 @@
 // Entry point for the Exercise Library web app.
 // Wires together the shared state, feature modules, and DOM events.
-import { state, els, setSearchIndex } from './context.js';
-import { uniq, niceName } from './utils.js';
-import { buildSearchIndex } from './search.js';
+import { state, els } from './context.js';
+import { niceName } from './utils.js';
 import {
   registerRenderHandler as registerBuilderRender,
   renderBuilder,
@@ -36,7 +35,10 @@ import {
   handleGroupDrop,
   closeModal,
   applyDeepLink,
-  shuffleBuilderOrder
+  shuffleBuilderOrder,
+  registerCustomExerciseHooks,
+  setCustomExerciseAvailability,
+  showCustomExerciseMessage
 } from './builder.js';
 import { AnalyticsDashboard } from './analytics-dashboard.js';
 import {
@@ -46,7 +48,8 @@ import {
   shuffleLibraryExercises,
   filterData,
   renderGrid,
-  refreshFilterButtons
+  refreshFilterButtons,
+  refreshFilterOptions
 } from './library.js';
 import { persistState, loadPersistedState, applyWorkoutFromParam } from './storage.js';
 import { getActiveGrouping, applyGrouping } from './grouping.js';
@@ -58,6 +61,14 @@ import {
   removePlanLocally,
   loadLocalPlanEntries
 } from './plan-storage.js';
+import {
+  registerCustomExerciseListeners,
+  setBaseExercises,
+  setCustomExercises,
+  clearCustomExercises,
+  buildCustomExerciseEntry,
+  getDropboxPayloadForCustomExercises
+} from './custom-exercises.js';
 
 const dropboxManager = typeof DropboxManager !== 'undefined' ? new DropboxManager() : null;
 let dropboxInitialized = false;
@@ -71,6 +82,117 @@ const analyticsDashboard =
     : null;
 
 const planCache = new Map(); // name -> { source, items }
+
+registerCustomExerciseListeners({
+  onCatalogueUpdated: () => {
+    refreshFilterOptions();
+    render();
+  }
+});
+
+const updateCustomExerciseSyncStatus = (message, variant = 'info') => {
+  if (!els.customExerciseSyncStatus) return;
+  els.customExerciseSyncStatus.textContent = message || '';
+  els.customExerciseSyncStatus.classList.remove('error', 'success', 'warning');
+  if (variant && variant !== 'info' && message) {
+    els.customExerciseSyncStatus.classList.add(variant);
+  }
+};
+
+const setCustomExerciseSyncButtonDisabled = (disabled) => {
+  if (els.customExerciseSync) {
+    els.customExerciseSync.disabled = Boolean(disabled);
+  }
+};
+
+const ensureDropboxForCustomExercises = async () => {
+  if (!dropboxManager) {
+    updateCustomExerciseSyncStatus('Dropbox integration unavailable.', 'error');
+    return false;
+  }
+  await initializeDropbox();
+  if (!dropboxManager.isConnected) {
+    updateCustomExerciseSyncStatus('Connect Dropbox to sync custom exercises.', 'warning');
+    handleDropboxButtonClick();
+    return false;
+  }
+  try {
+    await dropboxManager.initializeFolderStructure();
+  } catch (error) {
+    updateCustomExerciseSyncStatus(`Dropbox init failed: ${error.message}`, 'error');
+    return false;
+  }
+  return true;
+};
+
+const loadCustomExercisesFromDropbox = async (options = {}) => {
+  if (options.requireConnection) {
+    const ready = await ensureDropboxForCustomExercises();
+    if (!ready) {
+      return;
+    }
+  }
+  if (!dropboxManager || !dropboxManager.isConnected) {
+    clearCustomExercises();
+    if (!options.silent) {
+      updateCustomExerciseSyncStatus('Connect Dropbox to sync custom exercises.', 'warning');
+    }
+    setCustomExerciseAvailability(false);
+    return;
+  }
+  const interactive = options.interactive !== false;
+  try {
+    if (interactive) {
+      setCustomExerciseSyncButtonDisabled(true);
+    }
+    if (!options.silent) {
+      updateCustomExerciseSyncStatus('Syncing custom exercises...', 'info');
+    }
+    await dropboxManager.initializeFolderStructure();
+    const list = await dropboxManager.loadCustomExercises();
+    setCustomExercises(list);
+    const message = `Loaded ${list.length} custom exercise${list.length === 1 ? '' : 's'}.`;
+    updateCustomExerciseSyncStatus(message, 'success');
+    setCustomExerciseAvailability(true);
+  } catch (error) {
+    updateCustomExerciseSyncStatus(`Failed to sync custom exercises: ${error.message}`, 'error');
+    showCustomExerciseMessage(error.message || 'Dropbox custom exercise sync failed.', 'error', {
+      persist: true
+    });
+  } finally {
+    if (interactive) {
+      setCustomExerciseSyncButtonDisabled(false);
+    }
+  }
+};
+
+const handleSaveCustomExercise = async (payload = {}) => {
+  const ready = await ensureDropboxForCustomExercises();
+  if (!ready) {
+    throw new Error('Connect Dropbox to create custom exercises.');
+  }
+  const entry = buildCustomExerciseEntry({
+    name: payload.name,
+    muscleGroups: payload.muscleGroups,
+    muscles: payload.muscles,
+    equipment: payload.equipment
+  });
+  const existing = getDropboxPayloadForCustomExercises();
+  const entryPayload = getDropboxPayloadForCustomExercises([entry])[0];
+  const nextPayload = existing.concat(entryPayload);
+  await dropboxManager.saveCustomExercises(nextPayload);
+  setCustomExercises(nextPayload);
+  updateCustomExerciseSyncStatus(`Saved "${entry.name}" to Dropbox.`, 'success');
+  return entry;
+};
+
+registerCustomExerciseHooks({
+  ensureDropboxReady: ensureDropboxForCustomExercises,
+  saveCustomExercise: handleSaveCustomExercise
+});
+setCustomExerciseAvailability(Boolean(dropboxManager && dropboxManager.isConnected));
+updateCustomExerciseSyncStatus('Connect Dropbox to sync custom exercises.', 'warning');
+setCustomExerciseSyncButtonDisabled(false);
 
 const showAnalyticsPanel = () => {
   if (state.activePanel === 'analytics') return;
@@ -522,6 +644,11 @@ function bindGlobalEvents() {
       }
     });
   }
+  if (els.customExerciseSync) {
+    els.customExerciseSync.addEventListener('click', () => {
+      loadCustomExercisesFromDropbox({ requireConnection: true });
+    });
+  }
   if (els.groupEquipment) {
     els.groupEquipment.addEventListener('click', () => toggleGrouping('equipment'));
   }
@@ -717,10 +844,17 @@ const initializeDropbox = async () => {
       state.dropboxPlanNames = [];
       removeDropboxPlansFromCache();
       refreshPlanNameOptions();
+      clearCustomExercises();
+      setCustomExerciseAvailability(false);
+      updateCustomExerciseSyncStatus('Connect Dropbox to sync custom exercises.', 'warning');
+      setCustomExerciseSyncButtonDisabled(false);
     } else {
       const name = dropboxManager.account?.name?.display_name || 'Dropbox';
       updateSyncStatus(`Connected to Dropbox as ${name}.`, 'success');
       fetchDropboxPlans({ silent: true });
+      setCustomExerciseAvailability(true);
+      setCustomExerciseSyncButtonDisabled(false);
+      loadCustomExercisesFromDropbox({ silent: true, interactive: false });
     }
   };
   dropboxManager.onLog = (message, type) => {
@@ -818,11 +952,7 @@ async function init() {
   fetch('exercise_dump.json')
     .then((res) => res.json())
     .then((json) => {
-      state.data = Array.isArray(json) ? json : [];
-      state.muscles = uniq(state.data.flatMap((ex) => ex.muscleGroups || []));
-      state.subMuscles = uniq(state.data.flatMap((ex) => ex.muscles || []));
-      state.equipment = uniq(state.data.flatMap((ex) => ex.equipment || []));
-      setSearchIndex(buildSearchIndex(state.data));
+      setBaseExercises(Array.isArray(json) ? json : []);
 
       if (workoutParam) applyWorkoutFromParam(workoutParam);
       else loadPersistedState();

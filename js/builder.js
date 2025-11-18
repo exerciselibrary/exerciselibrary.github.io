@@ -39,6 +39,23 @@ import {
 let renderCallback = null;
 let planNameDebounceId = null;
 const PLAN_NAME_DEBOUNCE_MS = 200;
+const CUSTOM_SLOT_LABEL = 'Add Custom Exercise';
+
+const customExerciseHooks = {
+  ensureDropboxReady: null,
+  saveCustomExercise: null
+};
+
+let customExerciseDefaultBanner = {
+  text: 'Connect Dropbox to create custom exercises.',
+  variant: 'warning'
+};
+let customExerciseBannerTimeout = null;
+
+const customExerciseModalState = {
+  insertIndex: 0,
+  busy: false
+};
 
 export const registerRenderHandler = (fn) => {
   renderCallback = fn;
@@ -49,6 +66,266 @@ const triggerRender = () => {
     renderCallback();
   }
 };
+
+const applyCustomExerciseBanner = (text, variant = 'info') => {
+  if (!els.customExerciseBanner) return;
+  const classList = els.customExerciseBanner.classList;
+  classList.remove('success', 'error', 'warning');
+  if (!text) {
+    els.customExerciseBanner.textContent = '';
+    return;
+  }
+  if (variant && variant !== 'info') {
+    classList.add(variant);
+  }
+  els.customExerciseBanner.textContent = text;
+};
+
+export const setCustomExerciseAvailability = (connected) => {
+  customExerciseDefaultBanner = connected
+    ? {
+        text: 'Hover above, below, or between exercises to insert a Dropbox-backed custom exercise.',
+        variant: 'info'
+      }
+    : {
+        text: 'Connect Dropbox to create and sync custom exercises.',
+        variant: 'warning'
+      };
+  if (!customExerciseBannerTimeout) {
+    applyCustomExerciseBanner(customExerciseDefaultBanner.text, customExerciseDefaultBanner.variant);
+  }
+};
+
+export const showCustomExerciseMessage = (text, variant = 'info', options = {}) => {
+  applyCustomExerciseBanner(text, variant);
+  if (customExerciseBannerTimeout) {
+    clearTimeout(customExerciseBannerTimeout);
+    customExerciseBannerTimeout = null;
+  }
+  if (!options.persist) {
+    customExerciseBannerTimeout = setTimeout(() => {
+      customExerciseBannerTimeout = null;
+      applyCustomExerciseBanner(customExerciseDefaultBanner.text, customExerciseDefaultBanner.variant);
+    }, options.duration || 4000);
+  }
+};
+
+export const registerCustomExerciseHooks = (hooks = {}) => {
+  if (hooks.ensureDropboxReady) {
+    customExerciseHooks.ensureDropboxReady = hooks.ensureDropboxReady;
+  }
+  if (hooks.saveCustomExercise) {
+    customExerciseHooks.saveCustomExercise = hooks.saveCustomExercise;
+  }
+};
+
+applyCustomExerciseBanner(customExerciseDefaultBanner.text, customExerciseDefaultBanner.variant);
+
+const formatOptionId = (prefix, value) => {
+  const safeValue = typeof value === 'string' ? value.replace(/[^a-z0-9]+/gi, '-').toLowerCase() : '';
+  return `${prefix}-${safeValue || Math.random().toString(36).slice(2)}`;
+};
+
+const buildCheckboxOptions = (values, container) => {
+  if (!container) return;
+  container.innerHTML = '';
+  const sorted = Array.isArray(values)
+    ? [...values].sort((a, b) => niceName(a).localeCompare(niceName(b)))
+    : [];
+  sorted.forEach((value) => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = value;
+    const id = formatOptionId(container.id || 'custom-option', value);
+    input.id = id;
+    label.htmlFor = id;
+    const text = document.createElement('span');
+    text.textContent = niceName(value);
+    label.append(input, text);
+    container.appendChild(label);
+  });
+};
+
+const collectSelectedValues = (container) => {
+  if (!container) return [];
+  const inputs = container.querySelectorAll('input[type="checkbox"]');
+  return Array.from(inputs)
+    .filter((input) => input.checked)
+    .map((input) => input.value)
+    .filter(Boolean);
+};
+
+const setCustomExerciseModalBusy = (busy) => {
+  customExerciseModalState.busy = Boolean(busy);
+  const buttons = [els.customExerciseSubmit, els.customExerciseCancel, els.customExerciseClose].filter(Boolean);
+  buttons.forEach((button) => {
+    button.disabled = Boolean(busy);
+  });
+};
+
+const setCustomExerciseMessage = (text, variant = 'info') => {
+  if (!els.customExerciseMessage) return;
+  els.customExerciseMessage.textContent = text || '';
+  els.customExerciseMessage.classList.remove('error', 'success');
+  if (variant && variant !== 'info' && text) {
+    els.customExerciseMessage.classList.add(variant);
+  }
+};
+
+const populateCustomExerciseOptions = () => {
+  buildCheckboxOptions(state.muscles, els.customExerciseMuscleGroups);
+  buildCheckboxOptions(state.subMuscles, els.customExerciseMuscles);
+  buildCheckboxOptions(state.equipment, els.customExerciseEquipment);
+};
+
+const closeCustomExerciseModal = () => {
+  if (!els.customExerciseModal) return;
+  els.customExerciseModal.classList.add('hidden');
+  els.customExerciseModal.setAttribute('aria-hidden', 'true');
+  setCustomExerciseModalBusy(false);
+  setCustomExerciseMessage('');
+};
+
+const openCustomExerciseModal = (insertIndex = state.builder.order.length) => {
+  populateCustomExerciseOptions();
+  customExerciseModalState.insertIndex = Math.max(0, Math.min(insertIndex, state.builder.order.length));
+  if (els.customExerciseName) {
+    els.customExerciseName.value = '';
+  }
+  const checkboxContainers = [
+    els.customExerciseMuscleGroups,
+    els.customExerciseMuscles,
+    els.customExerciseEquipment
+  ].filter(Boolean);
+  checkboxContainers.forEach((container) => {
+    container.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.checked = false;
+    });
+  });
+  setCustomExerciseMessage('');
+  setCustomExerciseModalBusy(false);
+  if (els.customExerciseModal) {
+    els.customExerciseModal.classList.remove('hidden');
+    els.customExerciseModal.setAttribute('aria-hidden', 'false');
+  }
+  if (els.customExerciseName) {
+    els.customExerciseName.focus();
+  }
+};
+
+const handleCustomSlotClick = async (insertIndex) => {
+  if (typeof customExerciseHooks.ensureDropboxReady === 'function') {
+    try {
+      const ready = await customExerciseHooks.ensureDropboxReady();
+      if (!ready) {
+        showCustomExerciseMessage('Connect Dropbox to create custom exercises.', 'warning', { persist: true });
+        return;
+      }
+    } catch (error) {
+      showCustomExerciseMessage(error.message || 'Dropbox connection required.', 'error', { persist: true });
+      return;
+    }
+  }
+  openCustomExerciseModal(insertIndex);
+};
+
+const createCustomExerciseSlot = (insertIndex, options = {}) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'builder-custom-slot';
+  if (options.showCard) {
+    button.classList.add('placeholder-card');
+  }
+  button.dataset.insertIndex = String(insertIndex);
+  button.setAttribute('aria-label', 'Add custom exercise');
+  const label = document.createElement('span');
+  label.className = 'slot-label';
+  label.textContent = CUSTOM_SLOT_LABEL;
+  button.appendChild(label);
+  if (options.showCard) {
+    const hint = document.createElement('span');
+    hint.className = 'slot-hint';
+    hint.textContent = options.hint || 'Dropbox required to sync custom exercises.';
+    button.appendChild(hint);
+  }
+  button.addEventListener('click', () => handleCustomSlotClick(insertIndex));
+  return button;
+};
+
+const handleCustomExerciseSubmit = async () => {
+  if (customExerciseModalState.busy || typeof customExerciseHooks.saveCustomExercise !== 'function') return;
+  const name = (els.customExerciseName && els.customExerciseName.value) || '';
+  const muscleGroups = collectSelectedValues(els.customExerciseMuscleGroups);
+  const muscles = collectSelectedValues(els.customExerciseMuscles);
+  const equipment = collectSelectedValues(els.customExerciseEquipment);
+  if (!name.trim()) {
+    setCustomExerciseMessage('Name is required.', 'error');
+    if (els.customExerciseName) els.customExerciseName.focus();
+    return;
+  }
+  setCustomExerciseModalBusy(true);
+  setCustomExerciseMessage('Saving custom exercise...', 'info');
+  try {
+    const exercise = await customExerciseHooks.saveCustomExercise({
+      name,
+      muscleGroups,
+      muscles,
+      equipment
+    });
+    if (exercise) {
+      addExerciseToBuilder(exercise, { insertIndex: customExerciseModalState.insertIndex });
+      closeCustomExerciseModal();
+      showCustomExerciseMessage(`Added "${exercise.name}" to your workout.`, 'success');
+      triggerRender();
+    } else {
+      setCustomExerciseMessage('Unable to save custom exercise.', 'error');
+    }
+  } catch (error) {
+    setCustomExerciseMessage(error.message || 'Failed to save custom exercise.', 'error');
+  } finally {
+    setCustomExerciseModalBusy(false);
+  }
+};
+
+if (els.customExerciseSubmit) {
+  els.customExerciseSubmit.addEventListener('click', handleCustomExerciseSubmit);
+}
+if (els.customExerciseCancel) {
+  els.customExerciseCancel.addEventListener('click', () => {
+    if (!customExerciseModalState.busy) {
+      closeCustomExerciseModal();
+    }
+  });
+}
+if (els.customExerciseClose) {
+  els.customExerciseClose.addEventListener('click', () => {
+    if (!customExerciseModalState.busy) {
+      closeCustomExerciseModal();
+    }
+  });
+}
+if (els.customExerciseModal) {
+  els.customExerciseModal.addEventListener('click', (event) => {
+    if (event.target === els.customExerciseModal && !customExerciseModalState.busy) {
+      closeCustomExerciseModal();
+    }
+  });
+}
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape' && els.customExerciseModal && !els.customExerciseModal.classList.contains('hidden')) {
+        event.preventDefault();
+        if (!customExerciseModalState.busy) {
+          closeCustomExerciseModal();
+        }
+      }
+    },
+    true
+  );
+}
 
 const propagateSetValue = (entry, startIndex, apply) => {
   if (!entry || !Array.isArray(entry.sets)) return;
@@ -1568,7 +1845,7 @@ export const renderSetRow = (exerciseId, set, index) => {
   return tr;
 };
 
-export const addExerciseToBuilder = (exercise) => {
+export const addExerciseToBuilder = (exercise, options = {}) => {
   const normalized = attachExerciseIdentifiers(exercise);
   const targetId = normalized.id;
   if (!targetId || state.builder.items.has(targetId)) return;
@@ -1587,7 +1864,12 @@ export const addExerciseToBuilder = (exercise) => {
   state.builder.items.set(targetId, entry);
 
   const grouping = getActiveGrouping();
-  if (grouping) {
+  const insertIndex = Number.isInteger(options.insertIndex)
+    ? Math.max(0, Math.min(options.insertIndex, state.builder.order.length))
+    : null;
+  if (insertIndex !== null) {
+    state.builder.order.splice(insertIndex, 0, targetId);
+  } else if (grouping) {
     const key = getGroupingKey(entry.exercise, grouping);
     let inserted = false;
     for (let i = 0; i < state.builder.order.length; i += 1) {
@@ -1608,9 +1890,11 @@ export const addExerciseToBuilder = (exercise) => {
       }
     }
     if (!inserted) state.builder.order.push(targetId);
-    applyGrouping(grouping);
   } else {
     state.builder.order.push(targetId);
+  }
+  if (grouping) {
+    applyGrouping(grouping);
   }
   persistState();
 };
@@ -2401,9 +2685,21 @@ const moveBuilderEntry = (exerciseId, offset) => {
 
 export const renderBuilder = () => {
   const { order, items } = state.builder;
+  const renderedSlots = new Set();
+  const appendSlot = (parent, index, options = {}) => {
+    if (!parent || renderedSlots.has(index)) return;
+    parent.appendChild(createCustomExerciseSlot(index, options));
+    renderedSlots.add(index);
+  };
   if (!order.length) {
     els.builderList.classList.remove('grouped');
     els.builderList.innerHTML = '<div class="empty">Add exercises from the library to build a custom workout.</div>';
+    const slotWrapper = document.createElement('div');
+    slotWrapper.className = 'builder-custom-empty-wrapper';
+    slotWrapper.appendChild(
+      createCustomExerciseSlot(0, { showCard: true, hint: 'Hover to add a Dropbox custom exercise.' })
+    );
+    els.builderList.appendChild(slotWrapper);
     els.builderSummary.textContent = 'No exercises selected yet.';
     renderMuscleSummary();
     return;
@@ -2447,6 +2743,7 @@ export const renderBuilder = () => {
         const entry = items.get(id);
         if (!entry) return;
         displayIndex += 1;
+        appendSlot(body, orderIndexMap.get(id) ?? displayIndex - 1);
         const { card, setCount } = buildBuilderCard(entry, displayIndex, {
           groupColor: group.color,
           groupKey: group.key,
@@ -2455,6 +2752,7 @@ export const renderBuilder = () => {
         });
         setTotal += setCount;
         body.appendChild(card);
+        appendSlot(body, (orderIndexMap.get(id) ?? displayIndex - 1) + 1);
       });
 
       groupEl.append(head, body);
@@ -2472,12 +2770,14 @@ export const renderBuilder = () => {
     order.forEach((id, idx) => {
       const entry = items.get(id);
       if (!entry) return;
+      appendSlot(els.builderList, idx);
       const { card, setCount } = buildBuilderCard(entry, idx + 1, {
         orderIndex: idx,
         totalCount
       });
       setTotal += setCount;
       els.builderList.appendChild(card);
+      appendSlot(els.builderList, idx + 1);
     });
   }
 

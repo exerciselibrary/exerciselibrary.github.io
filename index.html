@@ -98,7 +98,13 @@
               <button id="toggleBuilderFilter" class="btn small" title="Toggle to show only exercises in the workout">Show Workout Only</button>
               <button id="randomizeLibrary" class="btn small" title="Shuffle exercises randomly">Shuffle</button>
             </div>
-            <div id="count" class="muted"></div>
+            <div class="toolbar-right">
+              <div id="count" class="muted"></div>
+              <div class="custom-exercise-sync">
+                <button id="customExerciseSync" class="btn small" type="button" title="Sync Dropbox custom exercises into the library">Sync Custom Exercises</button>
+                <div id="customExerciseSyncStatus" class="custom-exercise-sync-status muted small" aria-live="polite"></div>
+              </div>
+            </div>
           </div>
           <div id="activeFilters" class="active-filters muted small"></div>
           <div id="exerciseGrid" class="grid"></div>
@@ -177,7 +183,39 @@
           </div>
           <div id="scheduleCalendar" class="schedule-calendar" aria-live="polite"></div>
 
+          <div id="customExerciseBanner" class="custom-exercise-banner muted small" aria-live="polite"></div>
           <div id="builderList" class="builder-list"></div>
+          <div id="customExerciseModal" class="custom-exercise-modal hidden" aria-hidden="true">
+            <div class="custom-exercise-dialog" role="dialog" aria-modal="true" aria-labelledby="customExerciseModalTitle">
+              <div class="custom-exercise-header">
+                <h3 id="customExerciseModalTitle">Add Custom Exercise</h3>
+                <button type="button" id="customExerciseClose" class="btn icon" aria-label="Close custom exercise dialog">&times;</button>
+              </div>
+              <div class="custom-exercise-body">
+                <label class="custom-field">
+                  <span>Name</span>
+                  <input type="text" id="customExerciseName" placeholder="e.g., Tempo Push-Up" />
+                </label>
+                <div class="custom-field">
+                  <span>Major Muscle Groups</span>
+                  <div id="customExerciseMuscleGroups" class="custom-checkbox-grid"></div>
+                </div>
+                <div class="custom-field">
+                  <span>Muscles</span>
+                  <div id="customExerciseMuscles" class="custom-checkbox-grid"></div>
+                </div>
+                <div class="custom-field">
+                  <span>Equipment</span>
+                  <div id="customExerciseEquipment" class="custom-checkbox-grid"></div>
+                </div>
+                <div id="customExerciseMessage" class="custom-exercise-message" aria-live="polite"></div>
+              </div>
+              <div class="custom-exercise-actions">
+                <button type="button" id="customExerciseCancel" class="btn">Cancel</button>
+                <button type="button" id="customExerciseSubmit" class="btn primary">Add Custom Exercise</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="analyticsPanel" class="panel">
