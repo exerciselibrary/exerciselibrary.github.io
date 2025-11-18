@@ -23,7 +23,10 @@ Code structure (new modular layout)
 - `js/builder.js` — workout builder UI, drag-and-drop ordering, export/print/share actions.
 - `js/grouping.js` — grouping helpers (by equipment, muscles, or muscle groups) shared by builder.
 - `js/storage.js` — localStorage persistence, deep-link encoding, and workout restoration.
+- `js/custom-exercises.js` — merges Dropbox-backed custom exercises into the main catalogue, computes new identifiers, and exposes helpers for creating/syncing custom workout entries.
+- `js/analytics-dashboard.js` — renders the analytics tab, syncs Vitruvian workouts from Dropbox, and maps telemetry into charts/statistics.
 - `shared/weight-utils.js` — shared conversion helpers (kg/lb math) surfaced to both the Exercise Library and workout-time console.
+- `shared/echo-telemetry.js` — shared telemetry parsing helpers used by the analytics dashboard and the workout-time console.
 
 Each module is documented at the top to make it clear what part of the experience it owns. The builder and library modules also register a render callback so UI updates stay centralised in `main.js`.
 
@@ -34,10 +37,12 @@ Workout Time app structure
 - `workout-time/dropbox.js`, `device.js`, `chart.js`, `modes.js`, `protocol.js` — unchanged supporting modules for cloud sync, Bluetooth transport, charting, and protocol constants.
 - `workout-time/plan-runner.js` is loaded before `app.js`, so you can further extend the plan behaviour without reopening the main file.
 
-Local tests
+Automated tests
 
-- Run `npm test` to execute the repo’s Node suite plus every `local-tests/*.test.js` file; the local portion auto-skips if the directory is missing. Use `npm run test:local` to run just the local harness.
-- Tests live in `local-tests/` and are ignored by git so they never end up in commits. Run them directly with `node <file>` if you want to target a single script.
+- Run `npm run test:unit` to execute the committed Node suite in `tests/` (builder serialization, storage, search, workout console flows, and custom-workout creation coverage). Target a single file with `node tests/<file>.test.js`.
+- Run `npm run test:local` to execute the optional Node harness in `local-tests/`; it auto-skips when the directory is missing.
+- Run `npm test` to execute both suites; useful before syncing Dropbox plans or sharing builds.
+- The optional `local-tests/` scripts stay gitignored so debugging scaffolding never lands in commits. Run any script directly with `node local-tests/<file>.test.js`.
 - `node local-tests/builder.test.js` bootstraps a DOM stub, exports the builder via `buildPlanSyncPayload`, then reloads it with `loadPlanIntoBuilder` to ensure sets, videos, and progression metadata round-trip correctly.
 - `node local-tests/search.test.js` covers the fuzzy search scoring pipeline (token bonuses, cached index reuse, and substring fallbacks).
 - `node local-tests/storage-sync.test.js` exercises `plan-storage.js` by faking `localStorage` to verify plan indexing, persistence, and deletion flows.
