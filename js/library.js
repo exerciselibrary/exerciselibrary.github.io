@@ -82,7 +82,7 @@ const wireModeBar = (area, bar) => {
   bar.addEventListener('mouseleave', hide);
 };
 
-export const buildFilters = () => {
+export const refreshFilterOptions = () => {
   buildButtonGroup(state.muscles, state.buttons.muscles, els.muscleFilters, (value) => {
     toggleSelection(state.filters.muscles, value, state.buttons.muscles.get(value));
     triggerRender();
@@ -100,6 +100,12 @@ export const buildFilters = () => {
     triggerRender();
     persistState();
   });
+
+  syncButtonStates();
+};
+
+export const buildFilters = () => {
+  refreshFilterOptions();
 
   els.clearMuscles.addEventListener('click', () => {
     state.filters.muscles.clear();

@@ -8796,8 +8796,29 @@ class VitruvianApp {
         );
       }
       this.planItems = Array.isArray(parsed) ? parsed : [];
+      this._loadedPlanName = planName;
+      this._preferredPlanSelection = planName;
+      this.syncPlanNameInputTo(planName);
+
       const inferredUnit = this.inferPlanWeightUnit(this.planItems);
-      const normalized = this.ensurePlanItemsRepresentUnit(this.planItems, this.weightUnit);
+      const normalizedPlanUnit =
+        inferredUnit === "lb" || inferredUnit === "kg" ? inferredUnit : null;
+
+      if (normalizedPlanUnit && normalizedPlanUnit !== this.weightUnit) {
+        this.setWeightUnit(normalizedPlanUnit, { force: true });
+        if (!suppressLog) {
+          const friendly = this.getFriendlyUnitLabel(normalizedPlanUnit);
+          this.addLogEntry(
+            `Switched to ${friendly} to match plan "${planName}".`,
+            "info",
+          );
+        }
+      }
+
+      const normalized = this.ensurePlanItemsRepresentUnit(
+        this.planItems,
+        this.weightUnit,
+      );
       if (normalized) {
         this.savePlanLocally(planName, this.planItems);
         if (this.dropboxManager?.isConnected) {
@@ -8806,22 +8827,12 @@ class VitruvianApp {
             suppressError: true,
           });
         }
-        if (inferredUnit && inferredUnit !== this.weightUnit) {
-          this.addLogEntry(
-            `Converted plan units from ${this.getFriendlyUnitLabel(inferredUnit)} to ${this.getFriendlyUnitLabel()}.`,
-            "info",
-          );
-        } else {
-          this.addLogEntry(
-            `Normalized plan units to ${this.getFriendlyUnitLabel()}.`,
-            "info",
-          );
-        }
+        this.addLogEntry(
+          `Normalized plan units to ${this.getFriendlyUnitLabel()}.`,
+          "info",
+        );
       }
       this.renderPlanUI();
-      this._loadedPlanName = planName;
-      this._preferredPlanSelection = planName;
-      this.syncPlanNameInputTo(planName);
       if (!suppressLog) {
         this.addLogEntry(`Loaded plan "${planName}"`, "success");
       }

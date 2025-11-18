@@ -203,6 +203,17 @@ class DropboxManager {
         this.log(`Failed to create plans folder: ${error.message}`, "error");
       }
     }
+
+    try {
+      await client.filesCreateFolderV2({ path: "/custom_exercises" });
+      this.log("Created /custom_exercises folder", "success");
+    } catch (error) {
+      if (error.error?.error[".tag"] === "path" && error.error.error.path[".tag"] === "conflict") {
+        this.log("Custom exercises folder already exists", "info");
+      } else {
+        this.log(`Failed to create custom exercises folder: ${error.message}`, "error");
+      }
+    }
   }
 
   // Save workout to Dropbox
@@ -400,6 +411,10 @@ class DropboxManager {
     return "/personal-records.json";
   }
 
+  customExercisesPath() {
+    return "/custom_exercises/custom_exercises.json";
+  }
+
   async loadPlansIndex() {
     if (!this.isConnected) {
       throw new Error("Not connected to Dropbox");
@@ -504,6 +519,49 @@ class DropboxManager {
     });
 
     this.log(`Saved ${payload.records.length} personal record(s)`, "success");
+    return true;
+  }
+
+  async loadCustomExercises() {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Dropbox");
+    }
+
+    try {
+      const client = await this.ensureDropboxClient();
+      const response = await client.filesDownload({ path: this.customExercisesPath() });
+      const fileBlob = response.result.fileBlob;
+      const text = await fileBlob.text();
+      const data = JSON.parse(text);
+
+      if (Array.isArray(data?.exercises)) {
+        return data.exercises;
+      }
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      const summary = error?.error?.error_summary || "";
+      if (summary.includes("path/not_found/")) {
+        this.log("Custom exercises file not found; starting with an empty set", "info");
+        return [];
+      }
+
+      this.log(`Failed to load custom exercises: ${error.message}`, "error");
+      throw error;
+    }
+  }
+
+  async saveCustomExercises(exercises = []) {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Dropbox");
+    }
+    const payload = Array.isArray(exercises) ? exercises : [];
+    const client = await this.ensureDropboxClient();
+    await client.filesUpload({
+      path: this.customExercisesPath(),
+      contents: JSON.stringify(payload, null, 2),
+      mode: { ".tag": "overwrite" },
+    });
+    this.log(`Saved ${payload.length} custom exercise(s)`, "success");
     return true;
   }
 
