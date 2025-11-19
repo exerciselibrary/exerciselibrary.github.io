@@ -275,20 +275,96 @@
                   <p id="analyticsSelectionLabel">Select an exercise to visualize daily PRs.</p>
                 </div>
                 <div class="analytics-metrics">
-                  <div class="analytics-metric">
+                  <div class="analytics-metric analytics-metric--dual">
                     <span class="analytics-metric-label">Peak PR</span>
-                    <strong id="analyticsPeakValue">—</strong>
-                    <small id="analyticsPeakDate"></small>
+                    <div class="analytics-metric-split">
+                      <div class="analytics-metric-split__item analytics-metric-split__item--concentric">
+                        <span class="analytics-metric-split__label">Concentric</span>
+                        <strong id="analyticsPeakConcentric">—</strong>
+                        <small id="analyticsPeakConcentricDate"></small>
+                      </div>
+                      <div class="analytics-metric-split__item analytics-metric-split__item--eccentric">
+                        <span class="analytics-metric-split__label">Eccentric</span>
+                        <strong id="analyticsPeakEccentric">—</strong>
+                        <small id="analyticsPeakEccentricDate"></small>
+                      </div>
+                    </div>
                   </div>
-                  <div class="analytics-metric">
+                  <div class="analytics-metric analytics-metric--dual">
                     <span class="analytics-metric-label">Baseline</span>
-                    <strong id="analyticsMinValue">—</strong>
-                    <small id="analyticsMinDate"></small>
+                    <div class="analytics-metric-split">
+                      <div class="analytics-metric-split__item analytics-metric-split__item--concentric">
+                        <span class="analytics-metric-split__label">Concentric</span>
+                        <strong id="analyticsBaselineConcentric">—</strong>
+                        <small id="analyticsBaselineConcentricDate"></small>
+                      </div>
+                      <div class="analytics-metric-split__item analytics-metric-split__item--eccentric">
+                        <span class="analytics-metric-split__label">Eccentric</span>
+                        <strong id="analyticsBaselineEccentric">—</strong>
+                        <small id="analyticsBaselineEccentricDate"></small>
+                      </div>
+                    </div>
                   </div>
-                  <div class="analytics-metric analytics-metric--gain">
+                  <div class="analytics-metric analytics-metric--gain analytics-metric--dual">
                     <span class="analytics-metric-label">Strength Gain</span>
-                    <strong id="analyticsDeltaPct">0%</strong>
-                    <small id="analyticsDeltaValue">—</small>
+                    <div class="analytics-metric-split analytics-metric-split--compact">
+                      <div class="analytics-metric-split__item analytics-metric-split__item--concentric">
+                        <span class="analytics-metric-split__label">Concentric</span>
+                        <strong id="analyticsDeltaConcentricPct">0%</strong>
+                        <small id="analyticsDeltaConcentricValue">—</small>
+                      </div>
+                      <div class="analytics-metric-split__item analytics-metric-split__item--eccentric">
+                        <span class="analytics-metric-split__label">Eccentric</span>
+                        <strong id="analyticsDeltaEccentricPct">0%</strong>
+                        <small id="analyticsDeltaEccentricValue">—</small>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="analytics-metric analytics-metric--workload" id="analyticsWorkloadMetric">
+                    <span class="analytics-metric-label">Work Output</span>
+                    <div class="analytics-workload-grid">
+                      <button
+                        type="button"
+                        class="analytics-workload-cell analytics-workload-cell--primary"
+                        id="analyticsWorkloadTrigger"
+                        aria-controls="analyticsWorkloadTooltip"
+                        aria-expanded="false"
+                      >
+                        <span class="analytics-workload-cell__label">Total Volume</span>
+                        <strong id="analyticsTotalVolume">—</strong>
+                        <small>Hover or focus for rep mix</small>
+                      </button>
+                      <div class="analytics-workload-cell">
+                        <span class="analytics-workload-cell__label">Total Reps</span>
+                        <strong id="analyticsTotalReps">—</strong>
+                        <small>Working reps only</small>
+                      </div>
+                      <div class="analytics-workload-cell">
+                        <span class="analytics-workload-cell__label">Avg Load</span>
+                        <strong id="analyticsAverageLoad">—</strong>
+                        <small>Total load ÷ reps</small>
+                      </div>
+                    </div>
+                    <div class="analytics-workload-tooltip" id="analyticsWorkloadTooltip" role="tooltip" aria-hidden="true">
+                      <div class="analytics-workload-tooltip__header">
+                        <span>Volume mix by rep type</span>
+                        <strong id="analyticsWorkloadTooltipTotal">—</strong>
+                      </div>
+                      <div class="analytics-workload-tooltip__summary">
+                        <div class="analytics-workload-tooltip__summary-item analytics-workload-tooltip__summary-item--concentric">
+                          <span>Avg Concentric</span>
+                          <strong id="analyticsWorkloadAvgConcentric">—</strong>
+                        </div>
+                        <div class="analytics-workload-tooltip__summary-item analytics-workload-tooltip__summary-item--eccentric">
+                          <span>Avg Eccentric</span>
+                          <strong id="analyticsWorkloadAvgEccentric">—</strong>
+                        </div>
+                      </div>
+                      <div class="analytics-workload-tooltip__content">
+                        <div class="analytics-workload-pie" id="analyticsWorkloadPie" aria-hidden="true"></div>
+                        <div class="analytics-workload-breakdown" id="analyticsWorkloadBreakdown"></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
