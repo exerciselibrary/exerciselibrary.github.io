@@ -11,6 +11,21 @@ const ANALYTICS_CACHE_KEY = 'vitruvian.analyticsWorkouts';
 const ANALYTICS_CACHE_META_KEY = 'vitruvian.analyticsMeta';
 const ANALYTICS_CACHE_LIMIT = 400;
 const MONTHLY_BAR_MAX_HEIGHT = 240;
+const PROGRAM_MODE_VALUE_MAP = new Map([
+  [0, 'OLD_SCHOOL'],
+  [1, 'PUMP'],
+  [2, 'TIME_UNDER_TENSION'],
+  [3, 'TIME_UNDER_TENSION_BEAST'],
+  [4, 'ECCENTRIC']
+]);
+const WORKLOAD_BREAKDOWN_CATEGORIES = [
+  { key: 'ECHO', label: 'Echo Mode', color: '#f97316' },
+  { key: 'OLD_SCHOOL', label: 'Old School', color: '#10b981' },
+  { key: 'TIME_UNDER_TENSION', label: 'Time Under Tension', color: '#eab308' },
+  { key: 'TIME_UNDER_TENSION_BEAST', label: 'TUT Beast Mode', color: '#a855f7' },
+  { key: 'ECCENTRIC', label: 'Eccentric', color: '#ef4444' }
+];
+const WORKLOAD_OTHER_CATEGORY = { key: 'OTHER', label: 'Other', color: '#64748b' };
 
 export class AnalyticsDashboard {
   constructor(options = {}) {
@@ -38,12 +53,18 @@ export class AnalyticsDashboard {
     this.pointCountEl = null;
     this.chartUnitEl = null;
     this.exerciseHintEl = null;
-    this.peakValueEl = null;
-    this.peakDateEl = null;
-    this.minValueEl = null;
-    this.minDateEl = null;
-    this.deltaValueEl = null;
-    this.deltaPctEl = null;
+    this.peakConcentricValueEl = null;
+    this.peakConcentricDateEl = null;
+    this.peakEccentricValueEl = null;
+    this.peakEccentricDateEl = null;
+    this.baselineConcentricValueEl = null;
+    this.baselineConcentricDateEl = null;
+    this.baselineEccentricValueEl = null;
+    this.baselineEccentricDateEl = null;
+    this.deltaConcentricValueEl = null;
+    this.deltaConcentricPctEl = null;
+    this.deltaEccentricValueEl = null;
+    this.deltaEccentricPctEl = null;
     this.monthlyChartWrapper = null;
     this.monthlyChartEl = null;
     this.monthlyLegendEl = null;
@@ -76,6 +97,19 @@ export class AnalyticsDashboard {
     this.boundMonthlySegmentLeave = this.handleMonthlySegmentLeave.bind(this);
     this.boundMonthlySegmentFocus = this.handleMonthlySegmentFocus.bind(this);
     this.boundMonthlySegmentBlur = this.handleMonthlySegmentBlur.bind(this);
+    this.workloadMetricEl = null;
+    this.workloadTriggerEl = null;
+    this.totalVolumeEl = null;
+    this.totalRepsEl = null;
+    this.averageLoadEl = null;
+    this.workloadTooltipEl = null;
+    this.workloadTooltipTotalEl = null;
+    this.workloadPieEl = null;
+    this.workloadBreakdownEl = null;
+    this.workloadAvgConcentricEl = null;
+    this.workloadAvgEccentricEl = null;
+    this.workloadHideTimeout = null;
+    this.currentWorkloadStats = null;
   }
 
   init() {
@@ -94,12 +128,18 @@ export class AnalyticsDashboard {
     this.pointCountEl = document.getElementById('analyticsPointCount');
     this.chartUnitEl = document.getElementById('analyticsChartUnit');
     this.exerciseHintEl = document.getElementById('analyticsExerciseHint');
-    this.peakValueEl = document.getElementById('analyticsPeakValue');
-    this.peakDateEl = document.getElementById('analyticsPeakDate');
-    this.minValueEl = document.getElementById('analyticsMinValue');
-    this.minDateEl = document.getElementById('analyticsMinDate');
-    this.deltaValueEl = document.getElementById('analyticsDeltaValue');
-    this.deltaPctEl = document.getElementById('analyticsDeltaPct');
+    this.peakConcentricValueEl = document.getElementById('analyticsPeakConcentric');
+    this.peakConcentricDateEl = document.getElementById('analyticsPeakConcentricDate');
+    this.peakEccentricValueEl = document.getElementById('analyticsPeakEccentric');
+    this.peakEccentricDateEl = document.getElementById('analyticsPeakEccentricDate');
+    this.baselineConcentricValueEl = document.getElementById('analyticsBaselineConcentric');
+    this.baselineConcentricDateEl = document.getElementById('analyticsBaselineConcentricDate');
+    this.baselineEccentricValueEl = document.getElementById('analyticsBaselineEccentric');
+    this.baselineEccentricDateEl = document.getElementById('analyticsBaselineEccentricDate');
+    this.deltaConcentricPctEl = document.getElementById('analyticsDeltaConcentricPct');
+    this.deltaConcentricValueEl = document.getElementById('analyticsDeltaConcentricValue');
+    this.deltaEccentricPctEl = document.getElementById('analyticsDeltaEccentricPct');
+    this.deltaEccentricValueEl = document.getElementById('analyticsDeltaEccentricValue');
     this.monthlyChartWrapper = document.getElementById('analyticsMonthlyChartWrapper');
     this.monthlyChartEl = document.getElementById('analyticsMonthlyChart');
     this.monthlyLegendEl = document.getElementById('analyticsMonthlyLegend');
@@ -108,6 +148,17 @@ export class AnalyticsDashboard {
     this.monthlyPeakLineEl = document.getElementById('analyticsMonthlyPeakLine');
     this.monthlyPeakLabelEl = document.getElementById('analyticsMonthlyPeakLabel');
     this.monthlyXAxisEl = document.getElementById('analyticsMonthlyXAxis');
+    this.workloadMetricEl = document.getElementById('analyticsWorkloadMetric');
+    this.workloadTriggerEl = document.getElementById('analyticsWorkloadTrigger');
+    this.totalVolumeEl = document.getElementById('analyticsTotalVolume');
+    this.totalRepsEl = document.getElementById('analyticsTotalReps');
+    this.averageLoadEl = document.getElementById('analyticsAverageLoad');
+    this.workloadTooltipEl = document.getElementById('analyticsWorkloadTooltip');
+    this.workloadTooltipTotalEl = document.getElementById('analyticsWorkloadTooltipTotal');
+    this.workloadPieEl = document.getElementById('analyticsWorkloadPie');
+    this.workloadBreakdownEl = document.getElementById('analyticsWorkloadBreakdown');
+    this.workloadAvgConcentricEl = document.getElementById('analyticsWorkloadAvgConcentric');
+    this.workloadAvgEccentricEl = document.getElementById('analyticsWorkloadAvgEccentric');
 
     if (this.exerciseSelect) {
       this.exerciseSelect.addEventListener('change', () => this.handleExerciseChange());
@@ -116,6 +167,8 @@ export class AnalyticsDashboard {
     this.rangeButtons.forEach((button) => {
       button.addEventListener('click', () => this.setRange(button.dataset.analyticsRange));
     });
+
+    this.bindWorkloadTooltipEvents();
 
     if (this.syncButton) {
       this.syncButton.addEventListener('click', () => this.handleSyncRequest());
@@ -750,6 +803,7 @@ export class AnalyticsDashboard {
     }
 
     const filteredWorkouts = this.filterWorkoutsByRange(this.filterWorkoutsByExercise());
+    const scopedWorkouts = this.currentExerciseKey ? filteredWorkouts : [];
 
     if (!this.currentExerciseKey) {
       this.hideChart(this.dropboxConnected
@@ -757,6 +811,7 @@ export class AnalyticsDashboard {
         : null);
       this.updateSummary([]);
       this.updateMeta([]);
+      this.updateWorkloadMetrics([]);
       this.renderMonthlyChart(filteredWorkouts);
       return;
     }
@@ -771,6 +826,7 @@ export class AnalyticsDashboard {
       this.hideChart(message);
       this.updateSummary([]);
       this.updateMeta([]);
+      this.updateWorkloadMetrics(scopedWorkouts);
       this.renderMonthlyChart(filteredWorkouts);
       return;
     }
@@ -785,6 +841,7 @@ export class AnalyticsDashboard {
 
     this.updateSummary(visibleEntries);
     this.updateMeta(visibleEntries);
+    this.updateWorkloadMetrics(scopedWorkouts);
     this.renderMonthlyChart(filteredWorkouts);
   }
 
@@ -989,6 +1046,62 @@ export class AnalyticsDashboard {
     this.chart.setSize({ width, height: 360 });
   }
 
+  bindWorkloadTooltipEvents() {
+    if (this.workloadTriggerEl) {
+      this.workloadTriggerEl.addEventListener('pointerenter', () => this.showWorkloadTooltip());
+      this.workloadTriggerEl.addEventListener('pointerleave', () => this.scheduleHideWorkloadTooltip());
+      this.workloadTriggerEl.addEventListener('focus', () => this.showWorkloadTooltip());
+      this.workloadTriggerEl.addEventListener('blur', () => this.scheduleHideWorkloadTooltip());
+    }
+    if (this.workloadTooltipEl) {
+      this.workloadTooltipEl.addEventListener('pointerenter', () => this.showWorkloadTooltip());
+      this.workloadTooltipEl.addEventListener('pointerleave', () => this.scheduleHideWorkloadTooltip());
+    }
+  }
+
+  showWorkloadTooltip() {
+    if (!this.workloadTooltipEl || !this.workloadTriggerEl || this.workloadTriggerEl.disabled) {
+      return;
+    }
+    this.clearWorkloadHideTimeout();
+    this.workloadTooltipEl.classList.add('is-visible');
+    this.workloadTooltipEl.setAttribute('aria-hidden', 'false');
+    this.workloadTriggerEl.setAttribute('aria-expanded', 'true');
+  }
+
+  hideWorkloadTooltip(immediate = false) {
+    if (!this.workloadTooltipEl || !this.workloadTriggerEl) {
+      return;
+    }
+    this.clearWorkloadHideTimeout();
+    if (immediate) {
+      this.workloadTooltipEl.classList.remove('is-visible');
+      this.workloadTooltipEl.setAttribute('aria-hidden', 'true');
+      this.workloadTriggerEl.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    this.workloadTooltipEl.classList.remove('is-visible');
+    this.workloadTooltipEl.setAttribute('aria-hidden', 'true');
+    this.workloadTriggerEl.setAttribute('aria-expanded', 'false');
+  }
+
+  scheduleHideWorkloadTooltip() {
+    if (!this.workloadTooltipEl) {
+      return;
+    }
+    this.clearWorkloadHideTimeout();
+    this.workloadHideTimeout = setTimeout(() => {
+      this.hideWorkloadTooltip(true);
+    }, 120);
+  }
+
+  clearWorkloadHideTimeout() {
+    if (this.workloadHideTimeout) {
+      clearTimeout(this.workloadHideTimeout);
+      this.workloadHideTimeout = null;
+    }
+  }
+
   handleUnitChange() {
     this.updateChart();
   }
@@ -1036,65 +1149,510 @@ export class AnalyticsDashboard {
   }
 
   updateSummary(entries) {
-    if (!this.peakValueEl || !this.minValueEl || !this.deltaValueEl || !this.deltaPctEl) {
-      return;
-    }
-
     if (!Array.isArray(entries) || entries.length === 0) {
-      this.peakValueEl.textContent = '—';
-      this.minValueEl.textContent = '—';
-      this.deltaValueEl.textContent = '—';
-      this.deltaPctEl.textContent = '0%';
-      if (this.peakDateEl) this.peakDateEl.textContent = '';
-      if (this.minDateEl) this.minDateEl.textContent = '';
+      this.setDualMetricPlaceholders();
       return;
     }
 
-    let maxEntry = entries[0];
-    let minEntry = entries[0];
-    let baselineEntry = entries[0];
-    for (const entry of entries) {
-      if (entry.weightKg > maxEntry.weightKg) {
-        maxEntry = entry;
+    let peakConcentricEntry = null;
+    let peakEccentricEntry = null;
+    let baselineEntry = null;
+    let baselineTime = Infinity;
+
+    entries.forEach((entry) => {
+      const conc = Number(entry.concentricKg ?? entry.weightKg) || 0;
+      const ecc = Number(entry.eccentricKg) || 0;
+      if (!peakConcentricEntry || conc > (Number(peakConcentricEntry.concentricKg ?? peakConcentricEntry.weightKg) || 0)) {
+        peakConcentricEntry = entry;
       }
-      if (entry.weightKg < minEntry.weightKg) {
-        minEntry = entry;
+      if (!peakEccentricEntry || ecc > (Number(peakEccentricEntry.eccentricKg) || 0)) {
+        peakEccentricEntry = entry;
       }
-      if (entry.day !== undefined && baselineEntry?.day !== undefined) {
-        if (entry.day < baselineEntry.day) {
-          baselineEntry = entry;
-        }
-      } else if (
-        !baselineEntry ||
-        (entry.timestamp instanceof Date &&
-          baselineEntry.timestamp instanceof Date &&
-          entry.timestamp.getTime() < baselineEntry.timestamp.getTime())
-      ) {
+      const dayValue = Number(entry.day);
+      const timeValue = Number.isFinite(dayValue)
+        ? dayValue
+        : entry.timestamp instanceof Date && !Number.isNaN(entry.timestamp.getTime())
+          ? entry.timestamp.getTime()
+          : Infinity;
+      if (timeValue < baselineTime) {
         baselineEntry = entry;
+        baselineTime = timeValue;
+      }
+    });
+
+    if (!baselineEntry) {
+      baselineEntry = entries[0];
+    }
+
+    const baselineConcentric = Number(baselineEntry?.concentricKg ?? baselineEntry?.weightKg) || 0;
+    const baselineEccentric = Number(baselineEntry?.eccentricKg ?? baselineEntry?.weightKg) || 0;
+    const baselineDate = baselineEntry?.timestamp || baselineEntry?.day || null;
+
+    const peakConcentric = Number(peakConcentricEntry?.concentricKg ?? peakConcentricEntry?.weightKg) || 0;
+    const peakEccentric = Number(peakEccentricEntry?.eccentricKg ?? peakConcentricEntry?.eccentricKg) || 0;
+
+    this.setDualMetricValue(this.peakConcentricValueEl, peakConcentric);
+    this.setDualMetricValue(this.peakEccentricValueEl, peakEccentric);
+    this.setDualMetricDate(this.peakConcentricDateEl, peakConcentricEntry);
+    this.setDualMetricDate(this.peakEccentricDateEl, peakEccentricEntry);
+
+    this.setDualMetricValue(this.baselineConcentricValueEl, baselineConcentric);
+    this.setDualMetricValue(this.baselineEccentricValueEl, baselineEccentric);
+    this.setDualMetricDateValue(this.baselineConcentricDateEl, baselineDate);
+    this.setDualMetricDateValue(this.baselineEccentricDateEl, baselineDate);
+
+    this.setStrengthGainMetrics(
+      this.deltaConcentricPctEl,
+      this.deltaConcentricValueEl,
+      peakConcentric,
+      baselineConcentric
+    );
+    this.setStrengthGainMetrics(
+      this.deltaEccentricPctEl,
+      this.deltaEccentricValueEl,
+      peakEccentric,
+      baselineEccentric
+    );
+  }
+
+  updateWorkloadMetrics(workouts) {
+    if (!this.totalVolumeEl || !this.totalRepsEl || !this.averageLoadEl) {
+      return;
+    }
+    const stats = this.calculateWorkloadStats(workouts);
+    this.currentWorkloadStats = stats;
+    if (!stats.hasWorkouts) {
+      this.totalVolumeEl.textContent = '—';
+      this.totalRepsEl.textContent = '—';
+      this.averageLoadEl.textContent = '—';
+      if (this.workloadTriggerEl) {
+        this.workloadTriggerEl.disabled = true;
+      }
+      this.updateWorkloadSummary(stats);
+      this.renderWorkloadBreakdown(stats);
+      return;
+    }
+    const volumeDisplay = stats.totalVolumeKg > 0
+      ? this.formatVolumeValue(stats.totalVolumeKg)
+      : this.formatVolumeValue(0);
+    this.totalVolumeEl.textContent = volumeDisplay;
+    this.totalRepsEl.textContent = stats.totalReps > 0 ? this.formatCount(stats.totalReps) : '0';
+    this.averageLoadEl.textContent =
+      stats.totalReps > 0 && stats.averageLoadKg > 0 ? this.formatWeight(stats.averageLoadKg) : '—';
+    if (this.workloadTriggerEl) {
+      const disabled = !(stats.totalVolumeKg > 0);
+      this.workloadTriggerEl.disabled = disabled;
+      if (disabled) {
+        this.hideWorkloadTooltip(true);
       }
     }
+    this.updateWorkloadSummary(stats);
+    this.renderWorkloadBreakdown(stats);
+  }
 
-    this.peakValueEl.textContent = this.formatWeight(maxEntry.weightKg);
-    this.minValueEl.textContent = this.formatWeight(minEntry.weightKg);
-    if (this.peakDateEl) {
-      this.peakDateEl.textContent = this.formatDate(maxEntry.timestamp || maxEntry.day);
+  updateWorkloadSummary(stats) {
+    if (!this.workloadAvgConcentricEl || !this.workloadAvgEccentricEl) {
+      return;
     }
-    if (this.minDateEl) {
-      this.minDateEl.textContent = this.formatDate(minEntry.timestamp || minEntry.day);
-    }
+    const avgConc = Number(stats?.averageConcentricKg) || 0;
+    const avgEcc = Number(stats?.averageEccentricKg) || 0;
+    this.workloadAvgConcentricEl.textContent = avgConc > 0 ? this.formatWeight(avgConc) : '—';
+    this.workloadAvgEccentricEl.textContent = avgEcc > 0 ? this.formatWeight(avgEcc) : '—';
+  }
 
-    const baselineWeightKg = baselineEntry?.weightKg ?? minEntry.weightKg;
-    const deltaKg = Math.max(0, maxEntry.weightKg - baselineWeightKg);
+  renderWorkloadBreakdown(stats) {
+    if (!this.workloadBreakdownEl || !this.workloadPieEl) {
+      return;
+    }
+    const totalVolume = Number(stats?.totalVolumeKg) || 0;
+    if (this.workloadTooltipTotalEl) {
+      this.workloadTooltipTotalEl.textContent =
+        totalVolume > 0 ? this.formatVolumeValue(totalVolume) : '—';
+    }
+    if (!stats?.hasWorkouts || totalVolume <= 0) {
+      this.workloadPieEl.style.background = '#182036';
+      this.workloadBreakdownEl.innerHTML = '';
+      const empty = document.createElement('p');
+      empty.className = 'analytics-workload-breakdown__empty';
+      empty.textContent = this.currentExerciseKey
+        ? 'No working volume recorded for this range.'
+        : 'Select an exercise to view rep mix.';
+      this.workloadBreakdownEl.appendChild(empty);
+      return;
+    }
+    const segments = this.buildWorkloadSegments(stats.breakdown, totalVolume);
+    this.applyWorkloadPieSegments(segments, totalVolume);
+    const visibleSegments = segments.filter((segment) => segment.valueKg > 0 || segment.reps > 0);
+    if (!visibleSegments.length) {
+      this.workloadBreakdownEl.innerHTML = '';
+      const empty = document.createElement('p');
+      empty.className = 'analytics-workload-breakdown__empty';
+      empty.textContent = 'No rep breakdown available for this range.';
+      this.workloadBreakdownEl.appendChild(empty);
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    visibleSegments.forEach((segment) => {
+      const row = document.createElement('div');
+      row.className = 'analytics-workload-breakdown__row';
+      const label = document.createElement('div');
+      label.className = 'analytics-workload-breakdown__label';
+      const swatch = document.createElement('span');
+      swatch.className = 'analytics-workload-breakdown__swatch';
+      swatch.style.backgroundColor = segment.color;
+      label.appendChild(swatch);
+      const text = document.createElement('span');
+      text.textContent = segment.label;
+      label.appendChild(text);
+      const percent = document.createElement('strong');
+      percent.className = 'analytics-workload-breakdown__percent';
+      percent.textContent = this.formatPercent(segment.percent);
+      const details = document.createElement('div');
+      details.className = 'analytics-workload-breakdown__details';
+      const volumeLine = document.createElement('span');
+      volumeLine.textContent = this.formatVolumeValue(segment.valueKg);
+      const repsLine = document.createElement('span');
+      repsLine.textContent = `${this.formatCount(segment.reps)} reps`;
+      const avgConcLine = document.createElement('span');
+      avgConcLine.textContent = `Avg Con ${this.formatAverageLoad(segment.avgConcentricKg)}`;
+      const avgEccLine = document.createElement('span');
+      avgEccLine.textContent = `Avg Ecc ${this.formatAverageLoad(segment.avgEccentricKg)}`;
+      details.appendChild(volumeLine);
+      details.appendChild(repsLine);
+      details.appendChild(avgConcLine);
+      details.appendChild(avgEccLine);
+      row.appendChild(label);
+      row.appendChild(percent);
+      row.appendChild(details);
+      fragment.appendChild(row);
+    });
+    this.workloadBreakdownEl.innerHTML = '';
+    this.workloadBreakdownEl.appendChild(fragment);
+  }
+
+  buildWorkloadSegments(breakdownMap, totalVolumeKg) {
+    const map = breakdownMap instanceof Map ? breakdownMap : new Map();
+    const trackedKeys = new Set(WORKLOAD_BREAKDOWN_CATEGORIES.map((category) => category.key));
+    const segments = WORKLOAD_BREAKDOWN_CATEGORIES.map((category) => {
+      const entry = map.get(category.key) || {
+        volumeKg: 0,
+        reps: 0,
+        concentricKg: 0,
+        eccentricKg: 0
+      };
+      const reps = Number(entry.reps) || 0;
+      const conc = Number(entry.concentricKg) || 0;
+      const ecc = Number(entry.eccentricKg) || 0;
+      const volumeKg = Number(entry.volumeKg) || 0;
+      return {
+        key: category.key,
+        label: category.label,
+        color: category.color,
+        valueKg: volumeKg,
+        reps,
+        percent: totalVolumeKg > 0 ? (volumeKg / totalVolumeKg) * 100 : 0,
+        avgConcentricKg: reps > 0 ? conc / reps : 0,
+        avgEccentricKg: reps > 0 ? ecc / reps : 0
+      };
+    });
+    const otherEntry = {
+      volumeKg: 0,
+      reps: 0,
+      concentricKg: 0,
+      eccentricKg: 0
+    };
+    map.forEach((entry, key) => {
+      if (trackedKeys.has(key)) {
+        return;
+      }
+      otherEntry.volumeKg += Number(entry?.volumeKg) || 0;
+      otherEntry.reps += Number(entry?.reps) || 0;
+      otherEntry.concentricKg += Number(entry?.concentricKg) || 0;
+      otherEntry.eccentricKg += Number(entry?.eccentricKg) || 0;
+    });
+    const captured = segments.reduce((sum, entry) => sum + entry.valueKg, 0) + otherEntry.volumeKg;
+    const remainderKg = Math.max(0, totalVolumeKg - captured);
+    if (remainderKg > 0.01) {
+      otherEntry.volumeKg += remainderKg;
+    }
+    if (otherEntry.volumeKg > 0.01 || otherEntry.reps > 0) {
+      const reps = Number(otherEntry.reps) || 0;
+      segments.push({
+        key: WORKLOAD_OTHER_CATEGORY.key,
+        label: WORKLOAD_OTHER_CATEGORY.label,
+        color: WORKLOAD_OTHER_CATEGORY.color,
+        valueKg: otherEntry.volumeKg,
+        reps,
+        percent: totalVolumeKg > 0 ? (otherEntry.volumeKg / totalVolumeKg) * 100 : 0,
+        avgConcentricKg: reps > 0 ? (otherEntry.concentricKg || 0) / reps : 0,
+        avgEccentricKg: reps > 0 ? (otherEntry.eccentricKg || 0) / reps : 0
+      });
+    }
+    return segments;
+  }
+
+  applyWorkloadPieSegments(segments, totalVolumeKg) {
+    if (!this.workloadPieEl) {
+      return;
+    }
+    const validSegments = segments.filter((segment) => segment.valueKg > 0);
+    if (!validSegments.length || !Number.isFinite(totalVolumeKg) || totalVolumeKg <= 0) {
+      this.workloadPieEl.style.background = '#182036';
+      return;
+    }
+    let offset = 0;
+    const gradientStops = validSegments.map((segment) => {
+      const share = segment.valueKg / totalVolumeKg;
+      const start = offset * 360;
+      offset += share;
+      const end = Math.min(360, offset * 360);
+      return `${segment.color} ${start}deg ${end}deg`;
+    });
+    this.workloadPieEl.style.background = `conic-gradient(${gradientStops.join(', ')})`;
+  }
+
+  calculateWorkloadStats(workouts = []) {
+    const hasWorkouts = Array.isArray(workouts) && workouts.length > 0;
+    const stats = {
+      totalVolumeKg: 0,
+      totalReps: 0,
+      averageLoadKg: 0,
+      totalConcentricKg: 0,
+      totalEccentricKg: 0,
+      averageConcentricKg: 0,
+      averageEccentricKg: 0,
+      breakdown: new Map(),
+      hasWorkouts
+    };
+    if (!hasWorkouts) {
+      return stats;
+    }
+    workouts.forEach((workout) => {
+      if (!workout) {
+        return;
+      }
+      const repDetails = this.getWorkoutRepDetails(workout);
+      const reps = repDetails.count;
+      if (reps > 0) {
+        stats.totalReps += reps;
+        stats.totalConcentricKg += repDetails.totalConcentricKg;
+        stats.totalEccentricKg += repDetails.totalEccentricKg;
+      }
+      const category = this.getWorkoutModeCategory(workout);
+      const bucket = stats.breakdown.get(category) || {
+        volumeKg: 0,
+        reps: 0,
+        concentricKg: 0,
+        eccentricKg: 0
+      };
+      const volumeKg = this.getWorkoutVolumeKg(workout);
+      if (Number.isFinite(volumeKg) && volumeKg > 0) {
+        stats.totalVolumeKg += volumeKg;
+        bucket.volumeKg += volumeKg;
+      }
+      if (reps > 0) {
+        bucket.reps += reps;
+        bucket.concentricKg += repDetails.totalConcentricKg;
+        bucket.eccentricKg += repDetails.totalEccentricKg;
+      }
+      stats.breakdown.set(category, bucket);
+    });
+    stats.averageLoadKg = stats.totalReps > 0 ? stats.totalVolumeKg / stats.totalReps : 0;
+    stats.averageConcentricKg = stats.totalReps > 0 ? stats.totalConcentricKg / stats.totalReps : 0;
+    stats.averageEccentricKg = stats.totalReps > 0 ? stats.totalEccentricKg / stats.totalReps : 0;
+    return stats;
+  }
+
+  getWorkoutRepDetails(workout) {
+    if (!workout || typeof workout !== 'object') {
+      return { count: 0, totalConcentricKg: 0, totalEccentricKg: 0 };
+    }
+    const analysis = this.ensurePhaseAnalysis(workout);
+    if (this.hasPhaseReps(analysis)) {
+      const count = analysis.reps.length;
+      const conc = Number(analysis.totalConcentricKg) || 0;
+      const ecc = Number(analysis.totalEccentricKg) || 0;
+      return {
+        count,
+        totalConcentricKg: conc,
+        totalEccentricKg: ecc
+      };
+    }
+    const stored = Number(workout.reps);
+    if (Number.isFinite(stored) && stored > 0) {
+      const totalLoadKg = this.getWorkoutTotalLoadKg(workout);
+      const volume = Number.isFinite(totalLoadKg) && totalLoadKg > 0 ? totalLoadKg * stored : 0;
+      return {
+        count: stored,
+        totalConcentricKg: volume,
+        totalEccentricKg: volume
+      };
+    }
+    const builderReps = Number(workout.builderMeta?.reps);
+    if (Number.isFinite(builderReps) && builderReps > 0) {
+      const totalLoadKg = this.getWorkoutTotalLoadKg(workout);
+      const volume = Number.isFinite(totalLoadKg) && totalLoadKg > 0 ? totalLoadKg * builderReps : 0;
+      return {
+        count: builderReps,
+        totalConcentricKg: volume,
+        totalEccentricKg: volume
+      };
+    }
+    return { count: 0, totalConcentricKg: 0, totalEccentricKg: 0 };
+  }
+
+  getWorkoutRepCount(workout) {
+    const details = this.getWorkoutRepDetails(workout);
+    return details.count;
+  }
+
+  getWorkoutModeCategory(workout) {
+    if (!workout) {
+      return WORKLOAD_OTHER_CATEGORY.key;
+    }
+    if (this.isEchoWorkout(workout)) {
+      return 'ECHO';
+    }
+    const resolved = this.resolveWorkoutModeValue(workout);
+    if (!resolved) {
+      return WORKLOAD_OTHER_CATEGORY.key;
+    }
+    if (resolved === 'ECHO') return 'ECHO';
+    if (resolved === 'TIME_UNDER_TENSION_BEAST' || resolved === 'TUT_BEAST') {
+      return 'TIME_UNDER_TENSION_BEAST';
+    }
+    if (resolved === 'TIME_UNDER_TENSION' || resolved === 'TUT') {
+      return 'TIME_UNDER_TENSION';
+    }
+    if (resolved === 'ECCENTRIC' || resolved === 'ECCENTRIC_ONLY') {
+      return 'ECCENTRIC';
+    }
+    if (resolved === 'OLD_SCHOOL' || resolved === 'JUST_LIFT' || resolved === 'PUMP') {
+      return 'OLD_SCHOOL';
+    }
+    if (resolved.includes('BEAST')) {
+      return 'TIME_UNDER_TENSION_BEAST';
+    }
+    if (resolved.includes('TUT')) {
+      return 'TIME_UNDER_TENSION';
+    }
+    if (resolved.includes('ECCENTRIC')) {
+      return 'ECCENTRIC';
+    }
+    if (resolved.includes('OLD') || resolved.includes('JUST') || resolved.includes('PUMP')) {
+      return 'OLD_SCHOOL';
+    }
+    if (resolved.includes('ECHO')) {
+      return 'ECHO';
+    }
+    return WORKLOAD_OTHER_CATEGORY.key;
+  }
+
+  resolveWorkoutModeValue(workout) {
+    const candidates = [
+      workout?.mode,
+      workout?.builderMeta?.mode,
+      workout?.builderMeta?.modeLabel,
+      workout?.planMode,
+      workout?.itemType,
+      workout?.programMode,
+      workout?.builderMeta?.programMode
+    ];
+    for (const candidate of candidates) {
+      const normalized = this.normalizeModeValue(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return null;
+  }
+
+  normalizeModeValue(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value === 'number') {
+      return PROGRAM_MODE_VALUE_MAP.get(value) || null;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const upper = trimmed.toUpperCase();
+      if (upper.includes('ECHO')) {
+        return 'ECHO';
+      }
+      if (upper === 'TUT') {
+        return 'TIME_UNDER_TENSION';
+      }
+      if (upper === 'TUT_BEAST') {
+        return 'TIME_UNDER_TENSION_BEAST';
+      }
+      if (upper === 'ECCENTRIC_ONLY') {
+        return 'ECCENTRIC';
+      }
+      if (upper.includes('JUST') && upper.includes('LIFT')) {
+        return 'OLD_SCHOOL';
+      }
+      return upper.replace(/[^A-Z0-9]+/g, '_');
+    }
+    return null;
+  }
+
+  formatVolumeValue(kg) {
     const unit = this.getUnitLabel();
-    const displayDelta = this.convertKgToDisplay(deltaKg, unit);
-    const decimals = this.getDisplayDecimals();
-    const signedDelta = `${deltaKg > 0 ? '+' : ''}${displayDelta.toFixed(decimals)} ${unit}`;
-    this.deltaValueEl.textContent = signedDelta;
+    const display = this.convertKgToDisplay(kg, unit);
+    if (!Number.isFinite(display) || display <= 0) {
+      return `0 ${unit}`;
+    }
+    return `${this.formatCompactValue(display)} ${unit}`;
+  }
 
-    const base = baselineWeightKg;
-    const percent = base > 0 ? (deltaKg / base) * 100 : 0;
-    const pctText = `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`;
-    this.deltaPctEl.textContent = pctText;
+  formatCount(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+      return '0';
+    }
+    return Math.round(value).toLocaleString();
+  }
+
+  formatPercent(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+      return '0%';
+    }
+    if (value >= 99.5) {
+      return '100%';
+    }
+    if (value >= 10) {
+      return `${Math.round(value)}%`;
+    }
+    return `${value.toFixed(1)}%`;
+  }
+
+  formatGrowthPercent(value) {
+    if (!Number.isFinite(value) || value === 0) {
+      return '0%';
+    }
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${value.toFixed(1)}%`;
+  }
+
+  formatDeltaWeight(deltaKg) {
+    if (!Number.isFinite(deltaKg)) {
+      return '—';
+    }
+    const unit = this.getUnitLabel();
+    const display = Math.abs(this.convertKgToDisplay(deltaKg, unit));
+    const decimals = this.getDisplayDecimals();
+    const sign = deltaKg > 0 ? '+' : deltaKg < 0 ? '-' : '';
+    return `${sign}${display.toFixed(decimals)} ${unit}`;
+  }
+
+  formatAverageLoad(kg) {
+    if (!Number.isFinite(kg) || kg <= 0) {
+      return '—';
+    }
+    return this.formatWeight(kg);
   }
 
   updateMeta(entries) {
@@ -2207,5 +2765,71 @@ export class AnalyticsDashboard {
     workout.cablePeakKg = peak;
     workout.totalLoadPeakKg = peak;
     return peak;
+  }
+
+  setDualMetricPlaceholders() {
+    const valueEls = [
+      this.peakConcentricValueEl,
+      this.peakEccentricValueEl,
+      this.baselineConcentricValueEl,
+      this.baselineEccentricValueEl,
+      this.deltaConcentricValueEl,
+      this.deltaEccentricValueEl
+    ];
+    valueEls.forEach((el) => {
+      if (el) el.textContent = '—';
+    });
+    const percentEls = [this.deltaConcentricPctEl, this.deltaEccentricPctEl];
+    percentEls.forEach((el) => {
+      if (el) el.textContent = '0%';
+    });
+    const dateEls = [
+      this.peakConcentricDateEl,
+      this.peakEccentricDateEl,
+      this.baselineConcentricDateEl,
+      this.baselineEccentricDateEl
+    ];
+    dateEls.forEach((el) => {
+      if (el) el.textContent = '';
+    });
+  }
+
+  setDualMetricValue(el, kg) {
+    if (!el) return;
+    if (Number.isFinite(kg) && kg > 0) {
+      el.textContent = this.formatWeight(kg);
+    } else {
+      el.textContent = '—';
+    }
+  }
+
+  setDualMetricDate(el, entry) {
+    if (!el) return;
+    if (!entry) {
+      el.textContent = '';
+      return;
+    }
+    const dateValue = entry.timestamp || entry.day || null;
+    this.setDualMetricDateValue(el, dateValue);
+  }
+
+  setDualMetricDateValue(el, dateValue) {
+    if (!el) return;
+    if (!dateValue) {
+      el.textContent = '';
+      return;
+    }
+    el.textContent = this.formatDate(dateValue);
+  }
+
+  setStrengthGainMetrics(pctEl, valueEl, peakKg, baselineKg) {
+    if (pctEl) {
+      const percent = baselineKg > 0 ? ((Math.max(0, peakKg - baselineKg)) / baselineKg) * 100 : 0;
+      pctEl.textContent = this.formatGrowthPercent(percent);
+    }
+    if (valueEl) {
+      const deltaKg = Math.max(0, peakKg - baselineKg);
+      valueEl.textContent = this.formatDeltaWeight(deltaKg);
+    }
   }
 }
