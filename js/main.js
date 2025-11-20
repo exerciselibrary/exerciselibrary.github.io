@@ -954,6 +954,8 @@ async function init() {
   const params = new URLSearchParams(window.location.search);
   const deepLink = params.get('exercise');
   const workoutParam = params.get('workout');
+  const requestedPanel = (params.get('panel') || '').toLowerCase();
+  const forceAnalyticsPanel = requestedPanel === 'analytics';
   if (deepLink) state.highlightId = deepLink;
 
   loadLocalPlansIntoCache();
@@ -987,6 +989,9 @@ async function init() {
         els.searchInput.value = state.search;
       }
       render();
+      if (forceAnalyticsPanel) {
+        showAnalyticsPanel();
+      }
       applyDeepLink();
     })
     .catch((err) => {

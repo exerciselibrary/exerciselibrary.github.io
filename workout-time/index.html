@@ -181,6 +181,56 @@
                 box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
             }
 
+            .sidebar-analytics-nav {
+                position: absolute;
+                top: 54px;
+                right: 20px;
+                display: flex;
+                justify-content: flex-end;
+                margin: 0;
+            }
+
+            .sidebar-analytics-link {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0;
+                padding: 0;
+                width: 36px;
+                height: 36px;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 255, 255, 0.35);
+                color: #ffffff;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+                font-size: 0.9em;
+                text-decoration: none;
+                background: rgba(0, 0, 0, 0.2);
+                transition: background 0.2s ease, border-color 0.2s ease,
+                    transform 0.2s ease;
+            }
+
+            .sidebar-analytics-link:hover,
+            .sidebar-analytics-link:focus-visible {
+                background: rgba(0, 0, 0, 0.35);
+                border-color: rgba(255, 255, 255, 0.7);
+            }
+
+            .sidebar-analytics-link .bi {
+                font-size: 1.35em;
+            }
+
+            .visually-hidden {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                border: 0;
+            }
+
             .sidebar-header h1 {
                 font-size: 1.5em;
                 margin-bottom: 5px;
@@ -2728,6 +2778,20 @@
                         aria-label="Application version"
                         hidden
                     ></span>
+                    <div
+                        class="sidebar-analytics-nav"
+                        role="navigation"
+                        aria-label="Back to analytics dashboard"
+                    >
+                        <a
+                            class="sidebar-analytics-link"
+                            href="../index.html?panel=analytics#analyticsPanel"
+                            aria-label="Back to Analytics"
+                        >
+                            <i class="bi bi-box-arrow-left" aria-hidden="true"></i>
+                            <span class="visually-hidden">Back to Analytics</span>
+                        </a>
+                    </div>
                     <h1>Vitruvian Control</h1>
                     <p>Web Bluetooth Interface</p>
                 </div>
