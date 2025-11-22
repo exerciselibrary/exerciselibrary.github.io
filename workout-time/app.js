@@ -8108,7 +8108,14 @@ class VitruvianApp {
           </div>
 
           <div class="form-group">
-            <label>Intensity Technique</label>
+            <label class="label-with-hint">
+              <span>Intensity Technique</span>
+              <i
+                class="bi bi-info-circle"
+                title="Optional finisher applied to the last set: Dropset, Rest-Pause, or Slow negatives."
+                aria-label="Intensity technique help"
+              ></i>
+            </label>
             <select onchange="app.updatePlanField(${i}, 'intensity', this.value)">
               <option value="none" ${item.intensity === "none" ? "selected" : ""}>None (default)</option>
               <option value="dropset" ${item.intensity === "dropset" ? "selected" : ""}>Dropset</option>

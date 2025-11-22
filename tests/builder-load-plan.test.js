@@ -216,7 +216,8 @@ const setShape = entry.sets.map((set) => ({
   progressionPercent: set.progressionPercent,
   restSec: set.restSec,
   justLift: set.justLift,
-  stopAtTop: set.stopAtTop
+  stopAtTop: set.stopAtTop,
+  intensity: set.intensity
 }));
 
   assert.deepStrictEqual(setShape, [
@@ -230,7 +231,8 @@ const setShape = entry.sets.map((set) => ({
       progressionPercent: '5',
       restSec: '60',
       justLift: false,
-      stopAtTop: false
+      stopAtTop: false,
+      intensity: 'none'
     },
     {
       reps: '6',
@@ -242,7 +244,8 @@ const setShape = entry.sets.map((set) => ({
       progressionPercent: '10',
       restSec: '60',
       justLift: false,
-      stopAtTop: false
+      stopAtTop: false,
+      intensity: 'none'
     },
     {
       reps: '7',
@@ -254,7 +257,8 @@ const setShape = entry.sets.map((set) => ({
       progressionPercent: '15',
       restSec: '60',
       justLift: false,
-      stopAtTop: false
+      stopAtTop: false,
+      intensity: 'none'
     }
   ]);
 });
@@ -339,7 +343,8 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
         progressionPercent: set.progressionPercent,
         restSec: set.restSec,
         justLift: set.justLift,
-        stopAtTop: set.stopAtTop
+        stopAtTop: set.stopAtTop,
+        intensity: set.intensity
       },
       {
         reps: '12',
@@ -349,7 +354,8 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
         progressionPercent: '5',
         restSec: '60',
         justLift: false,
-        stopAtTop: false
+        stopAtTop: false,
+        intensity: 'none'
       }
     );
   });
@@ -374,7 +380,8 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
       progressionPercent: set.progressionPercent,
       restSec: set.restSec,
       justLift: set.justLift,
-      stopAtTop: set.stopAtTop
+      stopAtTop: set.stopAtTop,
+      intensity: set.intensity
     })),
     [
       {
@@ -385,7 +392,8 @@ test('creates a fallback entry for legacy plan items without builder metadata ID
         progressionPercent: '8',
         restSec: '60',
         justLift: false,
-        stopAtTop: false
+        stopAtTop: false,
+        intensity: 'none'
       }
     ]
   );

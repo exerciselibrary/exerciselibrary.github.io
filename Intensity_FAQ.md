@@ -29,5 +29,5 @@ This document explains how the workout-time app handles the **Intensity Techniqu
 - Rest durations between micro-sets use `restSecOverride` (0s or 15s before returning to the programmed rest).
 
 ## Notes and scope
-- The intensity selector exists in the workout-time planner; the main builder (root page) does not yet expose it.
+- The intensity selector exists in both the workout-time planner and the main builder so plans stay aligned when synced through Dropbox.
 - Device commands stay per-cable; intensity only affects sequencing/rest and (for dropsets) temporary per-cable load reductions on the last set.

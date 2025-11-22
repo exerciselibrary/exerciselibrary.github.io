@@ -87,7 +87,8 @@ export const createSet = () => ({
   progressionFrequency: DEFAULT_PROGRESSION_FREQUENCY,
   restSec: '60',
   justLift: false,
-  stopAtTop: false
+  stopAtTop: false,
+  intensity: 'none'
 });
 
 export const getBuilderSnapshot = () => ({
@@ -120,7 +121,8 @@ export const getBuilderSnapshot = () => ({
           set.restSec ?? '60',
           Boolean(set.justLift),
           Boolean(set.stopAtTop),
-          set.overloadValue ?? ''
+          set.overloadValue ?? '',
+          set.intensity ?? 'none'
         ])
       };
     })
@@ -184,7 +186,8 @@ export const applyBuilderSnapshot = (snapshot) => {
           set.restSec ?? '60',
           Boolean(set.justLift),
           Boolean(set.stopAtTop),
-          set.overloadValue ?? ''
+          set.overloadValue ?? '',
+          set.intensity ?? 'none'
         ])
       });
     }
@@ -200,6 +203,7 @@ export const applyBuilderSnapshot = (snapshot) => {
       const restIndex = legacySet ? 7 : 9;
       const justLiftIndex = legacySet ? 8 : 10;
       const stopAtTopIndex = legacySet ? 9 : 11;
+      const intensityIndex = legacySet ? null : 13;
 
       const set = {
         id: Math.random().toString(36).slice(2),
@@ -242,6 +246,16 @@ export const applyBuilderSnapshot = (snapshot) => {
       const rawFrequency = !legacySet && setValues[8] !== undefined ? setValues[8] : item?.progressionFrequency;
       const normalizedFrequency = normalizeProgressionFrequency(rawFrequency);
       set.progressionFrequency = normalizedFrequency || DEFAULT_PROGRESSION_FREQUENCY;
+
+      const rawIntensity =
+        intensityIndex !== null && setValues[intensityIndex] !== undefined
+          ? setValues[intensityIndex]
+          : item?.intensity;
+      if (typeof rawIntensity === 'string' && rawIntensity.trim()) {
+        set.intensity = rawIntensity;
+      } else {
+        set.intensity = 'none';
+      }
 
       return set;
     });
