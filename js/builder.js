@@ -697,10 +697,13 @@ const detectPlanWeightUnit = (planItems = []) => {
 };
 
 export const updateUnitToggle = () => {
-  if (!els.unitToggle) return;
   const label = state.weightUnit === 'LBS' ? 'Units: lbs' : 'Units: kg';
-  els.unitToggle.textContent = label;
-  els.unitToggle.title = `Switch to ${state.weightUnit === 'LBS' ? 'kilograms' : 'pounds'}`;
+  const title = `Switch to ${state.weightUnit === 'LBS' ? 'kilograms' : 'pounds'}`;
+  [els.unitToggle, els.analyticsUnitToggle].forEach((button) => {
+    if (!button) return;
+    button.textContent = label;
+    button.title = title;
+  });
 };
 
 export const toggleWeightUnit = () => {

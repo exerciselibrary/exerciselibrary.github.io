@@ -633,14 +633,17 @@ function bindGlobalEvents() {
     });
   }
 
-  if (els.unitToggle) {
-    els.unitToggle.addEventListener('click', () => {
+  const bindUnitToggle = (button) => {
+    if (!button) return;
+    button.addEventListener('click', () => {
       toggleWeightUnit();
       if (analyticsDashboard) {
         analyticsDashboard.handleUnitChange();
       }
     });
-  }
+  };
+  bindUnitToggle(els.unitToggle);
+  bindUnitToggle(els.analyticsUnitToggle);
 
   els.toggleBuilderFilter.addEventListener('click', () => {
     state.showWorkoutOnly = !state.showWorkoutOnly;
