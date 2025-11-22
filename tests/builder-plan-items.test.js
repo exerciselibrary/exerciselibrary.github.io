@@ -84,6 +84,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       restSec: 45,
       justLift: true,
       stopAtTop: true,
+      intensity: 'none',
       videos: ['https://example.com/echo'],
       weightUnit: 'LBS',
       exerciseIdNew: 101,
@@ -110,7 +111,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           progressionUnit: 'LBS',
           restSec: '45',
           justLift: false,
-          stopAtTop: true
+          stopAtTop: true,
+          intensity: 'none'
         }
       }
     });
@@ -135,6 +137,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       progressionFrequency: 'WORKOUT',
       justLift: true,
       stopAtTop: false,
+      intensity: 'none',
       cables: 2,
       videos: ['https://example.com/echo'],
       weightUnit: 'LBS',
@@ -162,7 +165,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           progressionUnit: 'LBS',
           restSec: '75',
           justLift: true,
-          stopAtTop: false
+          stopAtTop: false,
+          intensity: 'none'
         }
       }
     });
@@ -177,6 +181,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       restSec: 30,
       justLift: true,
       stopAtTop: false,
+      intensity: 'none',
       videos: ['https://example.com/pull'],
       weightUnit: 'LBS',
       exerciseIdNew: 102,
@@ -203,7 +208,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           progressionUnit: 'LBS',
           restSec: '30',
           justLift: false,
-          stopAtTop: false
+          stopAtTop: false,
+          intensity: 'none'
         }
       }
     });
@@ -228,6 +234,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
       progressionFrequency: 'WORKOUT',
       justLift: false,
       stopAtTop: true,
+      intensity: 'none',
       cables: 2,
       videos: ['https://example.com/pull'],
       weightUnit: 'LBS',
@@ -255,7 +262,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
           progressionUnit: 'LBS',
           restSec: '90',
           justLift: false,
-          stopAtTop: true
+          stopAtTop: true,
+          intensity: 'none'
         }
       }
     });

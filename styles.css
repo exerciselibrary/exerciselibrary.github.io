@@ -655,14 +655,62 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .sets-table .progression-inputs { display: flex; gap: 6px; flex-wrap: wrap; }
 .sets-table .progression-inputs .progression-input { flex: 1 1 120px; }
 .sets-table .progression-placeholder { display: inline-block; min-width: 40px; }
-.sets-table th.rest-col,
-.sets-table td.rest-cell {
-  min-width: 150px;
+.sets-table th:nth-child(3),
+.sets-table td.reps-cell {
+  min-width: 80px;
+  width: 95px;
+}
+.sets-table th:nth-child(4),
+.sets-table td.weight-cell {
+  min-width: 130px;
   width: 150px;
 }
+.sets-table th:nth-child(5),
+.sets-table td.progression-cell {
+  min-width: 150px;
+  width: 170px;
+}
+.sets-table th:nth-child(6),
+.sets-table td.progressive-overload-cell {
+  min-width: 110px;
+  width: 120px;
+}
+.sets-table th.rest-col,
+.sets-table td.rest-cell {
+  min-width: 110px;
+  width: 110px;
+}
 .sets-table td.rest-cell.rest-expanded {
-  min-width: 240px;
-  width: 240px;
+  min-width: 170px;
+  width: 170px;
+}
+.sets-table th:nth-child(8),
+.sets-table td.intensity-cell {
+  min-width: 130px;
+  width: 150px;
+}
+.sets-table td.intensity-cell select {
+  min-width: 0;
+}
+.intensity-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.info-icon {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 5px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #8fb3ff;
+  cursor: help;
+  user-select: none;
+  line-height: 1;
+}
+.info-icon:hover {
+  color: #cfe0ff;
+  background: rgba(143, 179, 255, 0.08);
 }
 .flatpickr-current-month .numInputWrapper {
   display: inline-flex;
@@ -674,8 +722,9 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
   padding: 0;
   font-weight: 600;
 }
-.mode-cell { display: grid; gap: 6px; }
-.mode-echo { display: grid; gap: 4px; }
+.mode-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mode-cell select { padding: 6px 8px; }
+.mode-echo { display: flex; align-items: center; gap: 4px; }
 .set-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .add-set { margin-top: 8px; }
 .limit { color: #f87171; font-size: 12px; }

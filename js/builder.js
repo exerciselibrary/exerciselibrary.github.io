@@ -349,6 +349,13 @@ const PROGRAM_MODE_REVERSE_MAP = Object.entries(PROGRAM_MODE_MAP).reduce((acc, [
 }, {});
 const PROGRESSIVE_OVERLOAD_TOOLTIP =
   'Increase the percent lifted per workout for this exercise. Only applies on new days where you do this exercise.';
+const INTENSITY_TOOLTIP = [
+  'Intensity techniques apply to this set (Dropset on Set 1 adds two rapid lighter micro-sets to that set).',
+  'None: leaves the set as-is.',
+  'Dropset: last set then ~80% and ~70% micro-sets, zero rest between, progression zeroed.',
+  'Rest-Pause: last set repeated twice at the same weight with ~15s pauses, progression zeroed.',
+  'Slow negatives: last set repeated twice eccentric-only at the same weight with ~15s pauses, progression zeroed.'
+].join('\n');
 
 const DEFAULT_REST_SECONDS = 60;
 const MS_PER_DAY = 86400000;
@@ -367,6 +374,19 @@ const PROGRESSION_TYPE_SHORT_LABELS = {
 
 const QUICK_PERCENT_VALUES = ['', '0', '1', '2.5', '5', '7.5', '10', '12.5', '15', '20', '25', '30', '35', '40'];
 const QUICK_FLAT_VALUES = ['', '0.5', '1', '2', '5', '10'];
+const DEFAULT_INTENSITY = 'none';
+const INTENSITY_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'dropset', label: 'Dropset' },
+  { value: 'restpause', label: 'Rest-Pause' },
+  { value: 'slownegatives', label: 'Slow negatives' }
+];
+
+const normalizeIntensity = (value) => {
+  if (typeof value !== 'string') return DEFAULT_INTENSITY;
+  const normalized = value.trim().toLowerCase();
+  return INTENSITY_OPTIONS.some((opt) => opt.value === normalized) ? normalized : DEFAULT_INTENSITY;
+};
 
 const PROGRESSION_FREQUENCY_LABELS = {
   [PROGRESSION_FREQUENCIES.WORKOUT]: 'Every workout',
@@ -763,6 +783,19 @@ export const toggleScheduleDay = (day) => {
   triggerRender();
 };
 
+export const applyScheduleFromDate = (value) => {
+  const parsed = parseISODate(value);
+  if (!parsed) return false;
+  const iso = formatISODate(parsed);
+  state.plan.schedule.startDate = iso;
+  state.plan.schedule.endDate = iso;
+  state.plan.schedule.repeatInterval = 1;
+  state.plan.schedule.daysOfWeek = new Set([parsed.getDay()]);
+  persistState();
+  triggerRender();
+  return true;
+};
+
 const getModeLabel = (set) => {
   if (!set) return '';
   if (set.mode === 'ECHO') {
@@ -804,6 +837,7 @@ export const buildPlanItems = () => {
       const stopAtTop = Boolean(set.stopAtTop);
       const progressionMode = mode === 'ECHO' ? PROGRESSION_MODES.NONE : getSetProgressionMode(set);
       const progressionFrequency = getSetProgressionFrequency(set);
+      const intensity = mode === 'ECHO' ? DEFAULT_INTENSITY : normalizeIntensity(set.intensity);
       const setData = {
         reps: set.reps ?? '',
         weight: set.weight ?? '',
@@ -823,7 +857,8 @@ export const buildPlanItems = () => {
         progressionUnit: currentUnit,
         restSec: restString,
         justLift,
-        stopAtTop
+        stopAtTop,
+        intensity
       };
       const builderMeta = {
         ...baseMeta,
@@ -855,6 +890,7 @@ export const buildPlanItems = () => {
           justLift: true,
           stopAtTop,
           videos,
+          intensity: DEFAULT_INTENSITY,
           builderMeta,
           weightUnit: currentUnit,
           exerciseIdNew: exerciseNumericId
@@ -897,6 +933,7 @@ export const buildPlanItems = () => {
           progressionFrequency,
           justLift,
           stopAtTop,
+          intensity,
           cables: 2,
           videos,
           builderMeta,
@@ -1070,6 +1107,10 @@ const createEntryFromPlanItem = (item, index) => {
         : Boolean(item?.stopAtTop);
     if (set.mode === 'ECHO') {
       set.stopAtTop = false;
+      set.intensity = DEFAULT_INTENSITY;
+    } else {
+      const rawIntensity = setData.intensity ?? item?.intensity ?? DEFAULT_INTENSITY;
+      set.intensity = normalizeIntensity(rawIntensity);
     }
     applyStoredProgressionConfig(set, setData, item);
     return set;
@@ -1436,6 +1477,7 @@ export const renderSetRow = (exerciseId, set, index) => {
   if (set.mode === 'ECHO') {
     set.stopAtTop = false;
   }
+  set.intensity = normalizeIntensity(set.intensity);
 
   const setCell = document.createElement('td');
   setCell.textContent = index + 1;
@@ -1673,6 +1715,41 @@ export const renderSetRow = (exerciseId, set, index) => {
 
   updateProgressionInputs();
 
+  const intensityCell = document.createElement('td');
+  intensityCell.className = 'intensity-cell';
+  const intensityWrapper = document.createElement('div');
+  intensityWrapper.className = 'intensity-select';
+  const intensitySelect = document.createElement('select');
+  INTENSITY_OPTIONS.forEach((opt) => {
+    const option = document.createElement('option');
+    option.value = opt.value;
+    option.textContent = opt.label;
+    option.selected = opt.value === set.intensity;
+    intensitySelect.appendChild(option);
+  });
+  intensitySelect.addEventListener('change', () => {
+    const chosen = normalizeIntensity(intensitySelect.value);
+    set.intensity = chosen;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.mode === 'ECHO') {
+        target.intensity = DEFAULT_INTENSITY;
+        return;
+      }
+      const normalized = normalizeIntensity(target.intensity);
+      if (normalized !== chosen) {
+        target.intensity = chosen;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  intensityWrapper.appendChild(intensitySelect);
+  intensityCell.appendChild(intensityWrapper);
+
   const restCell = document.createElement('td');
   const restWrapper = document.createElement('div');
   const restInput = document.createElement('input');
@@ -1799,6 +1876,18 @@ export const renderSetRow = (exerciseId, set, index) => {
     }
   };
 
+  const updateIntensityControl = () => {
+    const isEcho = set.mode === 'ECHO';
+    intensityWrapper.style.display = isEcho ? 'none' : '';
+    intensitySelect.disabled = isEcho;
+    if (isEcho) {
+      set.intensity = DEFAULT_INTENSITY;
+      intensitySelect.value = DEFAULT_INTENSITY;
+    } else {
+      intensitySelect.value = set.intensity || DEFAULT_INTENSITY;
+    }
+  };
+
   modeSelect.addEventListener('change', () => {
     set.mode = modeSelect.value;
     if (set.mode === 'ECHO' && !Number.isFinite(Number.parseInt(set.eccentricPct, 10))) {
@@ -1808,6 +1897,7 @@ export const renderSetRow = (exerciseId, set, index) => {
       set.stopAtTop = false;
       stopAtTopCheckbox.checked = false;
     }
+    updateIntensityControl();
     persistState();
     triggerRender();
   });
@@ -1816,6 +1906,7 @@ export const renderSetRow = (exerciseId, set, index) => {
   updateRepEditor();
   updateJustLiftControl();
   updateStopAtTopControl();
+  updateIntensityControl();
 
   const actionsCell = document.createElement('td');
   actionsCell.className = 'set-actions';
@@ -1837,6 +1928,7 @@ export const renderSetRow = (exerciseId, set, index) => {
     weightCell,
     repProgressionCell,
     progressionCell,
+    intensityCell,
     restCell,
     justLiftCell,
     stopAtTopCell,
@@ -3086,7 +3178,24 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const table = document.createElement('table');
   table.className = 'sets-table';
   const thead = document.createElement('thead');
-  thead.innerHTML = `<tr><th>Set</th><th>Mode</th><th>Reps / Ecc%</th><th>Weight (${getWeightLabel()})</th><th>Progression (${getWeightLabel()})</th><th>Progressive Overload</th><th class="rest-col">Rest (sec)</th><th>Just Lift</th><th>Stop at Top</th><th></th></tr>`;
+  thead.innerHTML = `<tr>
+    <th>Set</th>
+    <th>Mode</th>
+    <th>Reps / Ecc%</th>
+    <th>Weight (${getWeightLabel()})</th>
+    <th>Progression (${getWeightLabel()})</th>
+    <th>Progressive Overload</th>
+    <th>
+      <span class="intensity-label">
+        Intensity
+        <button class="info-icon" type="button" aria-label="${INTENSITY_TOOLTIP}" title="${INTENSITY_TOOLTIP}">i</button>
+      </span>
+    </th>
+    <th class="rest-col">Rest (sec)</th>
+    <th>Just Lift</th>
+    <th>Stop at Top</th>
+    <th></th>
+  </tr>`;
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
@@ -3116,13 +3225,18 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
       newSet.restSec = lastSet.restSec;
       newSet.justLift = lastSet.justLift;
       newSet.stopAtTop = lastSet.stopAtTop;
+      newSet.intensity = lastSet.intensity;
     }
     entry.sets.push(newSet);
     triggerRender();
     persistState();
   });
 
-  card.append(table, addSetBtn);
+  const tableWrapper = document.createElement('div');
+  tableWrapper.className = 'sets-table-wrapper';
+  tableWrapper.appendChild(table);
+
+  card.append(tableWrapper, addSetBtn);
 
   return { card, setCount };
 };

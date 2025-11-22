@@ -79,6 +79,9 @@
       const entry = this.planTimeline[this.planTimelineIndex];
       const item = entry ? this.planItems[entry.itemIndex] : null;
 
+      // Per-entry overrides (intensity microsets)
+      const viewItem = entry && item && entry.overrides ? { ...item, ...entry.overrides } : item;
+
       if (!entry || !item) {
         this.addLogEntry("Plan item missing — skipping.", "error");
         this.planTimelineIndex += 1;
@@ -88,7 +91,7 @@
       }
 
       this.planCursor = { index: entry.itemIndex, set: entry.set };
-      this._applyItemToUI?.(item);
+      this._applyItemToUI?.(viewItem);
       this.updatePlanControlsState();
 
       const totalSets = Math.max(1, Number(item.sets) || 1);
@@ -104,7 +107,7 @@
         itemIndex: entry.itemIndex,
         set: entry.set,
         totalSets,
-        restSec: Math.max(0, Number(item.restSec) || 0),
+        restSec: Math.max(0, Number(entry?.restSecOverride ?? item.restSec) || 0),
         type: item.type || "exercise",
         name: item.name || ""
       };
@@ -115,6 +118,7 @@
       this.ensureFullscreenPreference?.();
 
       try {
+        const prevStopAtTop = this.stopAtTop;
         this.stopAtTop = !!item.stopAtTop;
 
         if (item.type === "exercise") {
@@ -122,6 +126,8 @@
         } else {
           await this.startEcho();
         }
+
+        this.stopAtTop = prevStopAtTop;
       } catch (error) {
         this.addLogEntry(`Failed to start plan block: ${error.message}`, "error");
         this._planSetInProgress = false;
@@ -153,10 +159,14 @@
 
       const upcomingEntry = this.planTimeline[this.planTimelineIndex];
       const upcomingItem = upcomingEntry ? this.planItems[upcomingEntry.itemIndex] : null;
+      const viewUpcoming =
+        upcomingEntry && upcomingItem && upcomingEntry.overrides
+          ? { ...upcomingItem, ...upcomingEntry.overrides }
+          : upcomingItem;
 
-      if (upcomingEntry && upcomingItem) {
+      if (upcomingEntry && viewUpcoming) {
         this.planCursor = { index: upcomingEntry.itemIndex, set: upcomingEntry.set };
-        this._applyItemToUI?.(upcomingItem);
+        this._applyItemToUI?.(viewUpcoming);
       }
 
       this.updatePlanSetIndicator?.();
@@ -178,8 +188,8 @@
 
       const restSec = Math.max(0, Number(restSource?.restSec) || 0);
       const nextLabel =
-        upcomingItem?.name || (upcomingItem?.type === "exercise" ? "Exercise" : "Echo Mode");
-      const nextSummary = upcomingItem ? this.describePlanItem(upcomingItem) : "";
+        viewUpcoming?.name || (viewUpcoming?.type === "exercise" ? "Exercise" : "Echo Mode");
+      const nextSummary = viewUpcoming ? this.describePlanItem(viewUpcoming) : "";
 
       this.ensureFullscreenPreference?.();
 
@@ -712,8 +722,73 @@
       items.forEach((item, itemIndex) => {
         if (!item) return;
         const sets = Math.max(1, Number(item.sets) || 1);
+        const restSec = Math.max(0, Number(item.restSec) || 0);
+        const perCableKg = Number(item.perCableKg) || 0;
+        const intensity = (item.intensity || "none").toLowerCase();
         for (let set = 1; set <= sets; set += 1) {
-          timeline.push({ itemIndex, set });
+          const isLastSet = set === sets;
+          if (!isLastSet || intensity === "none") {
+            timeline.push({ itemIndex, set });
+            continue;
+          }
+
+          if (intensity === "dropset") {
+            // Last set: no rest → micro 1 (JL @ -20%) → no rest → micro 2 (JL @ -10%) → normal rest
+            timeline.push({ itemIndex, set, restSecOverride: 0 });
+            const w80 = Math.max(0, perCableKg * 0.8);
+            timeline.push({
+              itemIndex,
+              set,
+              microIndex: 1,
+              restSecOverride: 0,
+              overrides: { justLift: true, progressionKg: 0, perCableKg: w80 }
+            });
+            const w70 = Math.max(0, perCableKg * 0.7);
+            timeline.push({
+              itemIndex,
+              set,
+              microIndex: 2,
+              restSecOverride: restSec,
+              overrides: { justLift: true, progressionKg: 0, perCableKg: w70 }
+            });
+          } else if (intensity === "restpause") {
+            // Last set: 15s rest → micro 1 (JL same load) → 15s rest → micro 2 (JL same load) → normal rest
+            timeline.push({ itemIndex, set, restSecOverride: 15 });
+            timeline.push({
+              itemIndex,
+              set,
+              microIndex: 1,
+              restSecOverride: 15,
+              overrides: { justLift: true, progressionKg: 0 }
+            });
+            timeline.push({
+              itemIndex,
+              set,
+              microIndex: 2,
+              restSecOverride: restSec,
+              overrides: { justLift: true, progressionKg: 0 }
+            });
+          } else if (intensity === "slownegatives") {
+            // Same as rest-pause, but microsets are eccentric-only
+            timeline.push({ itemIndex, set, restSecOverride: 15 });
+            timeline.push({
+              itemIndex,
+              set,
+              microIndex: 1,
+              restSecOverride: 15,
+              overrides: { justLift: true, progressionKg: 0, mode: ProgramMode.ECCENTRIC_ONLY }
+            });
+            timeline.push({
+              itemIndex,
+              set,
+              microIndex: 2,
+              restSecOverride: restSec,
+              overrides: { justLift: true, progressionKg: 0, mode: ProgramMode.ECCENTRIC_ONLY }
+            });
+          } else {
+            // Fallback – treat as no intensity
+            timeline.push({ itemIndex, set });
+          }
         }
       });
       return timeline;
@@ -973,9 +1048,10 @@
       this.planTimelineIndex = Math.max(0, target);
       const entry = this.planTimeline[this.planTimelineIndex];
       const item = entry ? this.planItems[entry.itemIndex] : null;
+      const viewItem = entry && item && entry.overrides ? { ...item, ...entry.overrides } : item;
       if (entry && item) {
         this.planCursor = { index: entry.itemIndex, set: entry.set };
-        this._applyItemToUI?.(item);
+        this._applyItemToUI?.(viewItem);
         this.addLogEntry(
           `Navigated to ${item.name || "plan item"} • set ${entry.set}`,
           "info",
