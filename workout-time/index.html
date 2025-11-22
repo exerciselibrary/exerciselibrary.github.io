@@ -291,6 +291,15 @@
                 position: relative;
             }
 
+            .live-card-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-bottom: 12px;
+            }
+
             #liveStatsCard {
                 padding-bottom: 96px;
             }
@@ -300,6 +309,154 @@
                 margin-bottom: 20px;
                 font-size: 1.4em;
                 text-align: center;
+            }
+
+            .mobile-summary-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                background: color-mix(in oklab, var(--accent-color), transparent 90%);
+                border: 1px solid var(--section-border);
+                border-radius: 12px;
+                padding: 12px 16px;
+                margin: -6px -6px 16px;
+                position: sticky;
+                top: 0;
+                z-index: 10;
+            }
+
+            .mobile-summary-connection {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-weight: 600;
+                color: var(--text-secondary);
+            }
+
+            .mobile-summary-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: var(--status-disconnected-text);
+                box-shadow: 0 0 0 4px color-mix(in oklab, var(--status-disconnected-bg), transparent 20%);
+            }
+
+            .mobile-summary-text {
+                font-size: 0.95em;
+            }
+
+            .mobile-summary-connection[data-state="connecting"] .mobile-summary-dot {
+                background: var(--accent-color);
+                box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-color), transparent 82%);
+            }
+
+            .mobile-summary-connection[data-state="connected"] .mobile-summary-dot {
+                background: var(--status-connected-text);
+                box-shadow: 0 0 0 4px color-mix(in oklab, var(--status-connected-bg), transparent 20%);
+            }
+
+            .mobile-summary-set {
+                display: inline-flex;
+                flex-direction: column;
+                gap: 4px;
+                text-align: right;
+                margin-left: auto;
+            }
+
+            .mobile-summary-label {
+                font-size: 0.75em;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--text-muted);
+            }
+
+            .mobile-summary-value {
+                font-weight: 700;
+                color: var(--text-primary);
+            }
+
+            .mobile-tablist {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--surface-subtle);
+                border-radius: 12px;
+                padding: 6px;
+                margin-bottom: 16px;
+            }
+
+            .mobile-tab {
+                flex: 1;
+                padding: 10px 12px;
+                border-radius: 10px;
+                border: 1px solid transparent;
+                background: transparent;
+                color: var(--text-secondary);
+                font-weight: 700;
+                cursor: pointer;
+                transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+                width: auto;
+            }
+
+            .mobile-tab[aria-selected="true"] {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #ffffff;
+                border-color: color-mix(in oklab, #667eea, transparent 40%);
+                box-shadow: 0 6px 14px rgba(102, 126, 234, 0.22);
+            }
+
+            .mobile-panel {
+                display: block;
+            }
+
+            .mobile-panel[hidden] {
+                display: none;
+            }
+
+            .mobile-panel--controls {
+                position: relative;
+            }
+
+            .mobile-control-toggle {
+                display: none;
+                align-items: center;
+                gap: 8px;
+                width: auto;
+                padding: 10px 14px;
+                margin: 0 auto 12px;
+                border-radius: 999px;
+                background: var(--surface-subtle);
+                color: var(--text-secondary);
+                border: 1px solid var(--section-border);
+                box-shadow: 0 2px 8px var(--card-shadow);
+            }
+
+            .mobile-control-drawer {
+                border: 1px solid var(--section-border);
+                border-radius: 14px;
+                background: var(--surface-subtle);
+                padding: 16px;
+                box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+
+            .mobile-control-drawer__header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 10px;
+            }
+
+            .mobile-control-drawer__title {
+                font-weight: 700;
+                color: var(--text-primary);
+            }
+
+            .mobile-control-drawer__status {
+                color: var(--text-muted);
+                font-size: 0.9em;
             }
 
             .current-set-name {
@@ -2539,6 +2696,60 @@
                     padding: 20px;
                 }
 
+                .live-card-header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 6px;
+                }
+
+                .mobile-summary-bar {
+                    margin: -12px -12px 12px;
+                    top: -8px;
+                }
+
+                .mobile-summary-set {
+                    text-align: left;
+                    margin-left: 0;
+                }
+
+                .mobile-tablist {
+                    position: sticky;
+                    top: 60px;
+                    z-index: 9;
+                }
+
+                .mobile-panel {
+                    display: none;
+                }
+
+                .mobile-panel.is-active {
+                    display: block;
+                }
+
+                .mobile-control-toggle {
+                    display: inline-flex;
+                }
+
+                .mobile-control-drawer {
+                    position: fixed;
+                    left: 12px;
+                    right: 12px;
+                    bottom: 12px;
+                    transform: translateY(100%);
+                    max-width: 720px;
+                    margin: 0 auto;
+                    z-index: 15;
+                }
+
+                .mobile-control-drawer.is-open {
+                    transform: translateY(0);
+                    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28);
+                }
+
+                .mobile-panel--controls {
+                    padding-bottom: 160px;
+                }
+
                 .stat-card-grid {
                     grid-template-columns: 1fr;
                 }
@@ -3371,435 +3582,545 @@
                 <div class="live-view-container">
                     <!-- Live stats card -->
                     <div class="live-card" id="liveStatsCard">
-                        <h2>Live Workout Data</h2>
-<div id="currentSetName" class="current-set-name">&nbsp;</div>
-                        <div id="prBanner" class="pr-banner hidden"></div>
-                        <!-- Rep Counters -->
-                        <div class="stat-card-grid">
-                            <div class="stat-card stat-card--warmup">
-                                <div class="stat-card__label">Warmup Reps</div>
-                                <div class="stat-card__value" id="warmupCounter">-/3</div>
+                        <div class="mobile-summary-bar" role="status" aria-live="polite">
+                            <div class="mobile-summary-connection">
+                                <span
+                                    class="mobile-summary-dot"
+                                    id="mobileConnectionDot"
+                                    aria-hidden="true"
+                                ></span>
+                                <span
+                                    class="mobile-summary-text"
+                                    id="mobileConnectionStatus"
+                                >
+                                    Disconnected
+                                </span>
                             </div>
-                            <div class="stat-card stat-card--working">
-                                <div class="stat-card__label">Working Reps</div>
-                                <div class="stat-card__value stat-card__value--with-controls">
-                                    <button
-                                        type="button"
-                                        class="working-counter-button working-counter-button--decrease"
-                                        id="workingCounterDecrease"
-                                        aria-label="Decrease target repetitions"
-                                    >
-                                        <span aria-hidden="true">&minus;</span>
-                                    </button>
-                                    <span
-                                        class="working-counter-display"
-                                        id="workingCounter"
-                                    >-/-</span>
-                                    <button
-                                        type="button"
-                                        class="working-counter-button working-counter-button--increase"
-                                        id="workingCounterIncrease"
-                                        aria-label="Increase target repetitions"
-                                    >
-                                        <span aria-hidden="true">+</span>
-                                    </button>
-                                </div>
+                            <div class="mobile-summary-set">
+                                <span class="mobile-summary-label">Current Set</span>
+                                <span
+                                    class="mobile-summary-value"
+                                    id="mobileCurrentSetName"
+                                >
+                                    &nbsp;
+                                </span>
                             </div>
                         </div>
+                        <div class="live-card-header">
+                            <h2>Live Workout Data</h2>
+                            <div id="currentSetName" class="current-set-name">&nbsp;</div>
+                        </div>
+                        <div class="mobile-tablist" role="tablist" aria-label="Workout sections">
+                            <button
+                                type="button"
+                                class="mobile-tab"
+                                id="tabLiveData"
+                                data-mobile-tab="live"
+                                aria-controls="panelLiveData"
+                                aria-selected="true"
+                                tabindex="0"
+                            >
+                                Live Data
+                            </button>
+                            <button
+                                type="button"
+                                class="mobile-tab"
+                                id="tabControls"
+                                data-mobile-tab="controls"
+                                aria-controls="panelControls"
+                                aria-selected="false"
+                                tabindex="-1"
+                            >
+                                Controls
+                            </button>
+                            <button
+                                type="button"
+                                class="mobile-tab"
+                                id="tabHistory"
+                                data-mobile-tab="history"
+                                aria-controls="panelHistory"
+                                aria-selected="false"
+                                tabindex="-1"
+                            >
+                                History
+                            </button>
+                        </div>
+                        <section
+                            class="mobile-panel is-active"
+                            id="panelLiveData"
+                            role="tabpanel"
+                            aria-labelledby="tabLiveData"
+                            data-mobile-panel="live"
+                        >
+                            <div id="prBanner" class="pr-banner hidden"></div>
+                            <!-- Rep Counters -->
+                            <div class="stat-card-grid">
+                                <div class="stat-card stat-card--warmup">
+                                    <div class="stat-card__label">Warmup Reps</div>
+                                    <div class="stat-card__value" id="warmupCounter">-/3</div>
+                                </div>
+                                <div class="stat-card stat-card--working">
+                                    <div class="stat-card__label">Working Reps</div>
+                                    <div class="stat-card__value stat-card__value--with-controls">
+                                        <button
+                                            type="button"
+                                            class="working-counter-button working-counter-button--decrease"
+                                            id="workingCounterDecrease"
+                                            aria-label="Decrease target repetitions"
+                                        >
+                                            <span aria-hidden="true">&minus;</span>
+                                        </button>
+                                        <span
+                                            class="working-counter-display"
+                                            id="workingCounter"
+                                        >-/-</span>
+                                        <button
+                                            type="button"
+                                            class="working-counter-button working-counter-button--increase"
+                                            id="workingCounterIncrease"
+                                            aria-label="Increase target repetitions"
+                                        >
+                                            <span aria-hidden="true">+</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
 
-                        <!-- Position Visualizer -->
-                        <div class="position-bars">
-                            <div class="bar-container">
-                                <div class="bar-label">Left Cable</div>
-                                <div class="bar-wrapper" id="barWrapperB">
-                                    <div class="bar" id="barB"></div>
+                            <!-- Position Visualizer -->
+                            <div class="position-bars">
+                                <div class="bar-container">
+                                    <div class="bar-label">Left Cable</div>
+                                    <div class="bar-wrapper" id="barWrapperB">
+                                        <div class="bar" id="barB"></div>
+                                        <div
+                                            class="range-band min"
+                                            id="rangeBandMinB"
+                                        ></div>
+                                        <div
+                                            class="range-line min"
+                                            id="rangeMinB"
+                                        ></div>
+                                        <div
+                                            class="range-band max"
+                                            id="rangeBandMaxB"
+                                        ></div>
+                                        <div
+                                            class="range-line max"
+                                            id="rangeMaxB"
+                                        ></div>
+                                    </div>
+                                    <div class="bar-value" id="posBValue">0</div>
+                                </div>
+                                <div class="bar-container">
+                                    <div class="bar-label">Right Cable</div>
+                                    <div class="bar-wrapper" id="barWrapperA">
+                                        <div class="bar" id="barA"></div>
+                                        <div
+                                            class="range-band min"
+                                            id="rangeBandMinA"
+                                        ></div>
+                                        <div
+                                            class="range-line min"
+                                            id="rangeMinA"
+                                        ></div>
+                                        <div
+                                            class="range-band max"
+                                            id="rangeBandMaxA"
+                                        ></div>
+                                        <div
+                                            class="range-line max"
+                                            id="rangeMaxA"
+                                        ></div>
+                                    </div>
+                                    <div class="bar-value" id="posAValue">0</div>
+                                </div>
+                            </div>
+
+                            <!-- Stats Grid -->
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-label">Left Cable Load</div>
+                                    <div class="stat-value" id="loadB">
+                                        0.0 <span class="stat-unit">kg</span>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Right Cable Load</div>
+                                    <div class="stat-value" id="loadA">
+                                        0.0 <span class="stat-unit">kg</span>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Total Load</div>
+                                    <div class="stat-value" id="totalLoad">
+                                        0.0 <span class="stat-unit">kg</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div
+                                id="planSetIndicator"
+                                class="plan-set-indicator is-hidden"
+                                aria-live="polite"
+                            >
+                                <div class="plan-set-indicator__label">Plan Progress</div>
+                                <div
+                                    class="plan-set-indicator__name"
+                                    id="planSetIndicatorName"
+                                >
+                                    &nbsp;
+                                </div>
+                                <div class="plan-set-indicator__details">
+                                    <span id="planSetIndicatorSet"></span>
+                                    <span id="planSetIndicatorReps"></span>
+                                </div>
+                            </div>
+                        </section>
+                        <section
+                            class="mobile-panel mobile-panel--controls"
+                            id="panelControls"
+                            role="tabpanel"
+                            aria-labelledby="tabControls"
+                            data-mobile-panel="controls"
+                            aria-hidden="true"
+                            hidden
+                        >
+                            <button
+                                type="button"
+                                class="mobile-control-toggle"
+                                id="controlDrawerToggle"
+                                aria-controls="controlDrawer"
+                                aria-expanded="false"
+                            >
+                                <span class="mobile-control-toggle__label">Open Controls</span>
+                            </button>
+                            <div
+                                class="mobile-control-drawer is-open"
+                                id="controlDrawer"
+                                role="region"
+                                aria-label="Workout controls"
+                            >
+                                <div class="mobile-control-drawer__header">
+                                    <div class="mobile-control-drawer__title">Load &amp; Rest</div>
                                     <div
-                                        class="range-band min"
-                                        id="rangeBandMinB"
-                                    ></div>
-                                    <div
-                                        class="range-line min"
-                                        id="rangeMinB"
-                                    ></div>
-                                    <div
-                                        class="range-band max"
-                                        id="rangeBandMaxB"
-                                    ></div>
-                                    <div
-                                        class="range-line max"
-                                        id="rangeMaxB"
+                                        class="mobile-control-drawer__status"
+                                        id="mobileControlStatus"
                                     ></div>
                                 </div>
-                                <div class="bar-value" id="posBValue">0</div>
-                            </div>
-                                <div class="position-bars__center">
-                                <div class="plan-inline-controls" role="group" aria-label="Plan navigation">
-                                    <button
-                                        type="button"
-                                        class="plan-nav-btn"
-                                        id="planPrevBtn"
-                                        onclick="app.rewindPlan()"
-                                        aria-label="Previous set"
-                                    >
-                                        <i class="bi bi-skip-backward-fill" aria-hidden="true"></i>
-                                        <span class="sr-only">Previous set</span>
-                                    </button>
-                                    <div class="plan-inline-center">
-                                        <div class="weight-adjuster-stack">
-                                            <div
-                                                class="personal-best-wrapper"
-                                                id="personalBestWrapper"
-                                            >
-                                                <div class="personal-best-label">
-                                                    Personal Best (Total)
-                                                </div>
+                                <div class="mobile-control-drawer__body">
+                                    <div class="plan-inline-controls" role="group" aria-label="Plan navigation">
+                                        <button
+                                            type="button"
+                                            class="plan-nav-btn"
+                                            id="planPrevBtn"
+                                            onclick="app.rewindPlan()"
+                                            aria-label="Previous set"
+                                        >
+                                            <i class="bi bi-skip-backward-fill" aria-hidden="true"></i>
+                                            <span class="sr-only">Previous set</span>
+                                        </button>
+                                        <div class="plan-inline-center">
+                                            <div class="weight-adjuster-stack">
                                                 <div
-                                                    class="personal-best-value"
-                                                    id="personalBestLoad"
+                                                    class="personal-best-wrapper"
+                                                    id="personalBestWrapper"
                                                 >
-                                                    - <span class="stat-unit">kg</span>
-                                                </div>
-                                            </div>
-                                            <div
-                                                class="weight-adjuster-circle"
-                                                aria-live="polite"
-                                                id="weightAdjusterCircle"
-                                            >
-                                            <svg
-                                                class="rest-countdown-ring"
-                                                id="restCountdownRing"
-                                                viewBox="0 0 120 120"
-                                                aria-hidden="true"
-                                            >
-                                                <circle
-                                                    class="rest-countdown-track"
-                                                    cx="60"
-                                                    cy="60"
-                                                    r="54"
-                                                ></circle>
-                                                <circle
-                                                    class="rest-countdown-progress"
-                                                    id="restCountdownProgress"
-                                                    cx="60"
-                                                    cy="60"
-                                                    r="54"
-                                                ></circle>
-                                            </svg>
-                                            <svg
-                                                class="auto-stop-ring"
-                                                id="autoStopRing"
-                                                viewBox="0 0 120 120"
-                                                aria-hidden="true"
-                                            >
-                                                <circle
-                                                    class="auto-stop-track"
-                                                    cx="60"
-                                                    cy="60"
-                                                    r="54"
-                                                ></circle>
-                                                <circle
-                                                    class="auto-stop-progress"
-                                                    id="autoStopProgress"
-                                                    cx="60"
-                                                    cy="60"
-                                                    r="54"
-                                                ></circle>
-                                            </svg>
-                                            <div
-                                                class="auto-stop-indicator"
-                                                id="autoStopIndicator"
-                                                aria-live="polite"
-                                                aria-hidden="true"
-                                            >
-                                                <span class="auto-stop-label">
-                                                    Auto-Stop
-                                                </span>
-                                                <span
-                                                    class="auto-stop-time"
-                                                    id="autoStopTime"
-                                                    role="timer"
-                                                >
-                                                    5s
-                                                </span>
-                                            </div>
-                                                <button
-                                                    type="button"
-                                                    class="rest-countdown-button"
-                                                    id="restCountdownButton"
-                                                    aria-label="Rest countdown"
-                                                    tabindex="-1"
-                                                >
-                                                    <span
-                                                        class="rest-countdown-label"
-                                                        id="restCountdownLabel"
+                                                    <div class="personal-best-label">
+                                                        Personal Best (Total)
+                                                    </div>
+                                                    <div
+                                                        class="personal-best-value"
+                                                        id="personalBestLoad"
                                                     >
-                                                        Rest
-                                                    </span>
-                                                    <span
-                                                        class="rest-countdown-time"
-                                                        id="restCountdownTime"
-                                                        role="timer"
-                                                        aria-live="polite"
-                                                    >
-                                                        0
-                                                    </span>
-                                                    <span
-                                                        class="rest-countdown-hint"
-                                                        id="restCountdownHint"
-                                                    >
-                                                        Tap anywhere to add +30s
-                                                    </span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    class="weight-adjuster-segment increase"
-                                                    id="weightAdjusterIncrease"
-                                                    aria-label="Increase weight per cable"
-                                                >
-                                                    +
-                                                </button>
-                                                <div class="weight-adjuster-center">
-                                                    <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
-                                                        <span id="liveWeightValue">-</span>
-                                                        <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                                        - <span class="stat-unit">kg</span>
                                                     </div>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    class="weight-adjuster-segment decrease"
-                                                    id="weightAdjusterDecrease"
-                                                    aria-label="Decrease weight per cable"
-                                                >
-                                                    &minus;
-                                                </button>
-                                            </div>
-                                            <div
-                                                class="weight-adjuster-actions"
-                                                id="weightAdjusterActions"
-                                                role="group"
-                                                aria-label="Workout controls"
-                                            >
                                                 <div
-                                                    class="weight-adjuster-control-row"
-                                                    id="planControlRow"
+                                                    class="weight-adjuster-circle"
+                                                    aria-live="polite"
+                                                    id="weightAdjusterCircle"
                                                 >
-                                                    <button
-                                                        type="button"
-                                                        class="plan-pause-btn"
-                                                        id="planPauseBtn"
-                                                        onclick="app.togglePlanPause()"
-                                                        aria-pressed="false"
-                                                        aria-label="Pause plan"
+                                                    <svg
+                                                        class="rest-countdown-ring"
+                                                        id="restCountdownRing"
+                                                        viewBox="0 0 120 120"
+                                                        aria-hidden="true"
                                                     >
-                                                        <i class="bi bi-pause-fill" aria-hidden="true"></i>
-                                                        <span class="sr-only"
-                                                            >Pause plan</span
-                                                        >
-                                                    </button>
+                                                        <circle
+                                                            class="rest-countdown-track"
+                                                            cx="60"
+                                                            cy="60"
+                                                            r="54"
+                                                        ></circle>
+                                                        <circle
+                                                            class="rest-countdown-progress"
+                                                            id="restCountdownProgress"
+                                                            cx="60"
+                                                            cy="60"
+                                                            r="54"
+                                                        ></circle>
+                                                    </svg>
+                                                    <svg
+                                                        class="auto-stop-ring"
+                                                        id="autoStopRing"
+                                                        viewBox="0 0 120 120"
+                                                        aria-hidden="true"
+                                                    >
+                                                        <circle
+                                                            class="auto-stop-track"
+                                                            cx="60"
+                                                            cy="60"
+                                                            r="54"
+                                                        ></circle>
+                                                        <circle
+                                                            class="auto-stop-progress"
+                                                            id="autoStopProgress"
+                                                            cx="60"
+                                                            cy="60"
+                                                            r="54"
+                                                        ></circle>
+                                                    </svg>
                                                     <div
-                                                        class="rest-countdown-summary"
-                                                        id="restCountdownSummary"
+                                                        class="auto-stop-indicator"
+                                                        id="autoStopIndicator"
                                                         aria-live="polite"
-                                                    ></div>
-                                                    <button
-                                                        id="stopBtn"
-                                                        type="button"
-                                                        class="plan-stop-btn"
-                                                        onclick="app.stopWorkout()"
-                                                        aria-label="Stop workout"
+                                                        aria-hidden="true"
                                                     >
-                                                        <i class="bi bi-stop-fill" aria-hidden="true"></i>
-                                                        <span class="sr-only"
-                                                            >Stop workout</span
+                                                        <span class="auto-stop-label">
+                                                            Auto-Stop
+                                                        </span>
+                                                        <span
+                                                            class="auto-stop-time"
+                                                            id="autoStopTime"
+                                                            role="timer"
                                                         >
+                                                            5s
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        class="rest-countdown-button"
+                                                        id="restCountdownButton"
+                                                        aria-label="Rest countdown"
+                                                        tabindex="-1"
+                                                    >
+                                                        <span
+                                                            class="rest-countdown-label"
+                                                            id="restCountdownLabel"
+                                                        >
+                                                            Rest
+                                                        </span>
+                                                        <span
+                                                            class="rest-countdown-time"
+                                                            id="restCountdownTime"
+                                                            role="timer"
+                                                            aria-live="polite"
+                                                        >
+                                                            0
+                                                        </span>
+                                                        <span
+                                                            class="rest-countdown-hint"
+                                                            id="restCountdownHint"
+                                                        >
+                                                            Tap anywhere to add +30s
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="weight-adjuster-segment increase"
+                                                        id="weightAdjusterIncrease"
+                                                        aria-label="Increase weight per cable"
+                                                    >
+                                                        +
+                                                    </button>
+                                                    <div class="weight-adjuster-center">
+                                                        <div class="weight-adjuster-value live-weight-display" id="liveWeightDisplay">
+                                                            <span id="liveWeightValue">-</span>
+                                                            <span class="stat-unit" id="liveWeightUnit">kg</span>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        class="weight-adjuster-segment decrease"
+                                                        id="weightAdjusterDecrease"
+                                                        aria-label="Decrease weight per cable"
+                                                    >
+                                                        &minus;
                                                     </button>
                                                 </div>
                                                 <div
-                                                    id="planElapsedTimer"
-                                                    class="plan-elapsed-timer"
-                                                    role="timer"
-                                                    aria-live="off"
-                                                ></div>
+                                                    class="weight-adjuster-actions"
+                                                    id="weightAdjusterActions"
+                                                    role="group"
+                                                    aria-label="Workout controls"
+                                                >
+                                                    <div
+                                                        class="weight-adjuster-control-row"
+                                                        id="planControlRow"
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            class="plan-pause-btn"
+                                                            id="planPauseBtn"
+                                                            onclick="app.togglePlanPause()"
+                                                            aria-pressed="false"
+                                                            aria-label="Pause plan"
+                                                        >
+                                                            <i class="bi bi-pause-fill" aria-hidden="true"></i>
+                                                            <span class="sr-only"
+                                                                >Pause plan</span
+                                                            >
+                                                        </button>
+                                                        <div
+                                                            class="rest-countdown-summary"
+                                                            id="restCountdownSummary"
+                                                            aria-live="polite"
+                                                        ></div>
+                                                        <button
+                                                            id="stopBtn"
+                                                            type="button"
+                                                            class="plan-stop-btn"
+                                                            onclick="app.stopWorkout()"
+                                                            aria-label="Stop workout"
+                                                        >
+                                                            <i class="bi bi-stop-fill" aria-hidden="true"></i>
+                                                            <span class="sr-only"
+                                                                >Stop workout</span
+                                                            >
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
+                                        <button
+                                            type="button"
+                                            class="plan-nav-btn"
+                                            id="planNextBtn"
+                                            onclick="app.skipPlanForward()"
+                                            aria-label="Next set"
+                                        >
+                                            <i class="bi bi-skip-forward-fill" aria-hidden="true"></i>
+                                            <span class="sr-only">Next set</span>
+                                        </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        class="plan-nav-btn"
-                                        id="planNextBtn"
-                                        onclick="app.skipPlanForward()"
-                                        aria-label="Next set"
-                                    >
-                                        <i class="bi bi-skip-forward-fill" aria-hidden="true"></i>
-                                        <span class="sr-only">Next set</span>
-                                    </button>
-                                </div>
-
-                            </div>
-                            <div class="bar-container">
-                                <div class="bar-label">Right Cable</div>
-                                <div class="bar-wrapper" id="barWrapperA">
-                                    <div class="bar" id="barA"></div>
                                     <div
-                                        class="range-band min"
-                                        id="rangeBandMinA"
-                                    ></div>
-                                    <div
-                                        class="range-line min"
-                                        id="rangeMinA"
-                                    ></div>
-                                    <div
-                                        class="range-band max"
-                                        id="rangeBandMaxA"
-                                    ></div>
-                                    <div
-                                        class="range-line max"
-                                        id="rangeMaxA"
+                                        id="planElapsedTimer"
+                                        class="plan-elapsed-timer"
+                                        role="timer"
+                                        aria-live="off"
                                     ></div>
                                 </div>
-                                <div class="bar-value" id="posAValue">0</div>
                             </div>
-                        </div>
-
-                        <!-- Stats Grid -->
-                        <div class="stats-grid">
-                            <div class="stat-card">
-                                <div class="stat-label">Left Cable Load</div>
-                                <div class="stat-value" id="loadB">
-                                    0.0 <span class="stat-unit">kg</span>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Right Cable Load</div>
-                                <div class="stat-value" id="loadA">
-                                    0.0 <span class="stat-unit">kg</span>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Total Load</div>
-                                <div class="stat-value" id="totalLoad">
-                                    0.0 <span class="stat-unit">kg</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Load Graph and History Section -->
-                        <div
-                            style="
-                                display: grid;
-                                grid-template-columns: 1fr;
-                                gap: 20px;
-                                margin-bottom: 20px;
-                            "
-                            id="graphHistoryContainer"
+                        </section>
+                        <section
+                            class="mobile-panel"
+                            id="panelHistory"
+                            role="tabpanel"
+                            aria-labelledby="tabHistory"
+                            data-mobile-panel="history"
+                            aria-hidden="true"
+                            hidden
                         >
-                            <div>
-                                <h3 style="color: var(--accent-color); margin-bottom: 10px">
-                                    Load History
-                                </h3>
-                                <div id="loadGraphContainer">
-                                    <div class="time-range-selector">
-                                        <button
-                                            onclick="app.setTimeRange(10)"
-                                            id="range10s"
-                                        >
-                                            10s
-                                        </button>
-                                        <button
-                                            onclick="app.setTimeRange(30)"
-                                            id="range30s"
-                                            class="active"
-                                        >
-                                            30s
-                                        </button>
-                                        <button
-                                            onclick="app.setTimeRange(60)"
-                                            id="range60s"
-                                        >
-                                            1m
-                                        </button>
-                                        <button
-                                            onclick="app.setTimeRange(120)"
-                                            id="range2m"
-                                        >
-                                            2m
-                                        </button>
-                                        <button
-                                            onclick="app.setTimeRange(null)"
-                                            id="rangeAll"
-                                        >
-                                            All
-                                        </button>
-                                        <button
-                                            onclick="app.exportData()"
-                                            class="export-btn"
-                                            id="exportChartButton"
-                                        >
-                                            Export CSV
-                                        </button>
+                            <div
+                                style="
+                                    display: grid;
+                                    grid-template-columns: 1fr;
+                                    gap: 20px;
+                                    margin-bottom: 20px;
+                                "
+                                id="graphHistoryContainer"
+                            >
+                                <div>
+                                    <h3 style="color: var(--accent-color); margin-bottom: 10px">
+                                        Load History
+                                    </h3>
+                                    <div id="loadGraphContainer">
+                                        <div class="time-range-selector">
+                                            <button
+                                                onclick="app.setTimeRange(10)"
+                                                id="range10s"
+                                            >
+                                                10s
+                                            </button>
+                                            <button
+                                                onclick="app.setTimeRange(30)"
+                                                id="range30s"
+                                                class="active"
+                                            >
+                                                30s
+                                            </button>
+                                            <button
+                                                onclick="app.setTimeRange(60)"
+                                                id="range60s"
+                                            >
+                                                1m
+                                            </button>
+                                            <button
+                                                onclick="app.setTimeRange(120)"
+                                                id="range2m"
+                                            >
+                                                2m
+                                            </button>
+                                            <button
+                                                onclick="app.setTimeRange(null)"
+                                                id="rangeAll"
+                                            >
+                                                All
+                                            </button>
+                                            <button
+                                                onclick="app.exportData()"
+                                                class="export-btn"
+                                                id="exportChartButton"
+                                            >
+                                                Export CSV
+                                            </button>
+                                        </div>
+                                        <div class="data-retention-note">
+                                            📊 Retains up to 2 hours of data.
+                                        </div>
+                                        <div id="loadGraph"></div>
                                     </div>
-                                    <div class="data-retention-note">
-                                        📊 Retains up to 2 hours of data.
-                                    </div>
-                                    <div id="loadGraph"></div>
                                 </div>
-                            </div>
 
-                            <div>
-                                <h3 style="color: var(--accent-color); margin-bottom: 10px">
-                                    Workout History
-                                </h3>
-                                <div
-                                    style="
-                                        background: #f8f9fa;
-                                        padding: 20px;
-                                        border-radius: 8px;
-                                    "
-                                >
+                                <div>
+                                    <h3 style="color: var(--accent-color); margin-bottom: 10px">
+                                        Workout History
+                                    </h3>
                                     <div
-                                        id="historyPagination"
-                                        class="history-pagination"
-                                    ></div>
-                                    <div
-                                        id="historyList"
                                         style="
-                                            display: flex;
-                                            flex-direction: column;
-                                            gap: 10px;
+                                            background: #f8f9fa;
+                                            padding: 20px;
+                                            border-radius: 8px;
                                         "
                                     >
                                         <div
+                                            id="historyPagination"
+                                            class="history-pagination"
+                                        ></div>
+                                        <div
+                                            id="historyList"
                                             style="
-                                                color: var(--text-muted);
-                                                font-size: 0.9em;
-                                                text-align: center;
-                                                padding: 20px;
+                                                display: flex;
+                                                flex-direction: column;
+                                                gap: 10px;
                                             "
                                         >
-                                            No workouts completed yet
+                                            <div
+                                                style="
+                                                    color: var(--text-muted);
+                                                    font-size: 0.9em;
+                                                    text-align: center;
+                                                    padding: 20px;
+                                                "
+                                            >
+                                                No workouts completed yet
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </section>
 
-                        <div
-                            id="planSetIndicator"
-                            class="plan-set-indicator is-hidden"
-                            aria-live="polite"
-                        >
-                            <div class="plan-set-indicator__label">Plan Progress</div>
-                            <div
-                                class="plan-set-indicator__name"
-                                id="planSetIndicatorName"
-                            >
-                                &nbsp;
-                            </div>
-                            <div class="plan-set-indicator__details">
-                                <span id="planSetIndicatorSet"></span>
-                                <span id="planSetIndicatorReps"></span>
-                            </div>
-                        </div>
                         </div>
 
                         <!-- Log card -->

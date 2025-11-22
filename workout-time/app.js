@@ -199,6 +199,10 @@ class VitruvianApp {
     this.loadSidebarPreference();
 
     this._scrollButtonsUpdate = null;
+    this._mobilePanels = [];
+    this._mobileTabs = [];
+    this._activeMobilePanel = "live";
+    this._controlDrawer = null;
 
     this.selectedHistoryKey = null; // currently selected history entry key
     this.selectedHistoryIndex = null; // cache index for quick lookup
@@ -280,6 +284,12 @@ class VitruvianApp {
     this.setupScrollButtons();
     this.setupPlanSummaryOverlay();
     this.setupAudioUnlockSupport();
+    this.setupMobileTabs();
+    this.setupControlDrawer();
+    this.updateMobileConnectionSummary(
+      this.device?.isConnected ? "connected" : "disconnected",
+    );
+    this.updateMobileCurrentSetName();
     this.setupWakeLock();
     this.resetRepCountersToEmpty();
     this.updateStopButtonState();
@@ -288,6 +298,8 @@ class VitruvianApp {
 
     const handleViewportChange = () => {
       this.applySidebarCollapsedState();
+      this.applyMobilePanelVisibility();
+      this.syncControlDrawerForViewport();
     };
 
     window.addEventListener("resize", handleViewportChange);
@@ -1284,6 +1296,235 @@ class VitruvianApp {
     window.addEventListener("scroll", updateVisibility, { passive: true });
     window.addEventListener("resize", updateVisibility);
     updateVisibility();
+  }
+
+  isMobileLayout() {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    const mobileQuery = window.matchMedia(
+      "(max-width: 768px), (max-width: 1024px) and (orientation: portrait)",
+    );
+    return Boolean(mobileQuery?.matches);
+  }
+
+  setupMobileTabs() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const tabs = Array.from(document.querySelectorAll("[data-mobile-tab]"));
+    const panels = Array.from(document.querySelectorAll("[data-mobile-panel]"));
+
+    if (!tabs.length || !panels.length) {
+      return;
+    }
+
+    this._mobileTabs = tabs;
+    this._mobilePanels = panels;
+
+    const cycleTab = (currentIndex, direction = 1) => {
+      if (!this._mobileTabs.length) {
+        return;
+      }
+      const nextIndex = (currentIndex + direction + this._mobileTabs.length) %
+        this._mobileTabs.length;
+      const nextTab = this._mobileTabs[nextIndex];
+      if (nextTab?.dataset?.mobileTab) {
+        this.switchMobilePanel(nextTab.dataset.mobileTab);
+      }
+    };
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => {
+        if (tab.dataset?.mobileTab) {
+          this.switchMobilePanel(tab.dataset.mobileTab, { focus: false });
+        }
+      });
+
+      tab.addEventListener("keydown", (event) => {
+        if (!tab.dataset?.mobileTab) {
+          return;
+        }
+
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+          event.preventDefault();
+          cycleTab(index, 1);
+        } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+          event.preventDefault();
+          cycleTab(index, -1);
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          if (tabs[0]?.dataset?.mobileTab) {
+            this.switchMobilePanel(tabs[0].dataset.mobileTab);
+          }
+        } else if (event.key === "End") {
+          event.preventDefault();
+          const lastTab = tabs[tabs.length - 1];
+          if (lastTab?.dataset?.mobileTab) {
+            this.switchMobilePanel(lastTab.dataset.mobileTab);
+          }
+        }
+      });
+    });
+
+    const initialTab =
+      tabs.find((button) => button.getAttribute("aria-selected") === "true") ||
+      tabs[0];
+    if (initialTab?.dataset?.mobileTab) {
+      this.switchMobilePanel(initialTab.dataset.mobileTab, { focus: false });
+    }
+  }
+
+  applyMobilePanelVisibility() {
+    const isMobile = this.isMobileLayout();
+    if (!this._mobilePanels.length) {
+      return;
+    }
+
+    this._mobilePanels.forEach((panel) => {
+      const isActive = panel.dataset?.mobilePanel === this._activeMobilePanel;
+      panel.classList.toggle("is-active", isActive);
+      if (isMobile) {
+        panel.hidden = !isActive;
+        panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+      } else {
+        panel.hidden = false;
+        panel.setAttribute("aria-hidden", "false");
+      }
+    });
+  }
+
+  switchMobilePanel(panelId, { focus = true } = {}) {
+    if (!panelId || !this._mobilePanels.length) {
+      return;
+    }
+
+    this._activeMobilePanel = panelId;
+    const isMobile = this.isMobileLayout();
+
+    this._mobileTabs.forEach((tab) => {
+      const isActive = tab.dataset?.mobileTab === panelId;
+      tab.setAttribute("aria-selected", isActive ? "true" : "false");
+      tab.tabIndex = isActive ? 0 : -1;
+      if (isActive && focus) {
+        tab.focus({ preventScroll: true });
+      }
+    });
+
+    this._mobilePanels.forEach((panel) => {
+      const isActive = panel.dataset?.mobilePanel === panelId;
+      panel.classList.toggle("is-active", isActive);
+      if (isMobile) {
+        panel.hidden = !isActive;
+        panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+      } else {
+        panel.hidden = false;
+        panel.setAttribute("aria-hidden", "false");
+      }
+    });
+
+    if (panelId === "controls" && this._controlDrawer && this.isMobileLayout()) {
+      this._controlDrawer.setExpanded(true);
+    }
+  }
+
+  setupControlDrawer() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const drawer = document.getElementById("controlDrawer");
+    const toggle = document.getElementById("controlDrawerToggle");
+
+    if (!drawer || !toggle) {
+      return;
+    }
+
+    const setExpanded = (expanded, { focusToggle = false } = {}) => {
+      const shouldExpand = !this.isMobileLayout() ? true : expanded;
+      drawer.classList.toggle("is-open", shouldExpand);
+      drawer.setAttribute("aria-hidden", shouldExpand ? "false" : "true");
+      toggle.setAttribute("aria-expanded", shouldExpand ? "true" : "false");
+      if (focusToggle) {
+        toggle.focus({ preventScroll: true });
+      }
+    };
+
+    toggle.addEventListener("click", () => {
+      const isOpen = drawer.classList.contains("is-open");
+      setExpanded(!isOpen);
+    });
+
+    drawer.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && this.isMobileLayout()) {
+        setExpanded(false, { focusToggle: true });
+      }
+    });
+
+    this._controlDrawer = { drawer, toggle, setExpanded };
+    setExpanded(!this.isMobileLayout());
+  }
+
+  syncControlDrawerForViewport() {
+    if (!this._controlDrawer) {
+      return;
+    }
+
+    const { drawer, setExpanded } = this._controlDrawer;
+    const isOpen = drawer.classList.contains("is-open");
+    if (this.isMobileLayout()) {
+      setExpanded(isOpen);
+    } else {
+      setExpanded(true);
+    }
+  }
+
+  updateMobileConnectionSummary(state = "disconnected") {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const summary = document.getElementById("mobileConnectionStatus");
+    const container =
+      summary && typeof summary.closest === "function"
+        ? summary.closest(".mobile-summary-connection")
+        : null;
+    if (container) {
+      container.dataset.state = state;
+    }
+
+    if (summary) {
+      let label = "Disconnected";
+      if (state === "connecting") {
+        label = "Connecting…";
+      } else if (state === "connected") {
+        label = "Connected";
+      }
+      summary.textContent = label;
+    }
+  }
+
+  updateMobileCurrentSetName(name = "") {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const summary = document.getElementById("mobileCurrentSetName");
+    if (summary) {
+      summary.textContent = name || "\u00a0";
+    }
+  }
+
+  updateMobileControlStatus(text = "") {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const statusEl = document.getElementById("mobileControlStatus");
+    if (statusEl) {
+      statusEl.textContent = text;
+    }
   }
 
   setupPlanSummaryOverlay() {
@@ -2360,22 +2601,29 @@ class VitruvianApp {
       return;
     }
 
+    let nameText = "\u00a0";
+
     if (this.planActive && this.planCursor && this.planItems[this.planCursor.index]) {
       const planItem = this.planItems[this.planCursor.index];
-      label.textContent = planItem.name || (planItem.type === "echo" ? "Echo Mode" : "Plan Set");
+      nameText = planItem.name || (planItem.type === "echo" ? "Echo Mode" : "Plan Set");
+      label.textContent = nameText;
+      this.updateMobileCurrentSetName(nameText);
       return;
     }
 
     if (this.currentWorkout) {
       if (this.currentWorkout.setName) {
-        label.textContent = this.currentWorkout.setName;
+        nameText = this.currentWorkout.setName;
       } else {
-        label.textContent = "Live Set";
+        nameText = "Live Set";
       }
+      label.textContent = nameText;
+      this.updateMobileCurrentSetName(nameText);
       return;
     }
 
-    label.textContent = "\u00a0";
+    label.textContent = nameText;
+    this.updateMobileCurrentSetName(nameText);
   }
 
   async handleBuilderMessage(event) {
@@ -2614,6 +2862,8 @@ class VitruvianApp {
       button.classList.add("device-btn--pulse");
       button.setAttribute("aria-label", "Connect to Vitruvian device");
     }
+
+    this.updateMobileConnectionSummary(state);
   }
 
   setDeviceButtonSubtext(text = "") {
@@ -8390,7 +8640,15 @@ class VitruvianApp {
   }
 
   updatePlanElapsedDisplay() {
-    return window.PlanRunnerPrototype.updatePlanElapsedDisplay.call(this);
+    const result = window.PlanRunnerPrototype.updatePlanElapsedDisplay.call(this);
+    const elapsedEl =
+      typeof document !== "undefined"
+        ? document.getElementById("planElapsedTimer")
+        : null;
+    if (elapsedEl) {
+      this.updateMobileControlStatus(elapsedEl.textContent || "");
+    }
+    return result;
   }
 
   updatePlanControlsState() {
