@@ -76,6 +76,7 @@ const WORKOUT_TAB_COLOR = { rgb: "FF2E75B6" };
 const PR_TAB_COLOR = { rgb: "FFF1C232" };
 const PLAN_SUMMARY_FLAT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
 const PLAN_SUMMARY_PERCENT_AMOUNTS = [0.5, 1, 1.5, 2, 2.5, 5];
+const FILTERED_HISTORY_PAGE_SIZE = 20;
 
 const escapeHtml = (value) => {
   const str = value === null || value === undefined ? '' : String(value);
@@ -204,6 +205,7 @@ class VitruvianApp {
 
     this.historyPage = 1;
     this.historyPageSize = 5;
+    this.historyFilterKey = "all";
     this._loadedPlanName = null;
     this._preferredPlanSelection = null;
     this._planNameCollator = null;
@@ -5823,8 +5825,13 @@ class VitruvianApp {
     const previousKey = this.selectedHistoryKey;
     const newKey = this.getWorkoutHistoryKey(workout);
 
-    const pageSize = Number(this.historyPageSize) > 0 ? this.historyPageSize : 5;
-    this.setHistoryPage(Math.floor(index / pageSize) + 1);
+    const pageSize = this.getHistoryPageSize();
+    const filteredEntries = this.getFilteredHistoryEntries();
+    const filteredIndex = filteredEntries.findIndex((entry) => entry.index === index);
+    const targetPage = filteredIndex >= 0
+      ? Math.floor(filteredIndex / pageSize) + 1
+      : Math.floor(index / pageSize) + 1;
+    this.setHistoryPage(targetPage);
 
     this.selectedHistoryKey = newKey;
     this.selectedHistoryIndex = index;
@@ -6016,12 +6023,104 @@ class VitruvianApp {
     return true;
   }
 
+  isHistoryFilterActive() {
+    return this.getActiveHistoryFilterKey() !== "all";
+  }
+
+  getHistoryPageSize() {
+    const baseSize = Number(this.historyPageSize) > 0 ? this.historyPageSize : 5;
+    return this.isHistoryFilterActive() ? FILTERED_HISTORY_PAGE_SIZE : baseSize;
+  }
+
+  getHistoryFilterOptions(history = this.workoutHistory) {
+    const list = Array.isArray(history) ? history : [];
+    const options = new Map();
+
+    for (const workout of list) {
+      const identity = this.getWorkoutIdentityInfo(workout);
+      if (!identity || !identity.key) {
+        continue;
+      }
+      const existing = options.get(identity.key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        options.set(identity.key, {
+          key: identity.key,
+          label: identity.label || "Unnamed Exercise",
+          count: 1,
+        });
+      }
+    }
+
+    return Array.from(options.values()).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+  }
+
+  getActiveHistoryFilterKey(history = this.workoutHistory) {
+    const normalized =
+      typeof this.historyFilterKey === "string" && this.historyFilterKey.trim().length > 0
+        ? this.historyFilterKey.trim()
+        : "all";
+
+    if (normalized === "all") {
+      return "all";
+    }
+
+    const options = this.getHistoryFilterOptions(history);
+    const hasOption = options.some((option) => option.key === normalized);
+    if (!hasOption) {
+      this.historyFilterKey = "all";
+      return "all";
+    }
+
+    return normalized;
+  }
+
+  getFilteredHistoryEntries(history = this.workoutHistory) {
+    const list = Array.isArray(history) ? history : [];
+    const activeKey = this.getActiveHistoryFilterKey(list);
+
+    if (activeKey === "all") {
+      return list.map((workout, index) => ({ workout, index }));
+    }
+
+    return list
+      .map((workout, index) => ({ workout, index }))
+      .filter(({ workout }) => {
+        const identity = this.getWorkoutIdentityInfo(workout);
+        return identity && identity.key === activeKey;
+      });
+  }
+
+  setHistoryFilter(key) {
+    const normalized =
+      typeof key === "string" && key.trim().length > 0 ? key.trim() : "all";
+    const options = this.getHistoryFilterOptions();
+    const isValid = options.some((option) => option.key === normalized);
+    const targetKey = normalized === "all" || !isValid ? "all" : normalized;
+
+    if (targetKey === this.historyFilterKey) {
+      return;
+    }
+
+    this.historyFilterKey = targetKey;
+    this.historyPage = 1;
+    this.selectedHistoryKey = null;
+    this.selectedHistoryIndex = null;
+    this.updateHistoryDisplay();
+  }
+
   updateHistoryDisplay() {
     const historyList = document.getElementById("historyList");
     if (!historyList) return;
 
-    const totalItems = Array.isArray(this.workoutHistory) ? this.workoutHistory.length : 0;
-    const pageSize = Number(this.historyPageSize) > 0 ? this.historyPageSize : 5;
+    const history = Array.isArray(this.workoutHistory) ? this.workoutHistory : [];
+    const filterOptions = this.getHistoryFilterOptions(history);
+    const filteredEntries = this.getFilteredHistoryEntries(history);
+    const pageSize = this.getHistoryPageSize();
+    const totalItems = filteredEntries.length;
     const totalPages = totalItems > 0 ? Math.ceil(totalItems / pageSize) : 0;
 
     if (totalItems === 0) {
@@ -6033,7 +6132,11 @@ class VitruvianApp {
       `;
       this.selectedHistoryKey = null;
       this.selectedHistoryIndex = null;
-      this.updateHistoryPaginationControls(0);
+      this.updateHistoryPaginationControls({
+        totalPages: 0,
+        filterOptions,
+        totalHistoryCount: history.length,
+      });
       this.updateExportButtonLabel();
       return;
     }
@@ -6048,13 +6151,12 @@ class VitruvianApp {
 
     const startIndex = (this.historyPage - 1) * pageSize;
     const endIndex = Math.min(startIndex + pageSize, totalItems);
-    const pageItems = this.workoutHistory.slice(startIndex, endIndex);
+    const pageItems = filteredEntries.slice(startIndex, endIndex);
 
     let matchedSelection = false;
 
     historyList.innerHTML = pageItems
-      .map((workout, offset) => {
-        const index = startIndex + offset;
+      .map(({ workout, index }) => {
         const weightStr =
           workout.weightKg > 0
             ? `${this.formatWeightWithUnit(workout.weightKg)}`
@@ -6116,39 +6218,73 @@ class VitruvianApp {
       this.selectedHistoryIndex = null;
     }
 
-    this.updateHistoryPaginationControls(maxPages);
+    this.updateHistoryPaginationControls({
+      totalPages: maxPages,
+      filterOptions,
+      totalHistoryCount: history.length,
+    });
     this.updateExportButtonLabel();
   }
 
-  updateHistoryPaginationControls(totalPages) {
+  updateHistoryPaginationControls({ totalPages, filterOptions = [], totalHistoryCount = 0 }) {
     const paginationEl = document.getElementById("historyPagination");
     if (!paginationEl) {
       return;
     }
 
-    if (!Number.isFinite(totalPages) || totalPages <= 1) {
+    const hasHistory = Number.isFinite(totalHistoryCount) && totalHistoryCount > 0;
+    if (!hasHistory) {
       paginationEl.style.display = "none";
       paginationEl.innerHTML = "";
       return;
     }
 
-    paginationEl.style.display = "flex";
+    const safePages = Number.isFinite(totalPages) && totalPages > 0 ? totalPages : 1;
     const prevDisabledAttrs = this.historyPage <= 1 ? 'disabled aria-disabled="true"' : "";
-    const nextDisabledAttrs = this.historyPage >= totalPages ? 'disabled aria-disabled="true"' : "";
+    const nextDisabledAttrs = this.historyPage >= safePages ? 'disabled aria-disabled="true"' : "";
+    const activeKey = this.getActiveHistoryFilterKey();
+    const allLabel = Number.isFinite(totalHistoryCount)
+      ? `All exercises (${totalHistoryCount})`
+      : "All exercises";
 
+    const filterOptionsHtml = [
+      `<option value="all">${escapeHtml(allLabel)}</option>`,
+      ...filterOptions.map(
+        (option) =>
+          `<option value="${escapeHtml(option.key)}">${escapeHtml(`${option.label} (${option.count})`)}</option>`,
+      ),
+    ].join("");
+
+    paginationEl.style.display = "flex";
     paginationEl.innerHTML = `
       <button type="button" class="history-page-btn secondary" onclick="app.changeHistoryPage(-1)" ${prevDisabledAttrs} aria-label="Previous page">Prev</button>
-      <span class="history-pagination__label">Page ${this.historyPage} of ${totalPages}</span>
+      <div class="history-pagination__center">
+        <label class="history-filter" for="historyExerciseFilter">
+          <select id="historyExerciseFilter" class="history-filter__select" aria-label="Filter workout history by exercise">
+            ${filterOptionsHtml}
+          </select>
+        </label>
+        <span class="history-pagination__label">Page ${this.historyPage} of ${safePages}</span>
+      </div>
       <button type="button" class="history-page-btn secondary" onclick="app.changeHistoryPage(1)" ${nextDisabledAttrs} aria-label="Next page">Next</button>
     `;
+
+    const filterSelect = paginationEl.querySelector("#historyExerciseFilter");
+    if (filterSelect) {
+      filterSelect.value = activeKey;
+      filterSelect.addEventListener("change", (event) => {
+        this.setHistoryFilter(event.target.value);
+      });
+    }
   }
 
   getHistoryPageCount() {
-    if (!Array.isArray(this.workoutHistory) || this.workoutHistory.length === 0) {
+    const filteredEntries = this.getFilteredHistoryEntries();
+    if (filteredEntries.length === 0) {
       return 0;
     }
-    const pageSize = Number(this.historyPageSize) > 0 ? this.historyPageSize : 5;
-    return Math.ceil(this.workoutHistory.length / pageSize);
+    const pageSize = this.getHistoryPageSize();
+    return Math.ceil(filteredEntries.length / pageSize);
   }
 
   setHistoryPage(page) {
