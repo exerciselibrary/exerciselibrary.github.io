@@ -302,12 +302,12 @@
                 text-align: center;
             }
 
-            .current-set-name {
-                margin-bottom: 6px;
-                font-weight: 600;
-                color: var(--text-secondary);
-                min-height: 1em;
-            }
+           .current-set-name {
+	  	    text-align: center;
+		    font-weight: 600;
+		    color: var(--text-secondary);
+		    font-size: 1.2em;
+		}
 
             .stat-card-grid {
                 display: grid;
@@ -2796,6 +2796,81 @@
             .overlay.show {
                 display: block;
             }
+
+/* MOBILE PORTRAIT — Warmup + Working side by side */
+@media (max-width: 768px) and (orientation: portrait) {
+    .stat-card-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        width: 100%;
+    }
+    .stat-card-pair .stat-card {
+        width: 100%;
+    }
+}
+
+
+@media (max-width: 768px) and (orientation: portrait) {
+    /* Center blue circle and controls between LHS and RHS columns */
+    .position-bars {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        justify-items: center;
+        height: auto;
+        padding: 16px;
+        gap: 8px;
+        margin: 24px 0 16px;
+    }
+    .position-bars > .bar-container:first-child {
+        justify-self: start;
+    }
+    .position-bars > .bar-container:last-child {
+        justify-self: end;
+    }
+    .position-bars__center {
+        grid-column: 2;
+        order: 0;
+        flex: 0 0 auto;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+    }
+    .plan-inline-controls {
+        justify-content: center;
+    }
+    .weight-adjuster-stack {
+        margin-inline: auto;
+    }
+}
+
+
+/* MOBILE PORTRAIT — Left + Right cable load side-by-side */
+@media (max-width: 768px) and (orientation: portrait) {
+
+    /* Force stats grid into two columns */
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* Left Cable Load */
+    #loadB {
+        grid-column: span 1;
+    }
+
+    /* Right Cable Load */
+    #loadA {
+        grid-column: span 1;
+    }
+
+    /* Total Load → full width below */
+    #totalLoad {
+        grid-column: span 2;
+    }
+}
+
+
         </style>
     </head>
     <body>
@@ -3433,16 +3508,7 @@
                             </div>
                                 <div class="position-bars__center">
                                 <div class="plan-inline-controls" role="group" aria-label="Plan navigation">
-                                    <button
-                                        type="button"
-                                        class="plan-nav-btn"
-                                        id="planPrevBtn"
-                                        onclick="app.rewindPlan()"
-                                        aria-label="Previous set"
-                                    >
-                                        <i class="bi bi-skip-backward-fill" aria-hidden="true"></i>
-                                        <span class="sr-only">Previous set</span>
-                                    </button>
+                                    
                                     <div class="plan-inline-center">
                                         <div class="weight-adjuster-stack">
                                             <div
@@ -3582,37 +3648,62 @@
                                                     class="weight-adjuster-control-row"
                                                     id="planControlRow"
                                                 >
-                                                    <button
-                                                        type="button"
-                                                        class="plan-pause-btn"
-                                                        id="planPauseBtn"
-                                                        onclick="app.togglePlanPause()"
-                                                        aria-pressed="false"
-                                                        aria-label="Pause plan"
-                                                    >
-                                                        <i class="bi bi-pause-fill" aria-hidden="true"></i>
-                                                        <span class="sr-only"
-                                                            >Pause plan</span
-                                                        >
-                                                    </button>
-                                                    <div
-                                                        class="rest-countdown-summary"
-                                                        id="restCountdownSummary"
-                                                        aria-live="polite"
-                                                    ></div>
-                                                    <button
-                                                        id="stopBtn"
-                                                        type="button"
-                                                        class="plan-stop-btn"
-                                                        onclick="app.stopWorkout()"
-                                                        aria-label="Stop workout"
-                                                    >
-                                                        <i class="bi bi-stop-fill" aria-hidden="true"></i>
-                                                        <span class="sr-only"
-                                                            >Stop workout</span
-                                                        >
-                                                    </button>
-                                                </div>
+                                                        <!-- MOBILE-ONLY PREVIOUS -->
+    <button
+        type="button"
+        class="plan-nav-btn plan-nav-btn-mobile"
+        id="planPrevBtnMobile"
+        onclick="app.rewindPlan()"
+        aria-label="Previous set"
+    >
+        <i class="bi bi-skip-backward-fill" aria-hidden="true"></i>
+        <span class="sr-only">Previous set</span>
+    </button>
+
+    <!-- Pause -->
+    <button
+        type="button"
+        class="plan-pause-btn"
+        id="planPauseBtn"
+        onclick="app.togglePlanPause()"
+        aria-pressed="false"
+        aria-label="Pause plan"
+    >
+        <i class="bi bi-pause-fill" aria-hidden="true"></i>
+        <span class="sr-only">Pause plan</span>
+    </button>
+
+    <div
+        class="rest-countdown-summary"
+        id="restCountdownSummary"
+        aria-live="polite"
+    ></div>
+
+    <!-- Stop -->
+    <button
+        id="stopBtn"
+        type="button"
+        class="plan-stop-btn"
+        onclick="app.stopWorkout()"
+        aria-label="Stop workout"
+    >
+        <i class="bi bi-stop-fill" aria-hidden="true"></i>
+        <span class="sr-only">Stop workout</span>
+    </button>
+
+    <!-- MOBILE-ONLY NEXT -->
+    <button
+        type="button"
+        class="plan-nav-btn plan-nav-btn-mobile"
+        id="planNextBtnMobile"
+        onclick="app.skipPlanForward()"
+        aria-label="Next set"
+    >
+        <i class="bi bi-skip-forward-fill" aria-hidden="true"></i>
+        <span class="sr-only">Next set</span>
+    </button>
+</div>
+
                                                 <div
                                                     id="planElapsedTimer"
                                                     class="plan-elapsed-timer"
@@ -3622,16 +3713,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <button
-                                        type="button"
-                                        class="plan-nav-btn"
-                                        id="planNextBtn"
-                                        onclick="app.skipPlanForward()"
-                                        aria-label="Next set"
-                                    >
-                                        <i class="bi bi-skip-forward-fill" aria-hidden="true"></i>
-                                        <span class="sr-only">Next set</span>
-                                    </button>
+                                   
                                 </div>
 
                             </div>
@@ -3659,6 +3741,14 @@
                                 <div class="bar-value" id="posAValue">0</div>
                             </div>
                         </div>
+
+                        <!-- Next Set Banner -->
+                        <div
+                            	id="nextSetBanner"
+                            	class="pr-banner hidden"
+				background: #a7c7e7;
+                            	aria-live="polite"
+                        ></div>
 
                         <!-- Stats Grid -->
                         <div class="stats-grid">
