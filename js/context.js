@@ -114,6 +114,7 @@ export const els = {
   builderSyncStatus: document.getElementById('builderSyncStatus'),
   analyticsConnectDropbox: document.getElementById('analyticsConnectDropbox'),
   analyticsSyncButton: document.getElementById('analyticsSyncButton'),
+  analyticsUnitToggle: document.getElementById('analyticsUnitToggle'),
   analyticsSyncStatus: document.getElementById('analyticsSyncStatus'),
   modal: document.getElementById('modal'),
   modalVideo: document.getElementById('modalVideo'),

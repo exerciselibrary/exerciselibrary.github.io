@@ -8132,22 +8132,28 @@ class VitruvianApp {
       const setsValue = toAttrValue(toNumberString(item.sets));
       const restValue = toAttrValue(toNumberString(item.restSec));
 
-      const commonHtml = `
+      const nameField = `
         <div class="form-group">
           <label>Name</label>
           <input type="text" value="${nameValue}" oninput="app.updatePlanField(${i}, 'name', this.value)" />
         </div>
+      `;
 
+      const setsField = `
         <div class="form-group">
           <label>Sets</label>
           <input type="number" min="1" max="99" value="${setsValue}" oninput="app.updatePlanField(${i}, 'sets', parseInt(this.value)||1)" />
         </div>
+      `;
 
+      const restField = `
         <div class="form-group">
           <label>Rest (sec)</label>
           <input type="number" min="0" max="600" value="${restValue}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
         </div>
+      `;
 
+      const toggleFields = `
         <div class="form-group plan-card__toggles">
           <label class="plan-card__toggle-option">
             <input type="checkbox" ${item.justLift ? "checked" : ""} onchange="app.updatePlanField(${i}, 'justLift', this.checked)" />
@@ -8209,6 +8215,8 @@ class VitruvianApp {
         const progressionStep = unit === "lb" ? "0.2" : "0.1";
 
         grid.innerHTML = `
+          ${nameField}
+
           <div class="form-group">
             <label>Mode</label>
             <select onchange="app.updatePlanField(${i}, 'mode', parseInt(this.value))">
@@ -8224,14 +8232,16 @@ class VitruvianApp {
           </div>
 
           <div class="form-group">
+            <label>Cables</label>
+            <input type="number" min="1" max="2" value="${cablesValue}" oninput="app.updatePlanField(${i}, 'cables', Math.min(2, Math.max(1, parseInt(this.value)||1)))" />
+          </div>
+
+          <div class="form-group">
             <label>Reps</label>
             <input type="number" min="0" max="100" value="${repsValue}" oninput="app.updatePlanField(${i}, 'reps', parseInt(this.value)||0)" />
           </div>
 
-          <div class="form-group">
-            <label>Cables</label>
-            <input type="number" min="1" max="2" value="${cablesValue}" oninput="app.updatePlanField(${i}, 'cables', Math.min(2, Math.max(1, parseInt(this.value)||1)))" />
-          </div>
+          ${setsField}
 
           <div class="form-group">
             <label>Progression (${unit} per rep)</label>
@@ -8260,7 +8270,8 @@ class VitruvianApp {
             </select>
           </div>
 
-          ${commonHtml}
+          ${restField}
+          ${toggleFields}
         `;
       } else {
         // echo
@@ -8280,6 +8291,8 @@ class VitruvianApp {
         const targetRepsValue = toAttrValue(toNumberString(item.targetReps));
 
         grid.innerHTML = `
+          ${nameField}
+
           <div class="form-group">
             <label>Level</label>
             <select onchange="app.updatePlanField(${i}, 'level', parseInt(this.value))">
@@ -8288,16 +8301,18 @@ class VitruvianApp {
           </div>
 
           <div class="form-group">
-            <label>Eccentric %</label>
-            <input type="number" min="0" max="150" step="5" value="${eccentricValue}" oninput="app.updatePlanField(${i}, 'eccentricPct', parseInt(this.value)||0)" />
-          </div>
-
-          <div class="form-group">
             <label>Target Reps</label>
             <input type="number" min="0" max="30" value="${targetRepsValue}" oninput="app.updatePlanField(${i}, 'targetReps', parseInt(this.value)||0)" />
           </div>
 
-          ${commonHtml}
+          <div class="form-group">
+            <label>Eccentric %</label>
+            <input type="number" min="0" max="150" step="5" value="${eccentricValue}" oninput="app.updatePlanField(${i}, 'eccentricPct', parseInt(this.value)||0)" />
+          </div>
+
+          ${setsField}
+          ${restField}
+          ${toggleFields}
         `;
       }
 
