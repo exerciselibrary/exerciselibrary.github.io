@@ -7965,6 +7965,90 @@ class VitruvianApp {
     return null;
   }
 
+  normalizePlanItemSets(items = []) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    const getSignature = (item) => {
+      if (!item || typeof item !== "object" || item.type !== "exercise") {
+        return null;
+      }
+
+      const exerciseIdNew = this.getPlanExerciseNumericId(item);
+      const exerciseId = this.getPlanExerciseId(item);
+      if (exerciseIdNew === null && !exerciseId) {
+        return null;
+      }
+
+      return JSON.stringify({
+        exerciseIdNew,
+        exerciseId,
+        name: item.name || "",
+        mode: item.mode,
+        perCableKg: Number(item.perCableKg) || 0,
+        reps: Number.isFinite(Number(item.reps)) ? Number(item.reps) : null,
+        restSec: Number(item.restSec) || 0,
+        progressionKg: Number(item.progressionKg) || 0,
+        progressionDisplay: item.progressionDisplay || "",
+        progressionUnit: item.progressionUnit || "",
+        progressionPercent: Number.isFinite(Number(item.progressionPercent))
+          ? Number(item.progressionPercent)
+          : null,
+        progressiveOverloadKg: Number(item.progressiveOverloadKg) || 0,
+        progressiveOverloadDisplay: item.progressiveOverloadDisplay || "",
+        progressiveOverloadUnit: item.progressiveOverloadUnit || "",
+        progressiveOverloadPercent: Number.isFinite(Number(item.progressiveOverloadPercent))
+          ? Number(item.progressiveOverloadPercent)
+          : null,
+        progressionMode: item.progressionMode || "",
+        progressionFrequency: item.progressionFrequency || "",
+        justLift: !!item.justLift,
+        stopAtTop: !!item.stopAtTop,
+        intensity: (item.intensity || "").toLowerCase(),
+        cables: this.getPlanCableCount(item),
+        weightUnit: item.weightUnit || "",
+      });
+    };
+
+    const normalizeBuilderMeta = (builderMeta, sets) => {
+      const meta = builderMeta && typeof builderMeta === "object" ? { ...builderMeta } : {};
+      const totalSets = Number.isFinite(Number(meta.totalSets)) ? Number(meta.totalSets) : 0;
+      meta.totalSets = Math.max(totalSets, sets);
+      return meta;
+    };
+
+    const normalized = [];
+    let previousGroup = null;
+
+    items.forEach((rawItem) => {
+      if (!rawItem || typeof rawItem !== "object") {
+        return;
+      }
+
+      const item = { ...rawItem };
+      const sets = Math.max(1, Number(item.sets) || 1);
+      item.sets = sets;
+      item.builderMeta = normalizeBuilderMeta(item.builderMeta, sets);
+
+      const signature = getSignature(item);
+
+      if (signature && previousGroup && previousGroup.signature === signature) {
+        previousGroup.item.sets += sets;
+        previousGroup.item.builderMeta = normalizeBuilderMeta(
+          previousGroup.item.builderMeta,
+          previousGroup.item.sets,
+        );
+        return;
+      }
+
+      normalized.push(item);
+      previousGroup = signature ? { item, signature } : null;
+    });
+
+    return normalized;
+  }
+
   getPlanExerciseId(planItem) {
     if (!planItem || typeof planItem !== "object") {
       return null;
@@ -8832,8 +8916,10 @@ class VitruvianApp {
       throw new Error('Invalid plan payload');
     }
 
+    const normalized = this.normalizePlanItemSets(items);
+
     try {
-      localStorage.setItem(this.planKey(name), JSON.stringify(items));
+      localStorage.setItem(this.planKey(name), JSON.stringify(normalized));
     } catch (error) {
       throw new Error('Unable to store plan locally');
     }
@@ -8843,7 +8929,10 @@ class VitruvianApp {
     this.setAllPlanNames([...names]);
     this.refreshPlanSelectNames();
 
-    this.addLogEntry(`Stored plan "${name}" from Workout Builder`, 'info');
+    this.addLogEntry(
+      `Stored plan "${name}" from Workout Builder`,
+      'info',
+    );
   }
 
   setupPlanSelectAutoLoad() {
@@ -8984,7 +9073,16 @@ class VitruvianApp {
           `Saved plan "${planName}" could not be parsed: ${err.message}`,
         );
       }
-      this.planItems = Array.isArray(parsed) ? parsed : [];
+      const parsedItems = Array.isArray(parsed) ? parsed : [];
+      const normalizedSets = this.normalizePlanItemSets(parsedItems);
+      const coalesced =
+        normalizedSets.length !== parsedItems.length ||
+        normalizedSets.some((item, idx) => {
+          const originalSets = Math.max(1, Number(parsedItems[idx]?.sets) || 1);
+          return item && item.sets !== originalSets;
+        });
+
+      this.planItems = normalizedSets;
       this._loadedPlanName = planName;
       this._preferredPlanSelection = planName;
       this.syncPlanNameInputTo(planName);
@@ -9008,7 +9106,7 @@ class VitruvianApp {
         this.planItems,
         this.weightUnit,
       );
-      if (normalized) {
+      if (coalesced || normalized) {
         this.savePlanLocally(planName, this.planItems);
         if (this.dropboxManager?.isConnected) {
           this.syncPlanToDropbox(planName, this.planItems, {
@@ -9016,10 +9114,18 @@ class VitruvianApp {
             suppressError: true,
           });
         }
-        this.addLogEntry(
-          `Normalized plan units to ${this.getFriendlyUnitLabel()}.`,
-          "info",
-        );
+        if (coalesced) {
+          this.addLogEntry(
+            "Combined consecutive sets with identical settings into single plan items.",
+            "info",
+          );
+        }
+        if (normalized) {
+          this.addLogEntry(
+            `Normalized plan units to ${this.getFriendlyUnitLabel()}.`,
+            "info",
+          );
+        }
       }
       this.renderPlanUI();
       if (!suppressLog) {
