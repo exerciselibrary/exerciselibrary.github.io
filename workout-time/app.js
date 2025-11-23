@@ -34,6 +34,14 @@ const sharedConvertUnitToKg =
   typeof sharedWeights.convertUnitToKg === "function"
     ? sharedWeights.convertUnitToKg
     : fallbackConvertUnitToKg;
+const sharedGetUnitPreference =
+  typeof sharedWeights.getStoredUnitPreference === "function"
+    ? sharedWeights.getStoredUnitPreference
+    : null;
+const sharedSetUnitPreference =
+  typeof sharedWeights.setStoredUnitPreference === "function"
+    ? sharedWeights.setStoredUnitPreference
+    : null;
 let sharedAnalyzePhases = null;
 let sharedIsEchoWorkout = null;
 const refreshSharedEchoTelemetryHelpers = () => {
@@ -424,6 +432,7 @@ class VitruvianApp {
       });
     } else {
       this.onUnitChanged();
+      this.saveWeightUnitPreference();
     }
   }
 
@@ -3321,13 +3330,20 @@ class VitruvianApp {
   }
 
   loadStoredWeightUnit() {
+    const sharedUnit =
+      typeof sharedGetUnitPreference === "function"
+        ? sharedGetUnitPreference()
+        : null;
+    if (sharedUnit === "lb" || sharedUnit === "kg") {
+      return sharedUnit;
+    }
     if (typeof window === "undefined" || !window.localStorage) {
       return "kg";
     }
     try {
       const stored = localStorage.getItem("vitruvian.weightUnit");
-      if (stored === "lb") {
-        return "lb";
+      if (stored === "lb" || stored === "kg") {
+        return stored;
       }
     } catch (error) {
       // Ignore storage errors and fall back to default.
@@ -3336,11 +3352,15 @@ class VitruvianApp {
   }
 
   saveWeightUnitPreference() {
+    const normalized = this.weightUnit === "lb" ? "lb" : "kg";
+    if (typeof sharedSetUnitPreference === "function") {
+      sharedSetUnitPreference(normalized);
+    }
     if (typeof window === "undefined" || !window.localStorage) {
       return;
     }
     try {
-      localStorage.setItem("vitruvian.weightUnit", this.weightUnit);
+      localStorage.setItem("vitruvian.weightUnit", normalized);
     } catch (error) {
       // Ignore storage errors (e.g., private browsing).
     }
