@@ -812,6 +812,169 @@ export const buildPlanItems = () => {
   const items = [];
   const currentUnit = getStateWeightUnit();
 
+  const createPlanItemFromSet = (params) => {
+    const {
+      baseMeta,
+      displayName,
+      exerciseNumericId,
+      mode,
+      set,
+      setIndex,
+      videos
+    } = params;
+
+    const restSeconds = parseRestSeconds(set.restSec);
+    const restString = formatRestValue(set.restSec, restSeconds);
+    const justLift = Boolean(set.justLift);
+    const stopAtTop = Boolean(set.stopAtTop);
+    const progressionMode = mode === 'ECHO' ? PROGRESSION_MODES.NONE : getSetProgressionMode(set);
+    const progressionFrequency = getSetProgressionFrequency(set);
+    const intensity = mode === 'ECHO' ? DEFAULT_INTENSITY : normalizeIntensity(set.intensity);
+    const setData = {
+      reps: set.reps ?? '',
+      weight: set.weight ?? '',
+      mode,
+      echoLevel: set.echoLevel || ECHO_LEVELS[0].value,
+      eccentricPct: String(
+        Number.isFinite(Number.parseInt(set.eccentricPct, 10))
+          ? Number.parseInt(set.eccentricPct, 10)
+          : 100
+      ),
+      progression: set.progression ?? '',
+      overloadValue: set.overloadValue ?? '',
+      progressionPercent: set.progressionPercent ?? '',
+      progressionMode,
+      progressionFrequency,
+      weightUnit: currentUnit,
+      progressionUnit: currentUnit,
+      restSec: restString,
+      justLift,
+      stopAtTop,
+      intensity
+    };
+    const builderMeta = {
+      ...baseMeta,
+      setIndex,
+      setData
+    };
+
+    if (mode === 'ECHO') {
+      const levelIndex = (() => {
+        const idx = ECHO_LEVELS.findIndex((opt) => opt.value === set.echoLevel);
+        return idx >= 0 ? idx : 0;
+      })();
+
+      let eccentric = Number.parseInt(set.eccentricPct, 10);
+      if (!Number.isFinite(eccentric)) {
+        eccentric = 100;
+      }
+      eccentric = clamp(eccentric, 100, 130);
+      eccentric = 100 + Math.round((eccentric - 100) / 5) * 5;
+
+      return {
+        type: 'echo',
+        name: displayName,
+        level: levelIndex,
+        eccentricPct: eccentric,
+        targetReps: 0,
+        sets: 1,
+        restSec: restSeconds,
+        justLift: true,
+        stopAtTop,
+        videos,
+        intensity: DEFAULT_INTENSITY,
+        builderMeta,
+        weightUnit: currentUnit,
+        exerciseIdNew: exerciseNumericId
+      };
+    }
+
+    const perCableKg = roundKg(Math.max(0, toPerCableKg(set.weight)));
+    const modeCode = PROGRAM_MODE_MAP[mode] ?? PROGRAM_MODE_MAP.OLD_SCHOOL;
+    const progressionDisplay = set.progression || '';
+    let progressionKg = 0;
+    const progressionNumber = Number.parseFloat(progressionDisplay);
+    if (Number.isFinite(progressionNumber)) {
+      progressionKg = clamp(roundKg(toPerCableKg(progressionNumber)), -3, 3);
+    }
+    const overloadDisplay = set.overloadValue || '';
+    let progressiveOverloadKg = 0;
+    const overloadNumber = Number.parseFloat(overloadDisplay);
+    if (Number.isFinite(overloadNumber)) {
+      progressiveOverloadKg = clamp(roundKg(toPerCableKg(overloadNumber)), -3, 3);
+    }
+    const parsedPercent = Number.parseFloat(set.progressionPercent);
+    const progressionPercent = Number.isFinite(parsedPercent) ? clamp(parsedPercent, -100, 400) : null;
+
+    return {
+      type: 'exercise',
+      name: displayName,
+      mode: modeCode,
+      perCableKg,
+      reps: parseReps(set.reps),
+      sets: 1,
+      restSec: restSeconds,
+      progressionKg,
+      progressionDisplay: progressionDisplay || '',
+      progressionUnit: currentUnit,
+      progressionPercent,
+      progressiveOverloadKg,
+      progressiveOverloadDisplay: overloadDisplay || '',
+      progressiveOverloadUnit: currentUnit,
+      progressiveOverloadPercent: progressionPercent,
+      progressionMode,
+      progressionFrequency,
+      justLift,
+      stopAtTop,
+      intensity,
+      cables: 2,
+      videos,
+      builderMeta,
+      weightUnit: currentUnit,
+      exerciseIdNew: exerciseNumericId
+    };
+  };
+
+  const getPlanItemSignature = (item) => {
+    if (!item || typeof item !== 'object') {
+      return '';
+    }
+    if (item.type === 'echo') {
+      return JSON.stringify({
+        type: 'echo',
+        level: item.level,
+        eccentricPct: item.eccentricPct,
+        targetReps: item.targetReps,
+        restSec: item.restSec,
+        justLift: item.justLift,
+        stopAtTop: item.stopAtTop,
+        intensity: item.intensity
+      });
+    }
+    return JSON.stringify({
+      type: 'exercise',
+      mode: item.mode,
+      perCableKg: item.perCableKg,
+      reps: item.reps,
+      restSec: item.restSec,
+      progressionKg: item.progressionKg,
+      progressionDisplay: item.progressionDisplay,
+      progressionUnit: item.progressionUnit,
+      progressionPercent: item.progressionPercent,
+      progressiveOverloadKg: item.progressiveOverloadKg,
+      progressiveOverloadDisplay: item.progressiveOverloadDisplay,
+      progressiveOverloadUnit: item.progressiveOverloadUnit,
+      progressiveOverloadPercent: item.progressiveOverloadPercent,
+      progressionMode: item.progressionMode,
+      progressionFrequency: item.progressionFrequency,
+      justLift: item.justLift,
+      stopAtTop: item.stopAtTop,
+      intensity: item.intensity,
+      cables: item.cables,
+      weightUnit: item.weightUnit
+    });
+  };
+
   state.builder.order.forEach((exerciseId, orderIndex) => {
     const entry = state.builder.items.get(exerciseId);
     if (!entry) return;
@@ -831,119 +994,30 @@ export const buildPlanItems = () => {
       exerciseIdNew: exerciseNumericId
     };
 
+    let previousGroup = null;
+
     sets.forEach((set, setIndex) => {
       const mode = set.mode || 'OLD_SCHOOL';
       const displayName = exerciseName;
-      const restSeconds = parseRestSeconds(set.restSec);
-      const restString = formatRestValue(set.restSec, restSeconds);
-      const justLift = Boolean(set.justLift);
-      const stopAtTop = Boolean(set.stopAtTop);
-      const progressionMode = mode === 'ECHO' ? PROGRESSION_MODES.NONE : getSetProgressionMode(set);
-      const progressionFrequency = getSetProgressionFrequency(set);
-      const intensity = mode === 'ECHO' ? DEFAULT_INTENSITY : normalizeIntensity(set.intensity);
-      const setData = {
-        reps: set.reps ?? '',
-        weight: set.weight ?? '',
+      const item = createPlanItemFromSet({
+        baseMeta,
+        displayName,
+        exerciseNumericId,
         mode,
-        echoLevel: set.echoLevel || ECHO_LEVELS[0].value,
-        eccentricPct: String(
-          Number.isFinite(Number.parseInt(set.eccentricPct, 10))
-            ? Number.parseInt(set.eccentricPct, 10)
-            : 100
-        ),
-        progression: set.progression ?? '',
-        overloadValue: set.overloadValue ?? '',
-        progressionPercent: set.progressionPercent ?? '',
-        progressionMode,
-        progressionFrequency,
-        weightUnit: currentUnit,
-        progressionUnit: currentUnit,
-        restSec: restString,
-        justLift,
-        stopAtTop,
-        intensity
-      };
-      const builderMeta = {
-        ...baseMeta,
+        set,
         setIndex,
-        setData
-      };
+        videos
+      });
+      if (!item) return;
 
-      if (mode === 'ECHO') {
-        const levelIndex = (() => {
-          const idx = ECHO_LEVELS.findIndex((opt) => opt.value === set.echoLevel);
-          return idx >= 0 ? idx : 0;
-        })();
-
-        let eccentric = Number.parseInt(set.eccentricPct, 10);
-        if (!Number.isFinite(eccentric)) {
-          eccentric = 100;
-        }
-        eccentric = clamp(eccentric, 100, 130);
-        eccentric = 100 + Math.round((eccentric - 100) / 5) * 5;
-
-        items.push({
-          type: 'echo',
-          name: displayName,
-          level: levelIndex,
-          eccentricPct: eccentric,
-          targetReps: 0,
-          sets: 1,
-          restSec: restSeconds,
-          justLift: true,
-          stopAtTop,
-          videos,
-          intensity: DEFAULT_INTENSITY,
-          builderMeta,
-          weightUnit: currentUnit,
-          exerciseIdNew: exerciseNumericId
-        });
-      } else {
-        const perCableKg = roundKg(Math.max(0, toPerCableKg(set.weight)));
-        const modeCode = PROGRAM_MODE_MAP[mode] ?? PROGRAM_MODE_MAP.OLD_SCHOOL;
-        const progressionDisplay = set.progression || '';
-        let progressionKg = 0;
-        const progressionNumber = Number.parseFloat(progressionDisplay);
-        if (Number.isFinite(progressionNumber)) {
-          progressionKg = clamp(roundKg(toPerCableKg(progressionNumber)), -3, 3);
-        }
-        const overloadDisplay = set.overloadValue || '';
-        let progressiveOverloadKg = 0;
-        const overloadNumber = Number.parseFloat(overloadDisplay);
-        if (Number.isFinite(overloadNumber)) {
-          progressiveOverloadKg = clamp(roundKg(toPerCableKg(overloadNumber)), -3, 3);
-        }
-        const parsedPercent = Number.parseFloat(set.progressionPercent);
-        const progressionPercent = Number.isFinite(parsedPercent) ? clamp(parsedPercent, -100, 400) : null;
-
-        items.push({
-          type: 'exercise',
-          name: displayName,
-          mode: modeCode,
-          perCableKg,
-          reps: parseReps(set.reps),
-          sets: 1,
-          restSec: restSeconds,
-          progressionKg,
-          progressionDisplay: progressionDisplay || '',
-          progressionUnit: currentUnit,
-          progressionPercent,
-          progressiveOverloadKg,
-          progressiveOverloadDisplay: overloadDisplay || '',
-          progressiveOverloadUnit: currentUnit,
-          progressiveOverloadPercent: progressionPercent,
-          progressionMode,
-          progressionFrequency,
-          justLift,
-          stopAtTop,
-          intensity,
-          cables: 2,
-          videos,
-          builderMeta,
-          weightUnit: currentUnit,
-          exerciseIdNew: exerciseNumericId
-        });
+      const signature = getPlanItemSignature(item);
+      if (previousGroup && previousGroup.signature === signature) {
+        previousGroup.item.sets += 1;
+        return;
       }
+
+      items.push(item);
+      previousGroup = { item, signature };
     });
   });
 

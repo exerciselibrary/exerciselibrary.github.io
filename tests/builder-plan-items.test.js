@@ -274,6 +274,53 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
   }
 });
 
+test('buildPlanItems collapses consecutive sets with identical settings', () => {
+  const originalWeightUnit = state.weightUnit;
+  const originalOrder = [...state.builder.order];
+  const originalItems = new Map(state.builder.items);
+
+  try {
+    state.weightUnit = 'KG';
+    state.builder.order = ['exercise-collapse'];
+    state.builder.items = new Map([
+      [
+        'exercise-collapse',
+        {
+          exercise: {
+            id: 'exercise-collapse',
+            id_new: 201,
+            name: 'Bench Press'
+          },
+          sets: [
+            { mode: 'OLD_SCHOOL', reps: '5', weight: '40', restSec: '60', justLift: false, stopAtTop: false },
+            { mode: 'OLD_SCHOOL', reps: '5', weight: '40', restSec: '60', justLift: false, stopAtTop: false },
+            { mode: 'OLD_SCHOOL', reps: '5', weight: '40', restSec: '75', justLift: false, stopAtTop: false }
+          ]
+        }
+      ]
+    ]);
+
+    const planItems = buildPlanItems();
+
+    assert.equal(planItems.length, 2);
+
+    const [combined, finalSet] = planItems;
+
+    assert.equal(combined.sets, 2);
+    assert.equal(combined.restSec, 60);
+    assert.equal(combined.builderMeta.setIndex, 0);
+    assert.equal(combined.perCableKg, 40);
+
+    assert.equal(finalSet.sets, 1);
+    assert.equal(finalSet.restSec, 75);
+    assert.equal(finalSet.builderMeta.setIndex, 2);
+  } finally {
+    state.weightUnit = originalWeightUnit;
+    state.builder.order = originalOrder;
+    state.builder.items = new Map(originalItems);
+  }
+});
+
 test('buildPlanItems encodes Time Under Tension Beast Mode correctly', () => {
   const originalWeightUnit = state.weightUnit;
   const originalOrder = [...state.builder.order];
