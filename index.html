@@ -21,6 +21,15 @@
     </header>
 
     <main class="container layout">
+      <div class="view-bar">
+        <div class="view-links">
+          <button type="button" id="tabLibrary" class="view-link active" data-target="libraryPanel">Exercise Library</button>
+          <button type="button" id="tabBuilder" class="view-link" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
+          <button type="button" id="tabAnalytics" class="view-link" data-target="analyticsPanel">Analytics Dashboard</button>
+          <button type="button" id="tabWorkout" class="view-link" data-target="workoutPanel">Workout Time</button>
+        </div>
+      </div>
+
       <aside class="sidebar">
         <h2>Filters</h2>
         <div class="search-sort">
@@ -79,15 +88,6 @@
       </aside>
 
       <section class="content">
-        <div class="view-bar">
-          <div class="view-links">
-            <button type="button" id="tabLibrary" class="view-link active" data-target="libraryPanel">Exercise Library</button>
-            <button type="button" id="tabBuilder" class="view-link" data-target="builderPanel">Workout Builder <span id="builderCount" class="badge">0</span></button>
-            <button type="button" id="tabAnalytics" class="view-link" data-target="analyticsPanel">Analytics Dashboard</button>
-            <button type="button" id="tabWorkout" class="view-link" data-target="workoutPanel">Workout Time</button>
-          </div>
-        </div>
-
         <div id="libraryPanel" class="panel active">
           <div class="grid-head">
             <h2 id="gridTitle">Exercises</h2>

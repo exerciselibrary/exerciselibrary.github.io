@@ -37,6 +37,7 @@ body {
   gap: 20px;
   align-items: start;
 }
+.layout .view-bar { grid-column: 1 / -1; margin-bottom: 0; }
 .sidebar { position: sticky; top: 16px; height: fit-content; }
 .content { min-width: 0; }
 
