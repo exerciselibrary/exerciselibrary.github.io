@@ -2,6 +2,7 @@
 import { STORAGE_KEY, ECHO_LEVELS } from './constants.js';
 import { state } from './context.js';
 import { setActiveGrouping } from './grouping.js';
+import { getStoredUnitPreference, setStoredUnitPreference } from '../shared/weight-utils.js';
 
 export const PROGRESSION_MODES = {
   NONE: 'NONE',
@@ -23,6 +24,25 @@ export const DEFAULT_PROGRESSION_MODE = PROGRESSION_MODES.PERCENT;
 export const DEFAULT_PROGRESSION_FREQUENCY = PROGRESSION_FREQUENCIES.WORKOUT;
 
 const MAX_UNSIGNED_16 = 0xffff;
+
+const normalizeSharedUnitToBuilder = (unit) => {
+  if (unit === 'lb') return 'LBS';
+  if (unit === 'kg') return 'KG';
+  return null;
+};
+
+const getSharedWeightUnitPreference = () => {
+  if (typeof getStoredUnitPreference !== 'function') return null;
+  const stored = getStoredUnitPreference();
+  return normalizeSharedUnitToBuilder(stored);
+};
+
+const persistSharedWeightUnitPreference = (unit) => {
+  if (typeof setStoredUnitPreference !== 'function') return;
+  const normalized = unit === 'KG' ? 'kg' : unit === 'LBS' ? 'lb' : null;
+  if (!normalized) return;
+  setStoredUnitPreference(normalized);
+};
 
 const toNumericExerciseId = (value) => {
   if (value === null || value === undefined) return null;
@@ -330,6 +350,7 @@ export const persistState = (options = {}) => {
         groupByMuscleGroups: state.groupByMuscleGroups
       }
     };
+    persistSharedWeightUnitPreference(state.weightUnit);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     if (!options.skipCleanup) {
       const url = new URL(window.location.href);
@@ -392,6 +413,11 @@ export const loadPersistedState = () => {
       else if (muscleGroupsActive) setActiveGrouping('muscleGroups');
       else setActiveGrouping(null);
     }
+    const sharedUnit = getSharedWeightUnitPreference();
+    if (sharedUnit) {
+      state.weightUnit = sharedUnit;
+    }
+    persistSharedWeightUnitPreference(state.weightUnit);
     if (parsed?.builder) applyBuilderSnapshot(parsed.builder);
   } catch (err) {
     console.warn('Failed to load saved state', err);
