@@ -467,16 +467,21 @@
         }
       }
 
-      if (summaryEl) {
+      const nextSetBanner = document.getElementById("nextSetBanner");
+      if (nextSetBanner) {
         if (state.nextHtml) {
           const heading = state.labelText || "Next set";
-          summaryEl.innerHTML = `<strong>${heading}</strong><div class="rest-countdown-summary-details">${state.nextHtml}</div>`;
+          // Example final text:
+          // "Next set — Program • 20 kg/cable × 2 • 10 reps"
+          nextSetBanner.innerHTML = `<strong>${heading}</strong> ${state.nextHtml}`;
+          nextSetBanner.classList.remove("hidden");
         } else if (state.labelText) {
-          summaryEl.innerHTML = `<strong>${state.labelText}</strong>`;
+          nextSetBanner.textContent = state.labelText;
+          nextSetBanner.classList.remove("hidden");
         } else {
-          summaryEl.textContent = "";
+          nextSetBanner.textContent = "";
+          nextSetBanner.classList.add("hidden");
         }
-        summaryEl.classList.toggle("is-visible", summaryEl.innerHTML !== "");
       }
 
       if (controlRow) {
@@ -605,6 +610,12 @@
         state.summaryEl.classList.remove("is-visible");
         state.summaryEl.innerHTML = "";
       }
+	const nextSetBanner = document.getElementById("nextSetBanner");
+      if (nextSetBanner) {
+        nextSetBanner.textContent = "";
+        nextSetBanner.classList.add("hidden");
+      }
+
       if (state.hintEl) {
         state.hintEl.textContent = "Tap anywhere to add +30s";
       }
