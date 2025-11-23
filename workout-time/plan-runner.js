@@ -888,8 +888,14 @@
 
     updatePlanControlsState: function updatePlanControlsState() {
       const pauseBtn = document.getElementById("planPauseBtn");
-      const prevBtn = document.getElementById("planPrevBtn");
-      const nextBtn = document.getElementById("planNextBtn");
+      const prevButtons = [
+        document.getElementById("planPrevBtnMobile"),
+        document.getElementById("planPrevBtn")
+      ].filter(Boolean);
+      const nextButtons = [
+        document.getElementById("planNextBtnMobile"),
+        document.getElementById("planNextBtn")
+      ].filter(Boolean);
 
       const active = !!this.planActive;
       if (pauseBtn) {
@@ -902,15 +908,17 @@
         pauseBtn.setAttribute("aria-pressed", isPaused ? "true" : "false");
         pauseBtn.setAttribute("aria-label", label);
       }
-      if (prevBtn) {
-        prevBtn.disabled = !active || this.planTimelineIndex <= 0;
-        prevBtn.setAttribute("aria-label", "Previous set");
-      }
-      if (nextBtn) {
-        nextBtn.disabled =
-          !active || this.planTimelineIndex >= Math.max(0, this.planTimeline.length - 1);
-        nextBtn.setAttribute("aria-label", "Next set");
-      }
+      const prevDisabled = !active || this.planTimelineIndex <= 0;
+      prevButtons.forEach((btn) => {
+        btn.disabled = prevDisabled;
+        btn.setAttribute("aria-label", "Previous set");
+      });
+      const nextDisabled =
+        !active || this.planTimelineIndex >= Math.max(0, this.planTimeline.length - 1);
+      nextButtons.forEach((btn) => {
+        btn.disabled = nextDisabled;
+        btn.setAttribute("aria-label", "Next set");
+      });
 
       this.updatePlanElapsedDisplay();
     },
