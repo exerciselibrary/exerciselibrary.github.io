@@ -1698,9 +1698,13 @@ class VitruvianApp {
 
   capturePlanSourceInfo() {
     const items = Array.isArray(this.planItems) ? this.planItems : [];
+    const itemCount = items.reduce((total, item) => {
+      const setsValue = Number(item?.sets);
+      return total + (Number.isFinite(setsValue) && setsValue > 0 ? setsValue : 1);
+    }, 0);
     return {
       loadedName: this._loadedPlanName || null,
-      itemCount: items.length,
+      itemCount,
       signature: this.computePlanItemsSignature(items),
     };
   }
