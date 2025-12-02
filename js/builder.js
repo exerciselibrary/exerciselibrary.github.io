@@ -812,6 +812,58 @@ export const buildPlanItems = () => {
   const items = [];
   const currentUnit = getStateWeightUnit();
 
+  const normalizeNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  const normalizeBool = (value) => value === true;
+
+const canMergePlanItems = (prev, next) => {
+  if (!prev || !next || prev.type !== next.type) return false;
+
+  const prevId = prev.builderMeta?.exerciseId;
+  const nextId = next.builderMeta?.exerciseId;
+  if (prevId && nextId && prevId !== nextId) return false;
+
+  const prevIntensity = normalizeIntensity(prev.intensity || DEFAULT_INTENSITY);
+  const nextIntensity = normalizeIntensity(next.intensity || DEFAULT_INTENSITY);
+  if (prevIntensity !== DEFAULT_INTENSITY || nextIntensity !== DEFAULT_INTENSITY) {
+    return false;
+  }
+
+  if (prev.type === 'exercise') {
+    return (
+      normalizeNumber(prev.mode) === normalizeNumber(next.mode) &&
+      normalizeNumber(prev.perCableKg) === normalizeNumber(next.perCableKg) &&
+      normalizeNumber(prev.reps) === normalizeNumber(next.reps) &&
+        normalizeNumber(prev.restSec) === normalizeNumber(next.restSec) &&
+        normalizeNumber(prev.progressionKg) === normalizeNumber(next.progressionKg) &&
+        normalizeNumber(prev.progressionPercent) === normalizeNumber(next.progressionPercent) &&
+        (prev.progressionMode || PROGRESSION_MODES.NONE) === (next.progressionMode || PROGRESSION_MODES.NONE) &&
+        (prev.progressionFrequency || DEFAULT_PROGRESSION_FREQUENCY) ===
+          (next.progressionFrequency || DEFAULT_PROGRESSION_FREQUENCY) &&
+        normalizeNumber(prev.progressiveOverloadKg) === normalizeNumber(next.progressiveOverloadKg) &&
+        normalizeNumber(prev.progressiveOverloadPercent) === normalizeNumber(next.progressiveOverloadPercent) &&
+        normalizeBool(prev.justLift) === normalizeBool(next.justLift) &&
+        normalizeBool(prev.stopAtTop) === normalizeBool(next.stopAtTop) &&
+        (prev.intensity || DEFAULT_INTENSITY) === (next.intensity || DEFAULT_INTENSITY) &&
+        normalizeNumber(prev.cables) === normalizeNumber(next.cables)
+      );
+    }
+
+    // Echo mode comparison
+    return (
+      normalizeNumber(prev.level) === normalizeNumber(next.level) &&
+      normalizeNumber(prev.eccentricPct) === normalizeNumber(next.eccentricPct) &&
+      normalizeNumber(prev.targetReps) === normalizeNumber(next.targetReps) &&
+      normalizeNumber(prev.restSec) === normalizeNumber(next.restSec) &&
+      normalizeBool(prev.justLift) === normalizeBool(next.justLift) &&
+      normalizeBool(prev.stopAtTop) === normalizeBool(next.stopAtTop) &&
+      (prev.intensity || DEFAULT_INTENSITY) === (next.intensity || DEFAULT_INTENSITY)
+    );
+  };
+
   state.builder.order.forEach((exerciseId, orderIndex) => {
     const entry = state.builder.items.get(exerciseId);
     if (!entry) return;
@@ -830,6 +882,8 @@ export const buildPlanItems = () => {
       totalSets: sets.length,
       exerciseIdNew: exerciseNumericId
     };
+
+    let previousPlanItem = null;
 
     sets.forEach((set, setIndex) => {
       const mode = set.mode || 'OLD_SCHOOL';
@@ -869,6 +923,8 @@ export const buildPlanItems = () => {
         setData
       };
 
+      let planItem = null;
+
       if (mode === 'ECHO') {
         const levelIndex = (() => {
           const idx = ECHO_LEVELS.findIndex((opt) => opt.value === set.echoLevel);
@@ -882,7 +938,7 @@ export const buildPlanItems = () => {
         eccentric = clamp(eccentric, 100, 130);
         eccentric = 100 + Math.round((eccentric - 100) / 5) * 5;
 
-        items.push({
+        planItem = {
           type: 'echo',
           name: displayName,
           level: levelIndex,
@@ -897,7 +953,7 @@ export const buildPlanItems = () => {
           builderMeta,
           weightUnit: currentUnit,
           exerciseIdNew: exerciseNumericId
-        });
+        };
       } else {
         const perCableKg = roundKg(Math.max(0, toPerCableKg(set.weight)));
         const modeCode = PROGRAM_MODE_MAP[mode] ?? PROGRAM_MODE_MAP.OLD_SCHOOL;
@@ -916,7 +972,7 @@ export const buildPlanItems = () => {
         const parsedPercent = Number.parseFloat(set.progressionPercent);
         const progressionPercent = Number.isFinite(parsedPercent) ? clamp(parsedPercent, -100, 400) : null;
 
-        items.push({
+        planItem = {
           type: 'exercise',
           name: displayName,
           mode: modeCode,
@@ -942,7 +998,16 @@ export const buildPlanItems = () => {
           builderMeta,
           weightUnit: currentUnit,
           exerciseIdNew: exerciseNumericId
-        });
+        };
+      }
+
+      if (previousPlanItem && canMergePlanItems(previousPlanItem, planItem)) {
+        previousPlanItem.sets = (previousPlanItem.sets || 1) + 1;
+        previousPlanItem.builderMeta.setCount = (previousPlanItem.builderMeta.setCount || 1) + 1;
+      } else {
+        planItem.builderMeta.setCount = 1;
+        items.push(planItem);
+        previousPlanItem = planItem;
       }
     });
   });
@@ -1245,20 +1310,33 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             const idxA = Number.isFinite(Number(a.meta?.setIndex)) ? Number(a.meta.setIndex) : a.index;
             const idxB = Number.isFinite(Number(b.meta?.setIndex)) ? Number(b.meta.setIndex) : b.index;
             return idxA - idxB;
-          })
-          .map(({ meta: itemMeta, item }) => {
-            const set = createSet();
-            const setData = itemMeta.setData || {};
-            const type = item?.type === 'echo' || setData.mode === 'ECHO' ? 'ECHO' : 'PROGRAM';
-            const storedWeightUnit =
-              normalizeWeightUnit(setData.weightUnit) ||
-              normalizeWeightUnit(item?.weightUnit) ||
-              normalizeWeightUnit(item?.progressionUnit);
-            const storedProgressionUnit =
-              normalizeWeightUnit(setData.progressionUnit) ||
-              normalizeWeightUnit(item?.progressionUnit) ||
-              storedWeightUnit;
+          });
 
+        const sets = [];
+        sortedSets.forEach(({ meta: itemMeta, item }) => {
+          const setData = itemMeta.setData || {};
+          const type = item?.type === 'echo' || setData.mode === 'ECHO' ? 'ECHO' : 'PROGRAM';
+          const storedWeightUnit =
+            normalizeWeightUnit(setData.weightUnit) ||
+            normalizeWeightUnit(item?.weightUnit) ||
+            normalizeWeightUnit(item?.progressionUnit);
+          const storedProgressionUnit =
+            normalizeWeightUnit(setData.progressionUnit) ||
+            normalizeWeightUnit(item?.progressionUnit) ||
+            storedWeightUnit;
+
+          const setCount =
+            Math.max(
+              1,
+              Number.isFinite(Number(item?.sets))
+                ? Number(item.sets)
+                : Number.isFinite(Number(itemMeta?.setCount))
+                  ? Number(itemMeta.setCount)
+                  : 1
+            );
+
+          for (let repeat = 0; repeat < setCount; repeat += 1) {
+            const set = createSet();
             if (type === 'ECHO') {
               set.mode = 'ECHO';
               const levelValue =
@@ -1307,10 +1385,13 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
               set.stopAtTop = false;
             }
 
-            return set;
-          });
+            sets.push(set);
+          }
+        });
 
-        const sets = sortedSets.length ? sortedSets : [createSet()];
+        if (!sets.length) {
+          sets.push(createSet());
+        }
 
         state.builder.order.push(resolvedExercise.id);
         state.builder.items.set(resolvedExercise.id, {
@@ -1358,7 +1439,10 @@ const updateScheduleCalendar = () => {
   }
 
   const baseName = state.plan.name.trim() || DEFAULT_PLAN_NAME;
-  const setCount = planItems.length;
+  const setCount = planItems.reduce((total, item) => {
+    const setsValue = Number(item?.sets);
+    return total + (Number.isFinite(setsValue) && setsValue > 0 ? setsValue : 1);
+  }, 0);
   container.innerHTML = occurrences
     .map((date) => {
       const label = OCCURRENCE_FORMATTER.format(date);
@@ -2067,6 +2151,10 @@ export const buildPlanSyncPayload = () => {
   const planItems = buildPlanItems();
   const baseName = state.plan.name.trim() || DEFAULT_PLAN_NAME;
   const syncBaseName = sanitizePlanNameForSync(baseName);
+  const totalPlannedSets = planItems.reduce((total, item) => {
+    const setsValue = Number(item?.sets);
+    return total + (Number.isFinite(setsValue) && setsValue > 0 ? setsValue : 1);
+  }, 0);
 
   if (!planItems.length) {
     return {
@@ -2091,7 +2179,7 @@ export const buildPlanSyncPayload = () => {
       baseName,
       occurrences: [],
       displayOccurrences: [],
-      itemCount: planItems.length
+      itemCount: totalPlannedSets
     };
   }
 
@@ -2152,7 +2240,7 @@ export const buildPlanSyncPayload = () => {
     baseName,
     occurrences: plans.map((plan) => plan.date),
     displayOccurrences: occurrences.map((date) => OCCURRENCE_FORMATTER.format(date)),
-    itemCount: planItems.length
+    itemCount: totalPlannedSets
   };
 };
 

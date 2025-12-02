@@ -263,6 +263,79 @@ const setShape = entry.sets.map((set) => ({
   ]);
 });
 
+test('expands grouped plan items with set counts when loading into builder', () => {
+  state.weightUnit = 'KG';
+  state.data = [
+    {
+      id: 'bench',
+      id_new: 777,
+      name: 'Bench Press',
+      muscleGroups: [],
+      muscles: [],
+      equipment: [],
+      videos: []
+    }
+  ];
+
+  const planItems = [
+    {
+      name: 'Bench Press',
+      sets: 3,
+      reps: 8,
+      perCableKg: 20,
+      restSec: 75,
+      builderMeta: {
+        exerciseId: 'bench',
+        exerciseIdNew: 777,
+        exerciseName: 'Bench Press',
+        order: 0,
+        setIndex: 0,
+        setCount: 3,
+        setData: {
+          reps: '8',
+          weight: '20',
+          mode: 'OLD_SCHOOL',
+          progression: '',
+          progressionPercent: '',
+          progressionMode: 'NONE',
+          progressionFrequency: 'WORKOUT',
+          restSec: '75',
+          justLift: false,
+          stopAtTop: false,
+          intensity: 'none',
+          weightUnit: 'KG',
+          progressionUnit: 'KG'
+        }
+      }
+    }
+  ];
+
+  loadPlanIntoBuilder(planItems);
+
+  assert.deepStrictEqual(state.builder.order, ['bench']);
+  const entry = state.builder.items.get('bench');
+  assert(entry, 'expected bench press entry to be created');
+  assert.strictEqual(entry.sets.length, 3);
+  entry.sets.forEach((set) => {
+    assert.deepStrictEqual(
+      {
+        reps: set.reps,
+        weight: set.weight,
+        mode: set.mode,
+        restSec: set.restSec,
+        intensity: set.intensity
+      },
+      {
+        reps: '8',
+        weight: '20',
+        mode: 'OLD_SCHOOL',
+        restSec: '75',
+        intensity: 'none'
+      }
+    );
+  });
+});
+
 test('creates a fallback entry for legacy plan items without builder metadata IDs', () => {
   state.data = [
     {

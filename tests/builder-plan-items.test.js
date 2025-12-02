@@ -96,6 +96,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
         order: 0,
         totalSets: 2,
         setIndex: 0,
+        setCount: 1,
         setData: {
           reps: '',
           weight: '',
@@ -150,6 +151,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
         order: 0,
         totalSets: 2,
         setIndex: 1,
+        setCount: 1,
         setData: {
           reps: '10',
           weight: '40',
@@ -193,6 +195,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
         order: 1,
         totalSets: 2,
         setIndex: 0,
+        setCount: 1,
         setData: {
           reps: '',
           weight: '',
@@ -247,6 +250,7 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
         order: 1,
         totalSets: 2,
         setIndex: 1,
+        setCount: 1,
         setData: {
           reps: '8',
           weight: '30',
@@ -267,6 +271,151 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
         }
       }
     });
+  } finally {
+    state.weightUnit = originalWeightUnit;
+    state.builder.order = originalOrder;
+    state.builder.items = new Map(originalItems);
+  }
+});
+
+test('collapses consecutive identical sets into grouped plan items', () => {
+  const originalWeightUnit = state.weightUnit;
+  const originalOrder = [...state.builder.order];
+  const originalItems = new Map(state.builder.items);
+
+  try {
+    state.weightUnit = 'KG';
+    state.builder.order = ['bench'];
+    state.builder.items = new Map([
+      [
+        'bench',
+        {
+          exercise: {
+            id: 'bench',
+            id_new: 201,
+            name: 'Bench Press'
+          },
+          sets: [
+            {
+              reps: '5',
+              weight: '4.5',
+              mode: 'OLD_SCHOOL',
+              progression: '',
+              progressionPercent: '',
+              restSec: '60',
+              justLift: false,
+              stopAtTop: false,
+              intensity: 'none'
+            },
+            {
+              reps: '5',
+              weight: '4.5',
+              mode: 'OLD_SCHOOL',
+              progression: '',
+              progressionPercent: '',
+              restSec: '60',
+              justLift: false,
+              stopAtTop: false,
+              intensity: 'none'
+            },
+            {
+              reps: '6',
+              weight: '4.5',
+              mode: 'OLD_SCHOOL',
+              progression: '',
+              progressionPercent: '',
+              restSec: '60',
+              justLift: false,
+              stopAtTop: false,
+              intensity: 'none'
+            }
+          ]
+        }
+      ]
+    ]);
+
+    const planItems = buildPlanItems();
+    assert.equal(planItems.length, 2);
+
+    const [grouped, finalSet] = planItems;
+    assert.equal(grouped.sets, 2);
+    assert.equal(grouped.builderMeta.setCount, 2);
+    assert.equal(grouped.builderMeta.totalSets, 3);
+    assert.equal(grouped.builderMeta.setIndex, 0);
+    assert.equal(grouped.reps, 5);
+    assert.equal(grouped.perCableKg, 4.5);
+    assert.equal(grouped.restSec, 60);
+
+    assert.equal(finalSet.sets, 1);
+    assert.equal(finalSet.builderMeta.setCount, 1);
+    assert.equal(finalSet.builderMeta.setIndex, 2);
+    assert.equal(finalSet.reps, 6);
+  } finally {
+    state.weightUnit = originalWeightUnit;
+    state.builder.order = originalOrder;
+    state.builder.items = new Map(originalItems);
+  }
+});
+
+test('does not merge consecutive sets when an intensity technique is applied', () => {
+  const originalWeightUnit = state.weightUnit;
+  const originalOrder = [...state.builder.order];
+  const originalItems = new Map(state.builder.items);
+
+  try {
+    state.weightUnit = 'KG';
+    state.builder.order = ['bench'];
+    state.builder.items = new Map([
+      [
+        'bench',
+        {
+          exercise: {
+            id: 'bench',
+            id_new: 201,
+            name: 'Bench Press'
+          },
+          sets: [
+            {
+              reps: '8',
+              weight: '20',
+              mode: 'OLD_SCHOOL',
+              progression: '',
+              progressionPercent: '',
+              restSec: '90',
+              justLift: false,
+              stopAtTop: false,
+              intensity: 'dropset'
+            },
+            {
+              reps: '8',
+              weight: '20',
+              mode: 'OLD_SCHOOL',
+              progression: '',
+              progressionPercent: '',
+              restSec: '90',
+              justLift: false,
+              stopAtTop: false,
+              intensity: 'dropset'
+            }
+          ]
+        }
+      ]
+    ]);
+
+    const planItems = buildPlanItems();
+    assert.equal(planItems.length, 2);
+
+    const [first, second] = planItems;
+    assert.equal(first.sets, 1);
+    assert.equal(second.sets, 1);
+    assert.equal(first.intensity, 'dropset');
+    assert.equal(second.intensity, 'dropset');
+    assert.equal(first.builderMeta.setIndex, 0);
+    assert.equal(second.builderMeta.setIndex, 1);
+    assert.equal(first.builderMeta.setCount, 1);
+    assert.equal(second.builderMeta.setCount, 1);
+    assert.equal(first.builderMeta.totalSets, 2);
+    assert.equal(second.builderMeta.totalSets, 2);
   } finally {
     state.weightUnit = originalWeightUnit;
     state.builder.order = originalOrder;
