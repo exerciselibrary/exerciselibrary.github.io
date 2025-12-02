@@ -819,18 +819,24 @@ export const buildPlanItems = () => {
 
   const normalizeBool = (value) => value === true;
 
-  const canMergePlanItems = (prev, next) => {
-    if (!prev || !next || prev.type !== next.type) return false;
+const canMergePlanItems = (prev, next) => {
+  if (!prev || !next || prev.type !== next.type) return false;
 
-    const prevId = prev.builderMeta?.exerciseId;
-    const nextId = next.builderMeta?.exerciseId;
-    if (prevId && nextId && prevId !== nextId) return false;
+  const prevId = prev.builderMeta?.exerciseId;
+  const nextId = next.builderMeta?.exerciseId;
+  if (prevId && nextId && prevId !== nextId) return false;
 
-    if (prev.type === 'exercise') {
-      return (
-        normalizeNumber(prev.mode) === normalizeNumber(next.mode) &&
-        normalizeNumber(prev.perCableKg) === normalizeNumber(next.perCableKg) &&
-        normalizeNumber(prev.reps) === normalizeNumber(next.reps) &&
+  const prevIntensity = normalizeIntensity(prev.intensity || DEFAULT_INTENSITY);
+  const nextIntensity = normalizeIntensity(next.intensity || DEFAULT_INTENSITY);
+  if (prevIntensity !== DEFAULT_INTENSITY || nextIntensity !== DEFAULT_INTENSITY) {
+    return false;
+  }
+
+  if (prev.type === 'exercise') {
+    return (
+      normalizeNumber(prev.mode) === normalizeNumber(next.mode) &&
+      normalizeNumber(prev.perCableKg) === normalizeNumber(next.perCableKg) &&
+      normalizeNumber(prev.reps) === normalizeNumber(next.reps) &&
         normalizeNumber(prev.restSec) === normalizeNumber(next.restSec) &&
         normalizeNumber(prev.progressionKg) === normalizeNumber(next.progressionKg) &&
         normalizeNumber(prev.progressionPercent) === normalizeNumber(next.progressionPercent) &&

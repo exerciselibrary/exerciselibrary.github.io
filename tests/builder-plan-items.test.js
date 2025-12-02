@@ -357,6 +357,72 @@ test('collapses consecutive identical sets into grouped plan items', () => {
   }
 });
 
+test('does not merge consecutive sets when an intensity technique is applied', () => {
+  const originalWeightUnit = state.weightUnit;
+  const originalOrder = [...state.builder.order];
+  const originalItems = new Map(state.builder.items);
+
+  try {
+    state.weightUnit = 'KG';
+    state.builder.order = ['bench'];
+    state.builder.items = new Map([
+      [
+        'bench',
+        {
+          exercise: {
+            id: 'bench',
+            id_new: 201,
+            name: 'Bench Press'
+          },
+          sets: [
+            {
+              reps: '8',
+              weight: '20',
+              mode: 'OLD_SCHOOL',
+              progression: '',
+              progressionPercent: '',
+              restSec: '90',
+              justLift: false,
+              stopAtTop: false,
+              intensity: 'dropset'
+            },
+            {
+              reps: '8',
+              weight: '20',
+              mode: 'OLD_SCHOOL',
+              progression: '',
+              progressionPercent: '',
+              restSec: '90',
+              justLift: false,
+              stopAtTop: false,
+              intensity: 'dropset'
+            }
+          ]
+        }
+      ]
+    ]);
+
+    const planItems = buildPlanItems();
+    assert.equal(planItems.length, 2);
+
+    const [first, second] = planItems;
+    assert.equal(first.sets, 1);
+    assert.equal(second.sets, 1);
+    assert.equal(first.intensity, 'dropset');
+    assert.equal(second.intensity, 'dropset');
+    assert.equal(first.builderMeta.setIndex, 0);
+    assert.equal(second.builderMeta.setIndex, 1);
+    assert.equal(first.builderMeta.setCount, 1);
+    assert.equal(second.builderMeta.setCount, 1);
+    assert.equal(first.builderMeta.totalSets, 2);
+    assert.equal(second.builderMeta.totalSets, 2);
+  } finally {
+    state.weightUnit = originalWeightUnit;
+    state.builder.order = originalOrder;
+    state.builder.items = new Map(originalItems);
+  }
+});
+
 test('buildPlanItems encodes Time Under Tension Beast Mode correctly', () => {
   const originalWeightUnit = state.weightUnit;
   const originalOrder = [...state.builder.order];
