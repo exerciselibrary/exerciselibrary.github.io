@@ -4,7 +4,7 @@ class DropboxManager {
   constructor() {
     // IMPORTANT: Replace this with your actual Dropbox App Key
     // Create app at: https://www.dropbox.com/developers/apps
-    this.clientId = "6omcza3uejr7cok"; // TODO: Replace with your app key
+    this.clientId = "y9djrvis169fgto"; // TODO: Replace with your app key
     this.redirectUri = window.location.origin + window.location.pathname;
     this.dbx = null;
     this.isConnected = false;

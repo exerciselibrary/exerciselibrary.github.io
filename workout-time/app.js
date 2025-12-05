@@ -6410,6 +6410,13 @@ class VitruvianApp {
             )
           : [];
 
+      // Compute average load between warmup end and workout end
+      const averageLoad = this.calculateAverageLoadForWorkout(
+        movementData,
+        this.currentWorkout.warmupEndTime,
+        endTime,
+      );
+
       const workout = {
         mode: this.currentWorkout.mode,
         weightKg: this.currentWorkout.weightKg,
@@ -6435,6 +6442,25 @@ class VitruvianApp {
 
         // Include detailed movement data (positions and loads over time)
         movementData: movementData,
+        // Compute average loads between warmup end and endTime (if available)
+        // averageLoad: total (left+right), averageLoadLeft: left cable, averageLoadRight: right cable
+        ...(() => {
+          try {
+            const avgs = this.calculateAverageLoadForWorkout(
+              movementData,
+              this.currentWorkout.warmupEndTime,
+              endTime,
+            );
+            return {
+              averageLoad: avgs ? avgs.averageTotal : null,
+              averageLoadLeft: avgs ? avgs.averageLeft : null,
+              averageLoadRight: avgs ? avgs.averageRight : null,
+            };
+          } catch (e) {
+            return { averageLoad: null, averageLoadLeft: null, averageLoadRight: null };
+          }
+        })(),
+        averageLoad: averageLoad,
       };
 
       const isSkipped = reason === "skipped";
@@ -6563,6 +6589,49 @@ class VitruvianApp {
       posA: point.posA,
       posB: point.posB,
     }));
+  }
+
+  // Calculate average total, left and right loads between warmupEndTime and endTime
+  // Returns an object: { averageTotal, averageLeft, averageRight } or null if no points
+  calculateAverageLoadForWorkout(movementData = [], warmupEndTime, endTime) {
+    if (!Array.isArray(movementData) || movementData.length === 0) {
+      return null;
+    }
+
+    const windowStartMs =
+      warmupEndTime instanceof Date ? warmupEndTime.getTime() : null;
+    const windowEndMs = endTime instanceof Date ? endTime.getTime() : null;
+
+    let sumLeft = 0;
+    let sumRight = 0;
+    let count = 0;
+
+    for (const pt of movementData) {
+      const ts = pt && pt.timestamp ? new Date(pt.timestamp).getTime() : NaN;
+      if (!isFinite(ts)) continue;
+
+      if (windowEndMs && ts > windowEndMs) continue;
+      if (windowStartMs && ts < windowStartMs) continue;
+
+      const left = Number(pt.loadA) || 0;
+      const right = Number(pt.loadB) || 0;
+      sumLeft += left;
+      sumRight += right;
+      count += 1;
+    }
+
+    if (count === 0) return null;
+
+    const avgLeft = sumLeft / count;
+    const avgRight = sumRight / count;
+    const avgTotal = avgLeft + avgRight;
+
+    // Return rounded integer values for compatibility with existing files; change to decimals if desired
+    return {
+      averageTotal: Math.round(avgTotal),
+      averageLeft: Math.round(avgLeft),
+      averageRight: Math.round(avgRight),
+    };
   }
 
 
