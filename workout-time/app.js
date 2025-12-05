@@ -6410,8 +6410,8 @@ class VitruvianApp {
             )
           : [];
 
-      // Compute average load between warmup end and workout end
-      const averageLoad = this.calculateAverageLoadForWorkout(
+      // Compute average loads between warmup end and workout end
+      const averageLoads = this.calculateAverageLoadForWorkout(
         movementData,
         this.currentWorkout.warmupEndTime,
         endTime,
@@ -6442,25 +6442,11 @@ class VitruvianApp {
 
         // Include detailed movement data (positions and loads over time)
         movementData: movementData,
-        // Compute average loads between warmup end and endTime (if available)
+        // Average loads between warmup end and workout end
         // averageLoad: total (left+right), averageLoadLeft: left cable, averageLoadRight: right cable
-        ...(() => {
-          try {
-            const avgs = this.calculateAverageLoadForWorkout(
-              movementData,
-              this.currentWorkout.warmupEndTime,
-              endTime,
-            );
-            return {
-              averageLoad: avgs ? avgs.averageTotal : null,
-              averageLoadLeft: avgs ? avgs.averageLeft : null,
-              averageLoadRight: avgs ? avgs.averageRight : null,
-            };
-          } catch (e) {
-            return { averageLoad: null, averageLoadLeft: null, averageLoadRight: null };
-          }
-        })(),
-        averageLoad: averageLoad,
+        averageLoad: averageLoads ? averageLoads.averageTotal : null,
+        averageLoadLeft: averageLoads ? averageLoads.averageLeft : null,
+        averageLoadRight: averageLoads ? averageLoads.averageRight : null,
       };
 
       const isSkipped = reason === "skipped";
