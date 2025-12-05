@@ -6481,6 +6481,26 @@ class VitruvianApp {
       // Auto-save to Dropbox if connected
       if (!isSkipped && this.dropboxManager.isConnected) {
         const workoutToPersist = storedWorkout || summaryWorkout;
+
+        // Ensure average fields are present on the persisted object (after normalization)
+        try {
+          const avgsPersist = this.calculateAverageLoadForWorkout(
+            Array.isArray(workoutToPersist.movementData)
+              ? workoutToPersist.movementData
+              : [],
+            workoutToPersist.warmupEndTime,
+            workoutToPersist.endTime,
+          );
+          workoutToPersist.averageLoad = avgsPersist ? avgsPersist.averageTotal : null;
+          workoutToPersist.averageLoadLeft = avgsPersist ? avgsPersist.averageLeft : null;
+          workoutToPersist.averageLoadRight = avgsPersist ? avgsPersist.averageRight : null;
+        } catch (e) {
+          // no-op, fall through with nulls
+          workoutToPersist.averageLoad = workoutToPersist.averageLoad ?? null;
+          workoutToPersist.averageLoadLeft = workoutToPersist.averageLoadLeft ?? null;
+          workoutToPersist.averageLoadRight = workoutToPersist.averageLoadRight ?? null;
+        }
+
         this.dropboxManager
           .saveWorkout(workoutToPersist)
           .then(() => {
