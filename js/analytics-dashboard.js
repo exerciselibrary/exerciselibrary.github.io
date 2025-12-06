@@ -889,12 +889,36 @@ export class AnalyticsDashboard {
         continue;
       }
 
+      // compute peaks and rep/volume totals for this workout
       const peaks = this.getWorkoutPhasePeaks(workout);
       const concKg = Number(peaks.concentricKg) || 0;
       const eccKg = Number(peaks.eccentricKg) || 0;
+      // Skip workouts with no measurable peaks
       if (concKg <= 0 && eccKg <= 0) {
         continue;
       }
+
+      // Compute per-workout averages (kg) to contribute to per-day means.
+      // Prefer stored per-workout average fields when present, otherwise
+      // fall back to rep-derived values.
+      const repDetails = this.getWorkoutRepDetails(workout);
+      const reps = Number(repDetails.count) || 0;
+
+      const storedAvgTotal = Number(workout.averageLoad) || Number(workout.averageTotal) || 0;
+      const storedAvgLeft = Number(workout.averageLoadLeft) || Number(workout.averageLeft) || 0;
+      const storedAvgRight = Number(workout.averageLoadRight) || Number(workout.averageRight) || 0;
+
+      const perWorkoutAvgKgFromReps = (function () {
+        const totalConcentricKg = Number(repDetails.totalConcentricKg) || 0;
+        const totalEccentricKg = Number(repDetails.totalEccentricKg) || 0;
+        const totalVol = Math.max(totalConcentricKg, totalEccentricKg, 0);
+        return reps > 0 ? totalVol / reps : 0;
+      })();
+
+      // Determine per-workout averages (kg), preferring stored fields
+      const perWorkoutAvgKg = storedAvgTotal > 0 ? storedAvgTotal : perWorkoutAvgKgFromReps || 0;
+      const perWorkoutAvgLeftKg = storedAvgLeft > 0 ? storedAvgLeft : 0;
+      const perWorkoutAvgRightKg = storedAvgRight > 0 ? storedAvgRight : 0;
 
       const dayStart = this.getDayStart(timestamp);
       const existing = dayMap.get(dayStart);
@@ -904,10 +928,19 @@ export class AnalyticsDashboard {
           weightKg: concKg,
           concentricKg: concKg,
           eccentricKg: eccKg,
-          timestamp
+          timestamp,
+          // accumulate per-day workout-average sums and counts
+          dayAvgTotalSumKg: perWorkoutAvgKg > 0 ? perWorkoutAvgKg : 0,
+          dayAvgLeftSumKg: perWorkoutAvgLeftKg > 0 ? perWorkoutAvgLeftKg : 0,
+          dayAvgRightSumKg: perWorkoutAvgRightKg > 0 ? perWorkoutAvgRightKg : 0,
+          dayWorkoutCountTotal: perWorkoutAvgKg > 0 ? 1 : 0,
+          dayWorkoutCountLeft: perWorkoutAvgLeftKg > 0 ? 1 : 0,
+          dayWorkoutCountRight: perWorkoutAvgRightKg > 0 ? 1 : 0
         });
         continue;
       }
+
+      // update peaks if this workout contributes a higher peak
       if (concKg > existing.concentricKg) {
         existing.concentricKg = concKg;
         existing.weightKg = concKg;
@@ -916,9 +949,43 @@ export class AnalyticsDashboard {
       if (eccKg > existing.eccentricKg) {
         existing.eccentricKg = eccKg;
       }
+
+      // accumulate per-day workout-average sums and counts
+      existing.dayAvgTotalSumKg = (existing.dayAvgTotalSumKg || 0) + (perWorkoutAvgKg > 0 ? perWorkoutAvgKg : 0);
+      existing.dayAvgLeftSumKg = (existing.dayAvgLeftSumKg || 0) + (perWorkoutAvgLeftKg > 0 ? perWorkoutAvgLeftKg : 0);
+      existing.dayAvgRightSumKg = (existing.dayAvgRightSumKg || 0) + (perWorkoutAvgRightKg > 0 ? perWorkoutAvgRightKg : 0);
+      existing.dayWorkoutCountTotal = (existing.dayWorkoutCountTotal || 0) + (perWorkoutAvgKg > 0 ? 1 : 0);
+      existing.dayWorkoutCountLeft = (existing.dayWorkoutCountLeft || 0) + (perWorkoutAvgLeftKg > 0 ? 1 : 0);
+      existing.dayWorkoutCountRight = (existing.dayWorkoutCountRight || 0) + (perWorkoutAvgRightKg > 0 ? 1 : 0);
     }
 
-    return Array.from(dayMap.values()).sort((a, b) => a.day - b.day);
+    // Convert accumulated map to array and compute per-day averages
+    const results = Array.from(dayMap.values()).map((entry) => {
+      const totalSum = Number(entry.dayAvgTotalSumKg) || 0;
+      const totalCount = Number(entry.dayWorkoutCountTotal) || 0;
+      const avgTotalKg = totalCount > 0 ? totalSum / totalCount : 0;
+
+      const leftSum = Number(entry.dayAvgLeftSumKg) || 0;
+      const leftCount = Number(entry.dayWorkoutCountLeft) || 0;
+      const avgLeftKg = leftCount > 0 ? leftSum / leftCount : 0;
+
+      const rightSum = Number(entry.dayAvgRightSumKg) || 0;
+      const rightCount = Number(entry.dayWorkoutCountRight) || 0;
+      const avgRightKg = rightCount > 0 ? rightSum / rightCount : 0;
+
+      return {
+        day: entry.day,
+        weightKg: entry.weightKg,
+        concentricKg: entry.concentricKg,
+        eccentricKg: entry.eccentricKg,
+        timestamp: entry.timestamp,
+        averageTotalKg: avgTotalKg,
+        averageLeftKg: avgLeftKg,
+        averageRightKg: avgRightKg
+      };
+    });
+
+    return results.sort((a, b) => a.day - b.day);
   }
 
   getDayStart(date) {
@@ -941,16 +1008,18 @@ export class AnalyticsDashboard {
     const timestamps = [];
     const concentric = [];
     const eccentric = [];
-
+    const avgSeries = [];
     entries.forEach((entry) => {
       const concKg = Number(entry.concentricKg ?? entry.weightKg) || 0;
       const eccKg = Number(entry.eccentricKg ?? entry.weightKg) || 0;
+      const entryAvgKg = Number(entry.averageTotalKg) || 0;
       timestamps.push(entry.day / 1000);
       concentric.push(this.convertKgToDisplay(concKg, unit));
       eccentric.push(this.convertKgToDisplay(eccKg, unit));
+      avgSeries.push(this.convertKgToDisplay(entryAvgKg, unit));
     });
 
-    return [timestamps, concentric, eccentric];
+    return [timestamps, concentric, eccentric, avgSeries];
   }
 
   ensureChart() {
@@ -998,6 +1067,14 @@ export class AnalyticsDashboard {
           stroke: '#f472b6',
           width: 2,
           value: (u, v) => (v == null ? '-' : v.toFixed(this.getDisplayDecimals()))
+        },
+        {
+          label: `Avg Total Load (${unitLabel})`,
+          stroke: '#38bdf8',
+          width: 2,
+          dash: [6, 6],
+          value: (u, v) => (v == null ? '-' : v.toFixed(this.getDisplayDecimals())),
+          points: { show: false },
         }
       ],
       axes: [
@@ -1014,7 +1091,7 @@ export class AnalyticsDashboard {
       ]
     };
 
-    this.chart = new window.uPlot(opts, [[], [], []], this.chartEl);
+    this.chart = new window.uPlot(opts, [[], [], [], []], this.chartEl);
     this.setupResizeObserver();
   }
 
