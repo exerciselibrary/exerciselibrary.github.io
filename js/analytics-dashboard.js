@@ -898,28 +898,27 @@ export class AnalyticsDashboard {
         continue;
       }
 
-      // Rep/volume details for averages. Prefer stored JSON averages when present.
+      // Compute per-workout averages (kg) to contribute to per-day means.
+      // Prefer stored per-workout average fields when present, otherwise
+      // fall back to rep-derived values.
       const repDetails = this.getWorkoutRepDetails(workout);
       const reps = Number(repDetails.count) || 0;
 
-      // Prefer stored per-workout average fields if available (these are in kg)
       const storedAvgTotal = Number(workout.averageLoad) || Number(workout.averageTotal) || 0;
       const storedAvgLeft = Number(workout.averageLoadLeft) || Number(workout.averageLeft) || 0;
       const storedAvgRight = Number(workout.averageLoadRight) || Number(workout.averageRight) || 0;
 
-      let totalConcentricKg = Number(repDetails.totalConcentricKg) || 0;
-      let totalEccentricKg = Number(repDetails.totalEccentricKg) || 0;
-      let volumeKg = this.getWorkoutVolumeKg(workout) || 0;
+      const perWorkoutAvgKgFromReps = (function () {
+        const totalConcentricKg = Number(repDetails.totalConcentricKg) || 0;
+        const totalEccentricKg = Number(repDetails.totalEccentricKg) || 0;
+        const totalVol = Math.max(totalConcentricKg, totalEccentricKg, 0);
+        return reps > 0 ? totalVol / reps : 0;
+      })();
 
-      if (reps > 0 && storedAvgLeft > 0) {
-        totalConcentricKg = storedAvgLeft * reps;
-      }
-      if (reps > 0 && storedAvgRight > 0) {
-        totalEccentricKg = storedAvgRight * reps;
-      }
-      if (reps > 0 && storedAvgTotal > 0) {
-        volumeKg = storedAvgTotal * reps;
-      }
+      // Determine per-workout averages (kg), preferring stored fields
+      const perWorkoutAvgKg = storedAvgTotal > 0 ? storedAvgTotal : perWorkoutAvgKgFromReps || 0;
+      const perWorkoutAvgLeftKg = storedAvgLeft > 0 ? storedAvgLeft : 0;
+      const perWorkoutAvgRightKg = storedAvgRight > 0 ? storedAvgRight : 0;
 
       const dayStart = this.getDayStart(timestamp);
       const existing = dayMap.get(dayStart);
@@ -930,11 +929,13 @@ export class AnalyticsDashboard {
           concentricKg: concKg,
           eccentricKg: eccKg,
           timestamp,
-          // accumulate per-day totals for averages
-          dayTotalReps: reps,
-          dayTotalConcentricKg: totalConcentricKg,
-          dayTotalEccentricKg: totalEccentricKg,
-          dayTotalVolumeKg: volumeKg
+          // accumulate per-day workout-average sums and counts
+          dayAvgTotalSumKg: perWorkoutAvgKg > 0 ? perWorkoutAvgKg : 0,
+          dayAvgLeftSumKg: perWorkoutAvgLeftKg > 0 ? perWorkoutAvgLeftKg : 0,
+          dayAvgRightSumKg: perWorkoutAvgRightKg > 0 ? perWorkoutAvgRightKg : 0,
+          dayWorkoutCountTotal: perWorkoutAvgKg > 0 ? 1 : 0,
+          dayWorkoutCountLeft: perWorkoutAvgLeftKg > 0 ? 1 : 0,
+          dayWorkoutCountRight: perWorkoutAvgRightKg > 0 ? 1 : 0
         });
         continue;
       }
@@ -949,22 +950,29 @@ export class AnalyticsDashboard {
         existing.eccentricKg = eccKg;
       }
 
-      // accumulate totals for the day
-      existing.dayTotalReps = (existing.dayTotalReps || 0) + reps;
-      existing.dayTotalConcentricKg = (existing.dayTotalConcentricKg || 0) + totalConcentricKg;
-      existing.dayTotalEccentricKg = (existing.dayTotalEccentricKg || 0) + totalEccentricKg;
-      existing.dayTotalVolumeKg = (existing.dayTotalVolumeKg || 0) + volumeKg;
+      // accumulate per-day workout-average sums and counts
+      existing.dayAvgTotalSumKg = (existing.dayAvgTotalSumKg || 0) + (perWorkoutAvgKg > 0 ? perWorkoutAvgKg : 0);
+      existing.dayAvgLeftSumKg = (existing.dayAvgLeftSumKg || 0) + (perWorkoutAvgLeftKg > 0 ? perWorkoutAvgLeftKg : 0);
+      existing.dayAvgRightSumKg = (existing.dayAvgRightSumKg || 0) + (perWorkoutAvgRightKg > 0 ? perWorkoutAvgRightKg : 0);
+      existing.dayWorkoutCountTotal = (existing.dayWorkoutCountTotal || 0) + (perWorkoutAvgKg > 0 ? 1 : 0);
+      existing.dayWorkoutCountLeft = (existing.dayWorkoutCountLeft || 0) + (perWorkoutAvgLeftKg > 0 ? 1 : 0);
+      existing.dayWorkoutCountRight = (existing.dayWorkoutCountRight || 0) + (perWorkoutAvgRightKg > 0 ? 1 : 0);
     }
 
     // Convert accumulated map to array and compute per-day averages
     const results = Array.from(dayMap.values()).map((entry) => {
-      const reps = Number(entry.dayTotalReps) || 0;
-      const totalConc = Number(entry.dayTotalConcentricKg) || 0;
-      const totalEcc = Number(entry.dayTotalEccentricKg) || 0;
-      const totalVol = Number(entry.dayTotalVolumeKg) || 0;
-      const avgTotalKg = reps > 0 ? totalVol / reps : 0;
-      const avgLeftKg = reps > 0 ? totalConc / reps : 0;
-      const avgRightKg = reps > 0 ? totalEcc / reps : 0;
+      const totalSum = Number(entry.dayAvgTotalSumKg) || 0;
+      const totalCount = Number(entry.dayWorkoutCountTotal) || 0;
+      const avgTotalKg = totalCount > 0 ? totalSum / totalCount : 0;
+
+      const leftSum = Number(entry.dayAvgLeftSumKg) || 0;
+      const leftCount = Number(entry.dayWorkoutCountLeft) || 0;
+      const avgLeftKg = leftCount > 0 ? leftSum / leftCount : 0;
+
+      const rightSum = Number(entry.dayAvgRightSumKg) || 0;
+      const rightCount = Number(entry.dayWorkoutCountRight) || 0;
+      const avgRightKg = rightCount > 0 ? rightSum / rightCount : 0;
+
       return {
         day: entry.day,
         weightKg: entry.weightKg,
