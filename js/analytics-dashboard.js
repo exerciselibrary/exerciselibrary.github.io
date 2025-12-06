@@ -941,16 +941,31 @@ export class AnalyticsDashboard {
     const timestamps = [];
     const concentric = [];
     const eccentric = [];
-
+    // Compute average total load (from visible entries)
+    let avgTotal = 0;
+    if (entries.length > 0) {
+      // Use the same logic as updateWorkloadMetrics
+      let totalVolumeKg = 0;
+      let totalReps = 0;
+      entries.forEach((entry) => {
+        const reps = Number(entry.reps) || 0;
+        const concKg = Number(entry.concentricKg ?? entry.weightKg) || 0;
+        totalVolumeKg += concKg * reps;
+        totalReps += reps;
+      });
+      avgTotal = totalReps > 0 ? totalVolumeKg / totalReps : 0;
+    }
+    const avgSeries = [];
     entries.forEach((entry) => {
       const concKg = Number(entry.concentricKg ?? entry.weightKg) || 0;
       const eccKg = Number(entry.eccentricKg ?? entry.weightKg) || 0;
       timestamps.push(entry.day / 1000);
       concentric.push(this.convertKgToDisplay(concKg, unit));
       eccentric.push(this.convertKgToDisplay(eccKg, unit));
+      avgSeries.push(this.convertKgToDisplay(avgTotal, unit));
     });
 
-    return [timestamps, concentric, eccentric];
+    return [timestamps, concentric, eccentric, avgSeries];
   }
 
   ensureChart() {
@@ -998,6 +1013,14 @@ export class AnalyticsDashboard {
           stroke: '#f472b6',
           width: 2,
           value: (u, v) => (v == null ? '-' : v.toFixed(this.getDisplayDecimals()))
+        },
+        {
+          label: `Avg Total Load (${unitLabel})`,
+          stroke: '#38bdf8',
+          width: 2,
+          dash: [6, 6],
+          value: (u, v) => (v == null ? '-' : v.toFixed(this.getDisplayDecimals())),
+          points: { show: false },
         }
       ],
       axes: [
@@ -1014,7 +1037,7 @@ export class AnalyticsDashboard {
       ]
     };
 
-    this.chart = new window.uPlot(opts, [[], [], []], this.chartEl);
+    this.chart = new window.uPlot(opts, [[], [], [], []], this.chartEl);
     this.setupResizeObserver();
   }
 
