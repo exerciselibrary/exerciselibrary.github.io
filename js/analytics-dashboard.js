@@ -889,11 +889,36 @@ export class AnalyticsDashboard {
         continue;
       }
 
+      // compute peaks and rep/volume totals for this workout
       const peaks = this.getWorkoutPhasePeaks(workout);
       const concKg = Number(peaks.concentricKg) || 0;
       const eccKg = Number(peaks.eccentricKg) || 0;
+      // Skip workouts with no measurable peaks
       if (concKg <= 0 && eccKg <= 0) {
         continue;
+      }
+
+      // Rep/volume details for averages. Prefer stored JSON averages when present.
+      const repDetails = this.getWorkoutRepDetails(workout);
+      const reps = Number(repDetails.count) || 0;
+
+      // Prefer stored per-workout average fields if available (these are in kg)
+      const storedAvgTotal = Number(workout.averageLoad) || Number(workout.averageTotal) || 0;
+      const storedAvgLeft = Number(workout.averageLoadLeft) || Number(workout.averageLeft) || 0;
+      const storedAvgRight = Number(workout.averageLoadRight) || Number(workout.averageRight) || 0;
+
+      let totalConcentricKg = Number(repDetails.totalConcentricKg) || 0;
+      let totalEccentricKg = Number(repDetails.totalEccentricKg) || 0;
+      let volumeKg = this.getWorkoutVolumeKg(workout) || 0;
+
+      if (reps > 0 && storedAvgLeft > 0) {
+        totalConcentricKg = storedAvgLeft * reps;
+      }
+      if (reps > 0 && storedAvgRight > 0) {
+        totalEccentricKg = storedAvgRight * reps;
+      }
+      if (reps > 0 && storedAvgTotal > 0) {
+        volumeKg = storedAvgTotal * reps;
       }
 
       const dayStart = this.getDayStart(timestamp);
@@ -904,10 +929,17 @@ export class AnalyticsDashboard {
           weightKg: concKg,
           concentricKg: concKg,
           eccentricKg: eccKg,
-          timestamp
+          timestamp,
+          // accumulate per-day totals for averages
+          dayTotalReps: reps,
+          dayTotalConcentricKg: totalConcentricKg,
+          dayTotalEccentricKg: totalEccentricKg,
+          dayTotalVolumeKg: volumeKg
         });
         continue;
       }
+
+      // update peaks if this workout contributes a higher peak
       if (concKg > existing.concentricKg) {
         existing.concentricKg = concKg;
         existing.weightKg = concKg;
@@ -916,9 +948,36 @@ export class AnalyticsDashboard {
       if (eccKg > existing.eccentricKg) {
         existing.eccentricKg = eccKg;
       }
+
+      // accumulate totals for the day
+      existing.dayTotalReps = (existing.dayTotalReps || 0) + reps;
+      existing.dayTotalConcentricKg = (existing.dayTotalConcentricKg || 0) + totalConcentricKg;
+      existing.dayTotalEccentricKg = (existing.dayTotalEccentricKg || 0) + totalEccentricKg;
+      existing.dayTotalVolumeKg = (existing.dayTotalVolumeKg || 0) + volumeKg;
     }
 
-    return Array.from(dayMap.values()).sort((a, b) => a.day - b.day);
+    // Convert accumulated map to array and compute per-day averages
+    const results = Array.from(dayMap.values()).map((entry) => {
+      const reps = Number(entry.dayTotalReps) || 0;
+      const totalConc = Number(entry.dayTotalConcentricKg) || 0;
+      const totalEcc = Number(entry.dayTotalEccentricKg) || 0;
+      const totalVol = Number(entry.dayTotalVolumeKg) || 0;
+      const avgTotalKg = reps > 0 ? totalVol / reps : 0;
+      const avgLeftKg = reps > 0 ? totalConc / reps : 0;
+      const avgRightKg = reps > 0 ? totalEcc / reps : 0;
+      return {
+        day: entry.day,
+        weightKg: entry.weightKg,
+        concentricKg: entry.concentricKg,
+        eccentricKg: entry.eccentricKg,
+        timestamp: entry.timestamp,
+        averageTotalKg: avgTotalKg,
+        averageLeftKg: avgLeftKg,
+        averageRightKg: avgRightKg
+      };
+    });
+
+    return results.sort((a, b) => a.day - b.day);
   }
 
   getDayStart(date) {
@@ -941,21 +1000,15 @@ export class AnalyticsDashboard {
     const timestamps = [];
     const concentric = [];
     const eccentric = [];
-    // Compute average total load from filtered workouts
-    let avgTotal = 0;
-    if (this.currentExerciseKey && Array.isArray(this.workouts)) {
-      const filteredWorkouts = this.filterWorkoutsByRange(this.filterWorkoutsByExercise());
-      const stats = this.calculateWorkloadStats(filteredWorkouts);
-      avgTotal = stats.averageLoadKg;
-    }
     const avgSeries = [];
     entries.forEach((entry) => {
       const concKg = Number(entry.concentricKg ?? entry.weightKg) || 0;
       const eccKg = Number(entry.eccentricKg ?? entry.weightKg) || 0;
+      const entryAvgKg = Number(entry.averageTotalKg) || 0;
       timestamps.push(entry.day / 1000);
       concentric.push(this.convertKgToDisplay(concKg, unit));
       eccentric.push(this.convertKgToDisplay(eccKg, unit));
-      avgSeries.push(this.convertKgToDisplay(avgTotal, unit));
+      avgSeries.push(this.convertKgToDisplay(entryAvgKg, unit));
     });
 
     return [timestamps, concentric, eccentric, avgSeries];
