@@ -941,19 +941,12 @@ export class AnalyticsDashboard {
     const timestamps = [];
     const concentric = [];
     const eccentric = [];
-    // Compute average total load (from visible entries)
+    // Compute average total load from filtered workouts
     let avgTotal = 0;
-    if (entries.length > 0) {
-      // Use the same logic as updateWorkloadMetrics
-      let totalVolumeKg = 0;
-      let totalReps = 0;
-      entries.forEach((entry) => {
-        const reps = Number(entry.reps) || 0;
-        const concKg = Number(entry.concentricKg ?? entry.weightKg) || 0;
-        totalVolumeKg += concKg * reps;
-        totalReps += reps;
-      });
-      avgTotal = totalReps > 0 ? totalVolumeKg / totalReps : 0;
+    if (this.currentExerciseKey && Array.isArray(this.workouts)) {
+      const filteredWorkouts = this.filterWorkoutsByRange(this.filterWorkoutsByExercise());
+      const stats = this.calculateWorkloadStats(filteredWorkouts);
+      avgTotal = stats.averageLoadKg;
     }
     const avgSeries = [];
     entries.forEach((entry) => {
