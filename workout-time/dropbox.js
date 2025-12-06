@@ -248,6 +248,38 @@ class DropboxManager {
     }
   }
 
+  async overwriteWorkout(workout) {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Dropbox");
+    }
+
+    try {
+      const client = await this.ensureDropboxClient();
+
+      // Get the original path from metadata
+      const originalPath = workout?._dropboxMetadata?.path;
+      if (!originalPath) {
+        throw new Error("No Dropbox path metadata found. Cannot overwrite.");
+      }
+
+      // Convert workout to JSON (exclude metadata from the JSON)
+      const contents = JSON.stringify(workout, null, 2);
+
+      // Overwrite existing file
+      await client.filesUpload({
+        path: originalPath,
+        contents: contents,
+        mode: { ".tag": "overwrite" },
+      });
+
+      this.log(`Overwritten workout: ${workout?._dropboxMetadata?.name || originalPath}`, "success");
+      return true;
+    } catch (error) {
+      this.log(`Failed to overwrite workout: ${error.message}`, "error");
+      throw error;
+    }
+  }
+
   // Load workouts from Dropbox. By default returns latest 25, but maxEntries can override.
   async loadWorkouts(options = {}) {
     if (!this.isConnected) {

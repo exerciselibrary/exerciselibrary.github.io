@@ -3240,10 +3240,10 @@ class VitruvianApp {
 
       updateStatus(`Uploading ${updatedCount} updated workouts...`);
 
-      // Upload all updated workouts to Dropbox
+      // Upload all updated workouts to Dropbox, overwriting the original files
       for (const workout of updatedWorkouts) {
         try {
-          await this.dropboxManager.saveWorkout(workout);
+          await this.dropboxManager.overwriteWorkout(workout);
         } catch (error) {
           this.addLogEntry(
             `Failed to save workout: ${error.message}`,
