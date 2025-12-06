@@ -3149,6 +3149,121 @@ class VitruvianApp {
     }
   }
 
+  requestUpdateAveragesOldWorkouts() {
+    return this.updateAveragesOldWorkouts({ manual: true });
+  }
+
+  async updateAveragesOldWorkouts(options = {}) {
+    if (!this.dropboxManager.isConnected) {
+      alert("Please connect to Dropbox first");
+      return;
+    }
+
+    const manual = options?.manual === true;
+    if (!manual) {
+      this.addLogEntry(
+        "Blocked non-manual request to update averages",
+        "warning",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "This will scan all your workout files from Dropbox and calculate missing average load fields (averageLoad, averageLoadLeft, averageLoadRight). This may take a moment. Continue?",
+    );
+    if (!confirmed) {
+      this.addLogEntry("Average update cancelled", "info");
+      return;
+    }
+
+    const context = "Update Averages";
+    const updateStatus = (message, opts = {}) => {
+      this.logDropboxConsole(context, message, opts);
+      this.setDropboxStatus(`${context}: ${message}`, opts);
+    };
+
+    try {
+      updateStatus("Downloading workouts from Dropbox...");
+      const cloudWorkouts = await this.dropboxManager.loadWorkouts({
+        maxEntries: Infinity,
+      });
+
+      if (!Array.isArray(cloudWorkouts) || cloudWorkouts.length === 0) {
+        updateStatus("No workouts found", { color: "#ff922b" });
+        this.addLogEntry("No workouts found in Dropbox", "info");
+        return;
+      }
+
+      let updatedCount = 0;
+      const updatedWorkouts = [];
+
+      for (const workout of cloudWorkouts) {
+        if (!workout || typeof workout !== "object") {
+          continue;
+        }
+
+        // Check if averages are missing
+        const hasAverageLoad = workout.hasOwnProperty("averageLoad");
+        const hasAverageLoadLeft = workout.hasOwnProperty("averageLoadLeft");
+        const hasAverageLoadRight = workout.hasOwnProperty("averageLoadRight");
+
+        if (hasAverageLoad && hasAverageLoadLeft && hasAverageLoadRight) {
+          // All fields exist, skip
+          continue;
+        }
+
+        // Calculate averages from movement data
+        const averageLoads = this.calculateAverageLoadForWorkout(
+          Array.isArray(workout.movementData) ? workout.movementData : [],
+          workout.warmupEndTime,
+          workout.endTime,
+        );
+
+        // Only update if missing at least one field
+        if (!hasAverageLoad || !hasAverageLoadLeft || !hasAverageLoadRight) {
+          workout.averageLoad = averageLoads ? averageLoads.averageTotal : null;
+          workout.averageLoadLeft = averageLoads ? averageLoads.averageLeft : null;
+          workout.averageLoadRight = averageLoads ? averageLoads.averageRight : null;
+          updatedWorkouts.push(workout);
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount === 0) {
+        updateStatus("All workouts already have average fields", {
+          color: "#2f9e44",
+          preserveColor: true,
+        });
+        this.addLogEntry("No updates needed", "info");
+        return;
+      }
+
+      updateStatus(`Uploading ${updatedCount} updated workouts...`);
+
+      // Upload all updated workouts to Dropbox
+      for (const workout of updatedWorkouts) {
+        try {
+          await this.dropboxManager.saveWorkout(workout);
+        } catch (error) {
+          this.addLogEntry(
+            `Failed to save workout: ${error.message}`,
+            "error",
+          );
+        }
+      }
+
+      updateStatus(`Completed! Updated ${updatedCount} workouts.`, {
+        color: "#2f9e44",
+        preserveColor: true,
+      });
+      this.addLogEntry(`Updated averages for ${updatedCount} workouts`, "success");
+    } catch (error) {
+      const message = `Failed to update averages: ${error.message}`;
+      this.addLogEntry(message, "error");
+      updateStatus(`Error: ${error.message}`, { color: "#c92a2a" });
+    }
+  }
+
   setWeightUnit(unit, options = {}) {
     if (unit !== "kg" && unit !== "lb") {
       return;
