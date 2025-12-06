@@ -4,7 +4,7 @@ class DropboxManager {
   constructor() {
     // IMPORTANT: Replace this with your actual Dropbox App Key
     // Create app at: https://www.dropbox.com/developers/apps
-    this.clientId = "6omcza3uejr7cok"; // TODO: Replace with your app key
+    this.clientId = "y9djrvis169fgto"; // TODO: Replace with your app key
     this.redirectUri = window.location.origin + window.location.pathname;
     this.dbx = null;
     this.isConnected = false;
@@ -244,6 +244,38 @@ class DropboxManager {
       return true;
     } catch (error) {
       this.log(`Failed to save workout: ${error.message}`, "error");
+      throw error;
+    }
+  }
+
+  async overwriteWorkout(workout) {
+    if (!this.isConnected) {
+      throw new Error("Not connected to Dropbox");
+    }
+
+    try {
+      const client = await this.ensureDropboxClient();
+
+      // Get the original path from metadata
+      const originalPath = workout?._dropboxMetadata?.path;
+      if (!originalPath) {
+        throw new Error("No Dropbox path metadata found. Cannot overwrite.");
+      }
+
+      // Convert workout to JSON (exclude metadata from the JSON)
+      const contents = JSON.stringify(workout, null, 2);
+
+      // Overwrite existing file
+      await client.filesUpload({
+        path: originalPath,
+        contents: contents,
+        mode: { ".tag": "overwrite" },
+      });
+
+      this.log(`Overwritten workout: ${workout?._dropboxMetadata?.name || originalPath}`, "success");
+      return true;
+    } catch (error) {
+      this.log(`Failed to overwrite workout: ${error.message}`, "error");
       throw error;
     }
   }

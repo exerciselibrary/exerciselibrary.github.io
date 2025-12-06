@@ -3149,6 +3149,121 @@ class VitruvianApp {
     }
   }
 
+  requestUpdateAveragesOldWorkouts() {
+    return this.updateAveragesOldWorkouts({ manual: true });
+  }
+
+  async updateAveragesOldWorkouts(options = {}) {
+    if (!this.dropboxManager.isConnected) {
+      alert("Please connect to Dropbox first");
+      return;
+    }
+
+    const manual = options?.manual === true;
+    if (!manual) {
+      this.addLogEntry(
+        "Blocked non-manual request to update averages",
+        "warning",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "This will scan all your workout files from Dropbox and calculate missing average load fields (averageLoad, averageLoadLeft, averageLoadRight). This may take a moment. Continue?",
+    );
+    if (!confirmed) {
+      this.addLogEntry("Average update cancelled", "info");
+      return;
+    }
+
+    const context = "Update Averages";
+    const updateStatus = (message, opts = {}) => {
+      this.logDropboxConsole(context, message, opts);
+      this.setDropboxStatus(`${context}: ${message}`, opts);
+    };
+
+    try {
+      updateStatus("Downloading workouts from Dropbox...");
+      const cloudWorkouts = await this.dropboxManager.loadWorkouts({
+        maxEntries: Infinity,
+      });
+
+      if (!Array.isArray(cloudWorkouts) || cloudWorkouts.length === 0) {
+        updateStatus("No workouts found", { color: "#ff922b" });
+        this.addLogEntry("No workouts found in Dropbox", "info");
+        return;
+      }
+
+      let updatedCount = 0;
+      const updatedWorkouts = [];
+
+      for (const workout of cloudWorkouts) {
+        if (!workout || typeof workout !== "object") {
+          continue;
+        }
+
+        // Check if averages are missing
+        const hasAverageLoad = workout.hasOwnProperty("averageLoad");
+        const hasAverageLoadLeft = workout.hasOwnProperty("averageLoadLeft");
+        const hasAverageLoadRight = workout.hasOwnProperty("averageLoadRight");
+
+        if (hasAverageLoad && hasAverageLoadLeft && hasAverageLoadRight) {
+          // All fields exist, skip
+          continue;
+        }
+
+        // Calculate averages from movement data
+        const averageLoads = this.calculateAverageLoadForWorkout(
+          Array.isArray(workout.movementData) ? workout.movementData : [],
+          workout.warmupEndTime,
+          workout.endTime,
+        );
+
+        // Only update if missing at least one field
+        if (!hasAverageLoad || !hasAverageLoadLeft || !hasAverageLoadRight) {
+          workout.averageLoad = averageLoads ? averageLoads.averageTotal : null;
+          workout.averageLoadLeft = averageLoads ? averageLoads.averageLeft : null;
+          workout.averageLoadRight = averageLoads ? averageLoads.averageRight : null;
+          updatedWorkouts.push(workout);
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount === 0) {
+        updateStatus("All workouts already have average fields", {
+          color: "#2f9e44",
+          preserveColor: true,
+        });
+        this.addLogEntry("No updates needed", "info");
+        return;
+      }
+
+      updateStatus(`Uploading ${updatedCount} updated workouts...`);
+
+      // Upload all updated workouts to Dropbox, overwriting the original files
+      for (const workout of updatedWorkouts) {
+        try {
+          await this.dropboxManager.overwriteWorkout(workout);
+        } catch (error) {
+          this.addLogEntry(
+            `Failed to save workout: ${error.message}`,
+            "error",
+          );
+        }
+      }
+
+      updateStatus(`Completed! Updated ${updatedCount} workouts.`, {
+        color: "#2f9e44",
+        preserveColor: true,
+      });
+      this.addLogEntry(`Updated averages for ${updatedCount} workouts`, "success");
+    } catch (error) {
+      const message = `Failed to update averages: ${error.message}`;
+      this.addLogEntry(message, "error");
+      updateStatus(`Error: ${error.message}`, { color: "#c92a2a" });
+    }
+  }
+
   setWeightUnit(unit, options = {}) {
     if (unit !== "kg" && unit !== "lb") {
       return;
@@ -4811,6 +4926,9 @@ class VitruvianApp {
       `Peak Load (${unitLabel})`,
       "Duration (seconds)",
       "Movement Data Points",
+      `Average Load (${unitLabel})`,
+      `Average Load Left (${unitLabel})`,
+      `Average Load Right (${unitLabel})`,
       "Is PR",
     ];
 
@@ -4856,6 +4974,21 @@ class VitruvianApp {
         ? this.formatWeightValue(totalLoadKg)
         : "";
 
+      // Get average loads from workout object (converted to display unit if needed)
+      const averageLoadKg = workout.averageLoad;
+      const averageLoadLeftKg = workout.averageLoadLeft;
+      const averageLoadRightKg = workout.averageLoadRight;
+
+      const averageLoadDisplay = Number.isFinite(averageLoadKg)
+        ? this.formatWeightValue(averageLoadKg)
+        : "";
+      const averageLoadLeftDisplay = Number.isFinite(averageLoadLeftKg)
+        ? this.formatWeightValue(averageLoadLeftKg)
+        : "";
+      const averageLoadRightDisplay = Number.isFinite(averageLoadRightKg)
+        ? this.formatWeightValue(averageLoadRightKg)
+        : "";
+
       rows.push([
         timestamp instanceof Date ? new Date(timestamp) : "",
         planName,
@@ -4876,6 +5009,9 @@ class VitruvianApp {
         peakDisplay,
         durationSeconds,
         String(movementPoints),
+        averageLoadDisplay,
+        averageLoadLeftDisplay,
+        averageLoadRightDisplay,
         workout._exportIdentityLabel ? isPR : "",
       ]);
     }
@@ -6410,6 +6546,13 @@ class VitruvianApp {
             )
           : [];
 
+      // Compute average loads between warmup end and workout end
+      const averageLoads = this.calculateAverageLoadForWorkout(
+        movementData,
+        this.currentWorkout.warmupEndTime,
+        endTime,
+      );
+
       const workout = {
         mode: this.currentWorkout.mode,
         weightKg: this.currentWorkout.weightKg,
@@ -6435,6 +6578,11 @@ class VitruvianApp {
 
         // Include detailed movement data (positions and loads over time)
         movementData: movementData,
+        // Average loads between warmup end and workout end
+        // averageLoad: total (left+right), averageLoadLeft: left cable, averageLoadRight: right cable
+        averageLoad: averageLoads ? averageLoads.averageTotal : null,
+        averageLoadLeft: averageLoads ? averageLoads.averageLeft : null,
+        averageLoadRight: averageLoads ? averageLoads.averageRight : null,
       };
 
       const isSkipped = reason === "skipped";
@@ -6469,6 +6617,26 @@ class VitruvianApp {
       // Auto-save to Dropbox if connected
       if (!isSkipped && this.dropboxManager.isConnected) {
         const workoutToPersist = storedWorkout || summaryWorkout;
+
+        // Ensure average fields are present on the persisted object (after normalization)
+        try {
+          const avgsPersist = this.calculateAverageLoadForWorkout(
+            Array.isArray(workoutToPersist.movementData)
+              ? workoutToPersist.movementData
+              : [],
+            workoutToPersist.warmupEndTime,
+            workoutToPersist.endTime,
+          );
+          workoutToPersist.averageLoad = avgsPersist ? avgsPersist.averageTotal : null;
+          workoutToPersist.averageLoadLeft = avgsPersist ? avgsPersist.averageLeft : null;
+          workoutToPersist.averageLoadRight = avgsPersist ? avgsPersist.averageRight : null;
+        } catch (e) {
+          // no-op, fall through with nulls
+          workoutToPersist.averageLoad = workoutToPersist.averageLoad ?? null;
+          workoutToPersist.averageLoadLeft = workoutToPersist.averageLoadLeft ?? null;
+          workoutToPersist.averageLoadRight = workoutToPersist.averageLoadRight ?? null;
+        }
+
         this.dropboxManager
           .saveWorkout(workoutToPersist)
           .then(() => {
@@ -6563,6 +6731,49 @@ class VitruvianApp {
       posA: point.posA,
       posB: point.posB,
     }));
+  }
+
+  // Calculate average total, left and right loads between warmupEndTime and endTime
+  // Returns an object: { averageTotal, averageLeft, averageRight } or null if no points
+  calculateAverageLoadForWorkout(movementData = [], warmupEndTime, endTime) {
+    if (!Array.isArray(movementData) || movementData.length === 0) {
+      return null;
+    }
+
+    const windowStartMs =
+      warmupEndTime instanceof Date ? warmupEndTime.getTime() : null;
+    const windowEndMs = endTime instanceof Date ? endTime.getTime() : null;
+
+    let sumLeft = 0;
+    let sumRight = 0;
+    let count = 0;
+
+    for (const pt of movementData) {
+      const ts = pt && pt.timestamp ? new Date(pt.timestamp).getTime() : NaN;
+      if (!isFinite(ts)) continue;
+
+      if (windowEndMs && ts > windowEndMs) continue;
+      if (windowStartMs && ts < windowStartMs) continue;
+
+      const left = Number(pt.loadA) || 0;
+      const right = Number(pt.loadB) || 0;
+      sumLeft += left;
+      sumRight += right;
+      count += 1;
+    }
+
+    if (count === 0) return null;
+
+    const avgLeft = sumLeft / count;
+    const avgRight = sumRight / count;
+    const avgTotal = avgLeft + avgRight;
+
+    // Return rounded integer values for compatibility with existing files; change to decimals if desired
+    return {
+      averageTotal: Math.round(avgTotal),
+      averageLeft: Math.round(avgLeft),
+      averageRight: Math.round(avgRight),
+    };
   }
 
 
