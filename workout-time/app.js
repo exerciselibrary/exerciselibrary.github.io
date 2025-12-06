@@ -167,6 +167,7 @@ class VitruvianApp {
     this.registerDeviceListeners();
     this.setupChart();
     this.setupUnitControls();
+    this.initializeAudioToggle();
     this.planItems = [];        // array of {type: 'exercise'|'echo', fields...}
     this.planActive = false;    // true when plan runner is active
     this.planCursor = { index: 0, set: 1 }; // current item & set counter
@@ -939,6 +940,11 @@ class VitruvianApp {
     ) {
       this.currentWorkout.startTime = new Date();
       this.addLogEntry("Workout timer started at first warmup rep", "info");
+      try {
+        if (this.isAudioTriggersEnabled()) {
+          this.playAudio("calibrateLift").catch(() => {});
+        }
+      } catch (e) {}
     }
   }
 
@@ -1914,6 +1920,11 @@ class VitruvianApp {
         }.`,
         "success",
       );
+      try {
+        if (this.isAudioTriggersEnabled()) {
+          this.playAudio("strengthUnlocked").catch(() => {});
+        }
+      } catch (e) {}
     }
 
     return updated;
@@ -1955,6 +1966,11 @@ class VitruvianApp {
         }.`,
         "success",
       );
+      try {
+        if (this.isAudioTriggersEnabled()) {
+          this.playAudio("strengthUnlocked").catch(() => {});
+        }
+      } catch (e) {}
     }
 
     return updated;
@@ -2177,6 +2193,12 @@ class VitruvianApp {
 
     this._planSummaryOverlay.classList.add("is-visible");
     this._planSummaryOverlay.setAttribute("aria-hidden", "false");
+
+    try {
+      if (this.isAudioTriggersEnabled()) {
+        this.playAudio("crowdCheer").catch(() => {});
+      }
+    } catch (e) {}
 
     const closeBtn = document.getElementById("planSummaryCloseBtn");
     closeBtn?.focus({ preventScroll: true });
@@ -6604,6 +6626,11 @@ class VitruvianApp {
       let prInfo = null;
       if (storedWorkout) {
         prInfo = this.displayTotalLoadPR(storedWorkout);
+        try {
+          if (this.isAudioTriggersEnabled() && prInfo?.status === "new") {
+            this.playAudio("newPersonalRecord").catch(() => {});
+          }
+        } catch (e) {}
       } else {
         this.hidePRBanner();
       }
@@ -6648,6 +6675,18 @@ class VitruvianApp {
           .catch((error) => {
             this.addLogEntry(`Failed to auto-save to Dropbox: ${error.message}`, "error");
           });
+
+        // If enabled, play a 'maxed out' audio cue when a single-cable peak is very high
+        try {
+          if (this.isAudioTriggersEnabled() && storedWorkout) {
+            const peakKg = Number(storedWorkout.cablePeakKg || 0) || Number(this.calculateTotalLoadPeakKg(storedWorkout) || 0);
+            if (Number.isFinite(peakKg) && peakKg >= 95) {
+              this.playAudio("maxedOut").catch(() => {});
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
       }
 
       if (!isSkipped && this.planActive && completedPlanEntry) {
@@ -7172,6 +7211,214 @@ class VitruvianApp {
     }
   }
 
+  /* Audio triggers manager
+   * - Toggle persisted in localStorage `vitruvian.audioTriggersEnabled`
+  * - `playAudio(key)` attempts to play a mapped file from `AudioCue/`
+   * - Falls back to existing oscillator beep behavior when file playback fails.
+   */
+  isAudioTriggersEnabled() {
+    try {
+      const raw = localStorage.getItem("vitruvian.audioTriggersEnabled");
+      return raw === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  setAudioTriggersEnabled(enabled) {
+    try {
+      localStorage.setItem("vitruvian.audioTriggersEnabled", enabled ? "true" : "false");
+    } catch {}
+    const btn = document.getElementById("audioTriggersToggle");
+    if (btn) {
+      btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+      // reflect persistent visual state
+      if (enabled) {
+        btn.classList.add("is-active");
+      } else {
+        btn.classList.remove("is-active");
+      }
+    }
+  }
+
+  initializeAudioToggle() {
+    const btn = document.getElementById("audioTriggersToggle");
+    if (!btn) return;
+    const enabled = this.isAudioTriggersEnabled();
+    btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+    if (enabled) btn.classList.add("is-active");
+    else btn.classList.remove("is-active");
+    btn.addEventListener("click", () => {
+      const newVal = !this.isAudioTriggersEnabled();
+      this.setAudioTriggersEnabled(newVal);
+      if (newVal) {
+        this.tryResumeAudioContext();
+        // Small async preload after a user gesture to warm up assets and reduce latency.
+        setTimeout(() => {
+          try {
+            this.preloadAudioCueAssets();
+          } catch (e) {
+            // ignore preload failures
+          }
+        }, 50);
+      }
+    });
+  }
+
+  // Simple audio cache / player for AudioCue assets.
+  _audioCache = new Map();
+
+  async playAudio(key, options = {}) {
+    try {
+      if (!this.isAudioTriggersEnabled()) return false;
+
+      const mapping = {
+        newPersonalRecord: "New Personal Record.mp3",
+        maxedOut: "Maxed Out.mp3",
+        beastMode: "Beast Mode.mp3",
+        calibrateLift: "Calibrate your Lift.mp3",
+        strengthUnlocked: "Strength Unlocked.mp3",
+        startLifting: "Start Lifting.mp3",
+        crowdCheer: "crowd cheering.mp3",
+        grindContinues: "The Grind Continues.mp3",
+        // repcount files: e.g. `1_repcount.mp3`, `01_repcount.mp3`
+        repcount: (rep) => `${rep}_repcount.mp3`,
+      };
+
+      let filename = null;
+      if (Object.prototype.hasOwnProperty.call(mapping, key)) {
+        const val = mapping[key];
+        filename = typeof val === "function" ? val(options.rep || 0) : val;
+      } else {
+        // allow caller to pass direct filename
+        filename = key;
+      }
+
+      if (!filename) return false;
+
+      // For repcount files try zero-padded and non-padded .mp3 variants (e.g. '01_repcount.mp3', '1_repcount.mp3')
+      const candidates = [];
+      if (key === "repcount") {
+        const repNum = Number(options.rep || 0) || 0;
+        const pad2 = repNum.toString().padStart(2, "0");
+        candidates.push(`${pad2}_repcount.mp3`);
+        candidates.push(`${repNum}_repcount.mp3`);
+      } else {
+        candidates.push(filename);
+      }
+
+      // Try candidates sequentially until one plays
+      this.tryResumeAudioContext();
+      for (const candidate of candidates) {
+        const src = `AudioCue/${candidate}`;
+        try {
+          let audio = this._audioCache.get(src);
+          if (!audio) {
+            audio = new Audio(src);
+            audio.preload = "auto";
+            this._audioCache.set(src, audio);
+          }
+          // Reset currentTime to 0 to allow rapid replays of the same audio element
+          audio.currentTime = 0;
+          await audio.play();
+          return true;
+        } catch (err) {
+          // Try next candidate
+          continue;
+        }
+      }
+
+      return false;
+    } catch (err) {
+      // Silent failure: audio not found or blocked. Return false so caller can fallback.
+      return false;
+    }
+  }
+
+  // Preload a list of audio filenames into the audio cache to reduce latency.
+  // Accepts filenames relative to the `AudioCue/` folder.
+  preloadAudioAssets(filenames = []) {
+    if (!Array.isArray(filenames) || filenames.length === 0) {
+      return Promise.resolve([]);
+    }
+
+    const tasks = [];
+    for (const filename of filenames) {
+      if (!filename) continue;
+      const src = `AudioCue/${filename}`;
+      if (this._audioCache.has(src)) {
+        continue; // already cached
+      }
+
+      try {
+        const audio = new Audio(src);
+        audio.preload = "auto";
+        this._audioCache.set(src, audio);
+
+        const p = new Promise((resolve) => {
+          const onReady = () => {
+            cleanup();
+            resolve({ src, status: "ok" });
+          };
+          const onError = () => {
+            cleanup();
+            resolve({ src, status: "error" });
+          };
+          const cleanup = () => {
+            audio.removeEventListener("canplaythrough", onReady);
+            audio.removeEventListener("loadedmetadata", onReady);
+            audio.removeEventListener("error", onError);
+          };
+
+          audio.addEventListener("canplaythrough", onReady, { once: true });
+          audio.addEventListener("loadedmetadata", onReady, { once: true });
+          audio.addEventListener("error", onError, { once: true });
+          // Kick off loading
+          try {
+            audio.load();
+          } catch (e) {
+            // ignore
+            resolve({ src, status: "error" });
+          }
+        });
+
+        tasks.push(p);
+      } catch (err) {
+        // ignore single failures
+      }
+    }
+
+    return Promise.allSettled(tasks).then((results) => results.map((r) => (r.status === "fulfilled" ? r.value : { status: "error" })));
+  }
+
+  // Preload the commonly used cue files and a range of repcount files.
+  preloadAudioCueAssets() {
+    if (this._preloadInFlight) return this._preloadInFlight;
+    const baseFiles = [
+      "New Personal Record.mp3",
+      "Maxed Out.mp3",
+      "Beast Mode.mp3",
+      "Calibrate your Lift.mp3",
+      "Strength Unlocked.mp3",
+      "Start Lifting.mp3",
+      "crowd cheering.mp3",
+      "The Grind Continues.mp3",
+    ];
+
+    // Preload repcount files for 1..25 (mp3, padded and non-padded)
+    const repCandidates = new Set();
+    for (let i = 1; i <= 25; i++) {
+      repCandidates.add(`${i}_repcount.mp3`);
+      repCandidates.add(`${i.toString().padStart(2, "0")}_repcount.mp3`);
+    }
+
+    const all = baseFiles.concat(Array.from(repCandidates));
+    this._preloadInFlight = this.preloadAudioAssets(all).finally(() => {
+      this._preloadInFlight = null;
+    });
+    return this._preloadInFlight;
+  }
+
   getAudioContext() {
     try {
       const AudioContextClass =
@@ -7445,21 +7692,59 @@ class VitruvianApp {
       }
       this._lastRepTopBeep = now;
 
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
+      // Determine if we're in warmup or working reps.
+      // During warmup reps, always use oscillator beep.
+      // During working reps, try repcount audio file first, then fallback to oscillator.
+      const currentWarmupReps = Number(this.warmupReps) || 0;
+      const currentWorkingReps = Number(this.workingReps) || 0;
+      const totalSoFar = currentWarmupReps + currentWorkingReps;
+      const nextRepOverall = totalSoFar + 1;
+      const isWarmupRep = Number.isFinite(this.warmupTarget) && nextRepOverall <= (Number(this.warmupTarget) || 0);
+      const nextRepCount = currentWorkingReps + 1;
 
-      oscillator.type = "triangle";
-      oscillator.frequency.setValueAtTime(880, now);
+      // Helper to play oscillator beep
+      const playOscillatorBeep = () => {
+        try {
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
 
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+          oscillator.type = "triangle";
+          oscillator.frequency.setValueAtTime(880, now);
 
-      oscillator.connect(gain);
-      gain.connect(context.destination);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
 
-      oscillator.start(now);
-      oscillator.stop(now + 0.3);
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+
+          oscillator.start(now);
+          oscillator.stop(now + 0.3);
+        } catch (err) {
+          // ignore
+        }
+      };
+
+      // If warmup, always use beep. If working, try repcount audio first.
+      if (isWarmupRep) {
+        playOscillatorBeep();
+      } else {
+        // Working reps: try repcount audio file (1-25), fallback to beep
+        if (nextRepCount >= 1 && nextRepCount <= 25 && this.isAudioTriggersEnabled()) {
+          this.playAudio("repcount", { rep: nextRepCount })
+            .then((played) => {
+              if (!played) {
+                playOscillatorBeep();
+              }
+            })
+            .catch(() => {
+              playOscillatorBeep();
+            });
+        } else {
+          // Audio disabled, out of range, or warmup: use beep
+          playOscillatorBeep();
+        }
+      }
     } catch (error) {
       // Silently ignore audio failures to avoid spamming logs
     }
@@ -7613,6 +7898,11 @@ class VitruvianApp {
         // Record when warmup ends (last warmup rep complete)
         if (this.warmupReps === this.warmupTarget && this.currentWorkout && !this.currentWorkout.warmupEndTime) {
           this.currentWorkout.warmupEndTime = new Date();
+          try {
+            if (this.isAudioTriggersEnabled()) {
+              this.playAudio("startLifting").catch(() => {});
+            }
+          } catch (e) {}
         }
       } else {
         // Working reps
@@ -7870,6 +8160,18 @@ class VitruvianApp {
       this._lastWeightSyncError = null;
 
       await this.device.startProgram(params);
+
+      // If audio triggers enabled, play beast-mode announcement for TUT Beast
+      try {
+        if (this.isAudioTriggersEnabled() && typeof ProgramMode !== "undefined") {
+          if (Number(params.baseMode) === ProgramMode.TUT_BEAST) {
+            // best-effort: play beast audio, ignore failures
+            this.playAudio("beastMode").catch(() => {});
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
 
       // Update stop button state
       this.updateStopButtonState();

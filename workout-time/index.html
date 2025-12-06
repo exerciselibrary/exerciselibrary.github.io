@@ -491,13 +491,15 @@
             .plan-section-header {
                 position: relative;
                 display: grid;
-                grid-template-columns: 1fr auto;
+                grid-template-columns: 1fr auto auto;
+                grid-template-rows: auto auto;
                 grid-template-areas:
-                    "spacer theme"
-                    "start units";
-                gap: 12px 24px;
+                    "spacer theme controls"
+                    "start units units";
+                gap: 12px 12px;
                 align-items: start;
                 margin-bottom: 15px;
+                min-width: 0;
             }
 
             .plan-section-header__spacer {
@@ -509,22 +511,25 @@
             .plan-section-header__start {
                 grid-area: start;
                 display: flex;
-                flex-direction: column;
+                flex-direction: row;
                 gap: 6px;
-                align-items: flex-start;
-                justify-self: stretch;
-                justify-content: flex-end;
+                align-items: center;
+                justify-self: start;
+                min-width: 0;
             }
 
             .plan-section-header__start .button-pulse {
                 width: auto;
+                white-space: nowrap;
+                flex-shrink: 0;
             }
 
             .plan-section-header__control {
                 display: flex;
-                flex-direction: column;
+                flex-direction: row;
                 gap: 6px;
-                align-items: flex-end;
+                align-items: center;
+                min-width: 0;
             }
 
             .plan-section-header__control-label {
@@ -536,11 +541,18 @@
 
             .plan-section-header__control--theme {
                 grid-area: theme;
+                flex-direction: row;
+                align-items: center;
+                gap: 0;
+                justify-self: start;
             }
 
             .plan-section-header__control--units {
                 grid-area: units;
                 justify-self: end;
+                flex-direction: row;
+                align-items: center;
+                flex-shrink: 0;
             }
 
             .plan-section-header__control--units .unit-toggle-hint {
@@ -765,6 +777,7 @@
                     transparent 40%
                 );
                 animation: buttonPulse 1.8s ease-in-out infinite;
+                white-space: nowrap;
             }
 
             .button-pulse:disabled {
@@ -1170,6 +1183,7 @@
                 border: 2px solid var(--divider-color);
                 border-radius: 999px;
                 box-shadow: none;
+                white-space: nowrap;
             }
 
             .theme-toggle-btn:hover:not(:disabled) {
@@ -1185,6 +1199,14 @@
                 border-color: var(--accent-color);
                 color: var(--accent-color);
                 background: rgba(143, 162, 255, 0.12);
+            }
+
+            /* Persistent active state for audio toggle */
+            .theme-toggle-btn.is-active {
+                border-color: var(--accent-color);
+                color: var(--accent-color);
+                background: rgba(143, 162, 255, 0.12);
+                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.22);
             }
 
             .unit-toggle-button {
@@ -3320,6 +3342,16 @@
                         <div class="plan-section-header">
                             <div class="plan-section-header__spacer" aria-hidden="true"></div>
                             <div class="plan-section-header__control plan-section-header__control--theme">
+                                <button
+                                    type="button"
+                                    id="audioTriggersToggle"
+                                    class="theme-toggle-btn"
+                                    aria-pressed="false"
+                                    title="Enable motivational & load-based audio cues"
+                                >
+                                    <span class="theme-toggle__icon">🔊</span>
+                                    <span class="theme-toggle__label">Audio Cues</span>
+                                </button>
                                 <button
                                     type="button"
                                     id="themeToggle"
