@@ -21,6 +21,7 @@ class ChartManager {
     this.eventMarkers = []; // Array of {time: Date, label: string, color: string}
     this.resizeObserver = null;
     this._handleWindowResize = null;
+    this.averageLoadLines = null; // Store average load lines: { averageTotal, averageLeft, averageRight, warmupEndTime, endTime }
   }
 
   // Initialize uPlot chart
@@ -93,10 +94,89 @@ class ChartManager {
       },
     };
 
+    // Plugin to draw average load lines
+    const averageLoadLinesPlugin = {
+      hooks: {
+        draw: [
+          (u) => {
+            const { ctx } = u;
+            const { left, top, width, height } = u.bbox;
+
+            if (!manager.averageLoadLines) {
+              return;
+            }
+
+            const { averageTotal, averageLeft, averageRight, warmupEndTime, endTime } = manager.averageLoadLines;
+
+            // Only draw if we have time bounds for the workout
+            if (!warmupEndTime || !endTime) {
+              return;
+            }
+
+            const warmupEndSec = warmupEndTime.getTime() / 1000;
+            const endSec = endTime.getTime() / 1000;
+            const x1 = u.valToPos(warmupEndSec, "x", true);
+            const x2 = u.valToPos(endSec, "x", true);
+
+            // Only draw if the window is at least partially within visible range
+            if (x2 < left || x1 > left + width) {
+              return;
+            }
+
+            // Clamp x coordinates to visible area
+            const drawX1 = Math.max(x1, left);
+            const drawX2 = Math.min(x2, left + width);
+
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.lineWidth = 1.5;
+
+            // Draw average total load line (blue)
+            if (Number.isFinite(averageTotal)) {
+              const y = u.valToPos(averageTotal, "load", true);
+              if (y >= top && y <= top + height) {
+                ctx.strokeStyle = "rgba(102, 126, 234, 0.6)"; // Semi-transparent blue
+                ctx.beginPath();
+                ctx.moveTo(drawX1, y);
+                ctx.lineTo(drawX2, y);
+                ctx.stroke();
+              }
+            }
+
+            // Draw average left load line (red)
+            if (Number.isFinite(averageLeft)) {
+              const y = u.valToPos(averageLeft, "load", true);
+              if (y >= top && y <= top + height) {
+                ctx.strokeStyle = "rgba(255, 107, 107, 0.6)"; // Semi-transparent red
+                ctx.beginPath();
+                ctx.moveTo(drawX1, y);
+                ctx.lineTo(drawX2, y);
+                ctx.stroke();
+              }
+            }
+
+            // Draw average right load line (green)
+            if (Number.isFinite(averageRight)) {
+              const y = u.valToPos(averageRight, "load", true);
+              if (y >= top && y <= top + height) {
+                ctx.strokeStyle = "rgba(81, 207, 102, 0.6)"; // Semi-transparent green
+                ctx.beginPath();
+                ctx.moveTo(drawX1, y);
+                ctx.lineTo(drawX2, y);
+                ctx.stroke();
+              }
+            }
+
+            ctx.restore();
+          },
+        ],
+      },
+    };
+
     const opts = {
       width: container.clientWidth || 800,
       height: this.chartHeight,
-      plugins: [eventMarkersPlugin],
+      plugins: [eventMarkersPlugin, averageLoadLinesPlugin],
       cursor: {
         drag: {
           x: true,
@@ -550,6 +630,28 @@ class ChartManager {
     }
   }
 
+  // Set average load lines to display on chart
+  setAverageLoadLines(averageTotal, averageLeft, averageRight, warmupEndTime, endTime) {
+    this.averageLoadLines = {
+      averageTotal: Number.isFinite(averageTotal) ? averageTotal : null,
+      averageLeft: Number.isFinite(averageLeft) ? averageLeft : null,
+      averageRight: Number.isFinite(averageRight) ? averageRight : null,
+      warmupEndTime: warmupEndTime instanceof Date ? warmupEndTime : null,
+      endTime: endTime instanceof Date ? endTime : null,
+    };
+    if (this.chart) {
+      this.chart.redraw();
+    }
+  }
+
+  // Clear average load lines
+  clearAverageLoadLines() {
+    this.averageLoadLines = null;
+    if (this.chart) {
+      this.chart.redraw();
+    }
+  }
+
   // View a specific workout on the graph
   viewWorkout(workout) {
     if (!workout.startTime || !workout.endTime) {
@@ -596,6 +698,22 @@ class ChartManager {
       }
     } else if (this.onLog) {
       this.onLog("Workout does not have movement data to display", "warning");
+    }
+
+    // Set average load lines if available
+    const averageTotal = Number.isFinite(workout.averageLoad) ? workout.averageLoad : null;
+    const averageLeft = Number.isFinite(workout.averageLoadLeft) ? workout.averageLoadLeft : null;
+    const averageRight = Number.isFinite(workout.averageLoadRight) ? workout.averageLoadRight : null;
+    if (averageTotal !== null || averageLeft !== null || averageRight !== null) {
+      this.setAverageLoadLines(
+        averageTotal,
+        averageLeft,
+        averageRight,
+        workout.warmupEndTime,
+        workout.endTime,
+      );
+    } else {
+      this.clearAverageLoadLines();
     }
 
     // Set time range to show the workout
