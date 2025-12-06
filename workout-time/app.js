@@ -4811,6 +4811,9 @@ class VitruvianApp {
       `Peak Load (${unitLabel})`,
       "Duration (seconds)",
       "Movement Data Points",
+      `Average Load (${unitLabel})`,
+      `Average Load Left (${unitLabel})`,
+      `Average Load Right (${unitLabel})`,
       "Is PR",
     ];
 
@@ -4856,6 +4859,21 @@ class VitruvianApp {
         ? this.formatWeightValue(totalLoadKg)
         : "";
 
+      // Get average loads from workout object (converted to display unit if needed)
+      const averageLoadKg = workout.averageLoad;
+      const averageLoadLeftKg = workout.averageLoadLeft;
+      const averageLoadRightKg = workout.averageLoadRight;
+
+      const averageLoadDisplay = Number.isFinite(averageLoadKg)
+        ? this.formatWeightValue(averageLoadKg)
+        : "";
+      const averageLoadLeftDisplay = Number.isFinite(averageLoadLeftKg)
+        ? this.formatWeightValue(averageLoadLeftKg)
+        : "";
+      const averageLoadRightDisplay = Number.isFinite(averageLoadRightKg)
+        ? this.formatWeightValue(averageLoadRightKg)
+        : "";
+
       rows.push([
         timestamp instanceof Date ? new Date(timestamp) : "",
         planName,
@@ -4876,6 +4894,9 @@ class VitruvianApp {
         peakDisplay,
         durationSeconds,
         String(movementPoints),
+        averageLoadDisplay,
+        averageLoadLeftDisplay,
+        averageLoadRightDisplay,
         workout._exportIdentityLabel ? isPR : "",
       ]);
     }
