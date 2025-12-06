@@ -42,6 +42,9 @@ class ChartManager {
       [], // Right Cable Load (A)
       [], // Left Cable Position (B)
       [], // Right Cable Position (A)
+      [], // Average Total Load (constant line)
+      [], // Average Left Load (constant line)
+      [], // Average Right Load (constant line)
     ];
 
     const manager = this;
@@ -263,6 +266,30 @@ class ChartManager {
           dash: [5, 5],
           value: (u, v) => (v == null ? "-" : v.toFixed(0)),
         },
+        {
+          label: "Average Total Load",
+          stroke: "rgba(102, 126, 234, 0.6)",
+          width: 1.5,
+          scale: "load",
+          dash: [3, 3],
+          value: (u, v) => (v == null || v === 0 ? "-" : manager.formatLoadValue(v)),
+        },
+        {
+          label: "Average Left Load",
+          stroke: "rgba(255, 107, 107, 0.6)",
+          width: 1.5,
+          scale: "load",
+          dash: [3, 3],
+          value: (u, v) => (v == null || v === 0 ? "-" : manager.formatLoadValue(v)),
+        },
+        {
+          label: "Average Right Load",
+          stroke: "rgba(81, 207, 102, 0.6)",
+          width: 1.5,
+          scale: "load",
+          dash: [3, 3],
+          value: (u, v) => (v == null || v === 0 ? "-" : manager.formatLoadValue(v)),
+        },
       ],
       axes: [
         {
@@ -469,6 +496,9 @@ class ChartManager {
     const loadsA = [];
     const positionsB = [];
     const positionsA = [];
+    const avgTotalSeries = [];
+    const avgLeftSeries = [];
+    const avgRightSeries = [];
 
     for (const point of points) {
       if (!point || !(point.timestamp instanceof Date)) {
@@ -493,6 +523,11 @@ class ChartManager {
       loadsA.push(displayA != null && isFinite(displayA) ? displayA : 0);
       positionsB.push(Number(point.posB) || 0);
       positionsA.push(Number(point.posA) || 0);
+
+      // Placeholder for average lines (will be populated when averageLoadLines is set)
+      avgTotalSeries.push(0);
+      avgLeftSeries.push(0);
+      avgRightSeries.push(0);
     }
 
     return [
@@ -502,6 +537,9 @@ class ChartManager {
       loadsA,
       positionsB,
       positionsA,
+      avgTotalSeries,
+      avgLeftSeries,
+      avgRightSeries,
     ];
   }
 
@@ -639,6 +677,23 @@ class ChartManager {
       warmupEndTime: warmupEndTime instanceof Date ? warmupEndTime : null,
       endTime: endTime instanceof Date ? endTime : null,
     };
+
+    // Update the average series with the constant values if chart data exists
+    if (this.chart && this.chart.data) {
+      const data = [...this.chart.data];
+      // Series indices: 6 = avgTotal, 7 = avgLeft, 8 = avgRight
+      if (data[6]) {
+        data[6] = data[6].map(() => (Number.isFinite(averageTotal) ? this.loadUnit.toDisplay(averageTotal) : 0));
+      }
+      if (data[7]) {
+        data[7] = data[7].map(() => (Number.isFinite(averageLeft) ? this.loadUnit.toDisplay(averageLeft) : 0));
+      }
+      if (data[8]) {
+        data[8] = data[8].map(() => (Number.isFinite(averageRight) ? this.loadUnit.toDisplay(averageRight) : 0));
+      }
+      this.chart.setData(data);
+    }
+
     if (this.chart) {
       this.chart.redraw();
     }
