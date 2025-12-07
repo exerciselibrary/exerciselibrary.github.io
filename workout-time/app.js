@@ -190,6 +190,10 @@ class VitruvianApp {
     this._lastTargetSyncError = null;
     this._lastWeightSyncError = null;
 
+    // Superset/Group execution logic
+    this.supersetExecutor = null; // Will be initialized when planItems are loaded
+    this.groupExecutionMode = false; // true when in grouped exercise mode
+
     this._hasPerformedInitialSync = false; // track if we've auto-synced once per session
     this._autoSyncInFlight = false;
     this._dropboxConnectInFlight = false;
@@ -632,6 +636,24 @@ class VitruvianApp {
           this._weightInputKg = kgValue;
         }
         this.updateLiveWeightDisplay();
+      });
+    }
+
+    const groupInput = document.getElementById("groupNumber");
+    if (groupInput) {
+      groupInput.addEventListener("change", () => {
+        if (this.currentWorkout) {
+          this.currentWorkout.groupNumber = groupInput.value || '';
+        }
+      });
+    }
+
+    const echoGroupInput = document.getElementById("echoGroupNumber");
+    if (echoGroupInput) {
+      echoGroupInput.addEventListener("change", () => {
+        if (this.currentWorkout) {
+          this.currentWorkout.groupNumber = echoGroupInput.value || '';
+        }
       });
     }
 
@@ -8136,6 +8158,7 @@ class VitruvianApp {
         warmupEndTime: null,
         endTime: null,
         setName: planItem?.name || null,
+        groupNumber: planItem?.groupNumber || '',
         setNumber:
           this.planActive && planItem ? this.planCursor?.set ?? null : null,
         setTotal: planItem?.sets ?? null,
@@ -8272,6 +8295,7 @@ class VitruvianApp {
         warmupEndTime: null,
         endTime: null,
         setName: planItem?.name || null,
+        groupNumber: planItem?.groupNumber || '',
         setNumber:
           this.planActive && planItem ? this.planCursor?.set ?? null : null,
         setTotal: planItem?.sets ?? null,
@@ -8358,6 +8382,7 @@ class VitruvianApp {
 
     if (item.type === "exercise") {
       const modeSelect = document.getElementById("mode");
+      const groupInput = document.getElementById("groupNumber");
       const weightInput = document.getElementById("weight");
       const repsInput = document.getElementById("reps");
       const progressionInput = document.getElementById("progression");
@@ -8370,6 +8395,9 @@ class VitruvianApp {
 
       if (modeSelect) {
         modeSelect.value = String(item.mode);
+      }
+      if (groupInput) {
+        groupInput.value = String(item.groupNumber || '');
       }
       if (weightInput) {
         weightInput.value = this.formatWeightValue(
@@ -8393,12 +8421,16 @@ class VitruvianApp {
       }
     } else if (item.type === "echo") {
       const levelSelect = document.getElementById("echoLevel");
+      const echoGroupInput = document.getElementById("echoGroupNumber");
       const eccentricInput = document.getElementById("eccentric");
       const targetInput = document.getElementById("targetReps");
       const echoJustLiftCheckbox = document.getElementById("echoJustLiftCheckbox");
 
       if (levelSelect) {
         levelSelect.value = String((item.level ?? 0) + 1);
+      }
+      if (echoGroupInput) {
+        echoGroupInput.value = String(item.groupNumber || '');
       }
       if (eccentricInput) {
         eccentricInput.value = String(item.eccentricPct ?? 100);
@@ -8668,6 +8700,7 @@ class VitruvianApp {
       const nameValue = toAttrValue(item.name || "");
       const setsValue = toAttrValue(toNumberString(item.sets));
       const restValue = toAttrValue(toNumberString(item.restSec));
+      const groupNumberValue = toAttrValue(item.groupNumber || "");
 
       const nameField = `
         <div class="form-group">
@@ -8687,6 +8720,13 @@ class VitruvianApp {
         <div class="form-group">
           <label>Rest (sec)</label>
           <input type="number" min="0" max="600" value="${restValue}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
+        </div>
+      `;
+
+      const groupNumberField = `
+        <div class="form-group">
+          <label>Superset Group</label>
+          <input type="text" value="${groupNumberValue}" placeholder="e.g., 1, 2, 3" oninput="app.updatePlanField(${i}, 'groupNumber', this.value)" />
         </div>
       `;
 
@@ -8791,14 +8831,12 @@ class VitruvianApp {
           </div>
 
           <div class="form-group">
-            <label class="label-with-hint">
-              <span>Intensity Technique</span>
-              <i
-                class="bi bi-info-circle"
-                title="Optional finisher applied to the last set: Dropset, Rest-Pause, or Slow negatives."
-                aria-label="Intensity technique help"
-              ></i>
-            </label>
+            <label>Intensity Technique</label>
+            <i
+              class="bi bi-info-circle"
+              title="Optional finisher applied to the last set: Dropset, Rest-Pause, or Slow negatives."
+              aria-label="Intensity technique help"
+            ></i>
             <select onchange="app.updatePlanField(${i}, 'intensity', this.value)">
               <option value="none" ${item.intensity === "none" ? "selected" : ""}>None (default)</option>
               <option value="dropset" ${item.intensity === "dropset" ? "selected" : ""}>Dropset</option>
@@ -8808,6 +8846,7 @@ class VitruvianApp {
           </div>
 
           ${restField}
+          ${groupNumberField}
           ${toggleFields}
         `;
       } else {
@@ -8849,6 +8888,7 @@ class VitruvianApp {
 
           ${setsField}
           ${restField}
+          ${groupNumberField}
           ${toggleFields}
         `;
       }
@@ -9539,6 +9579,7 @@ class VitruvianApp {
         );
       }
       this.renderPlanUI();
+      this.initializeGroupExecution(); // Initialize superset executor if groups exist
       if (!suppressLog) {
         this.addLogEntry(`Loaded plan "${planName}"`, "success");
       }
@@ -9586,6 +9627,49 @@ class VitruvianApp {
       alert(`Could not delete plan: ${e.message}`);
     }
   }
+
+  /**
+   * Initialize the superset executor when loading a plan.
+   * Call this after this.planItems is set.
+   */
+  initializeGroupExecution() {
+    if (!window.SupersetExecutorV2 || !this.planItems || this.planItems.length === 0) {
+      return;
+    }
+
+    // Debug: trace plan items and group numbers
+    try {
+      const groupNumbers = this.planItems.map((item, idx) => `[${idx}]${item.name}:${item.groupNumber||'none'}`).join(' ');
+      this.addLogEntry(
+        `DEBUG initializeGroupExecution: planItems groupNumbers: ${groupNumbers}`,
+        "debug",
+      );
+      // Dump full items to console for inspection
+      console.debug('Plan items passed to SupersetExecutorV2:', JSON.stringify(this.planItems.map(i => ({ name: i.name, groupNumber: i.groupNumber, sets: i.sets }))));
+    } catch (e) {
+      /* best effort */
+    }
+
+    // Initialize executor with planItems
+    this.supersetExecutor = new window.SupersetExecutorV2(this.planItems);
+    this.groupExecutionMode = this.supersetExecutor.hasGroups();
+
+    if (this.groupExecutionMode) {
+      this.addLogEntry(
+        `Group execution mode enabled: Processing grouped exercises with sequential execution`,
+        "info",
+      );
+      console.debug('Superset executor state:', this.supersetExecutor.getState());
+    } else {
+      this.addLogEntry(
+        `DEBUG: No groups detected in plan items (hasGroups=${this.supersetExecutor.hasGroups()})`,
+        "debug",
+      );
+      console.debug('No groups found. Plan items:', this.planItems.map(i => i.groupNumber));
+    }
+  }
+
+
 
 }
 
