@@ -2107,9 +2107,9 @@
 
             .plan-elapsed-timer {
 		    position: static;
-		    margin: 10px auto 0;          
-		    width: fit-content;           
-		    min-width: 76px;              
+		    margin: 10px auto 0;
+		    width: fit-content;
+		    min-width: 76px;
 		    text-align: center;
 		    padding: 6px 12px;
 		    border-radius: 10px;
@@ -3157,6 +3157,18 @@
                         </div>
 
                         <div class="form-group">
+                            <label for="groupNumber" id="groupNumberLabel"
+                                >Superset Group:</label
+                            >
+                            <input
+                                type="text"
+                                id="groupNumber"
+                                placeholder="e.g., 1, 2, 3"
+                                style="width: 100%"
+                            />
+                        </div>
+
+                        <div class="form-group">
                             <label for="weight" id="weightLabel"
                                 >Weight per cable (kg):</label
                             >
@@ -3260,6 +3272,18 @@
                                 <option value="3">Hardest</option>
                                 <option value="4">Epic</option>
                             </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="echoGroupNumber" id="echoGroupNumberLabel"
+                                >Superset Group:</label
+                            >
+                            <input
+                                type="text"
+                                id="echoGroupNumber"
+                                placeholder="e.g., 1, 2, 3"
+                                style="width: 100%"
+                            />
                         </div>
 
                         <div class="form-group">
@@ -3543,7 +3567,7 @@
                             </div>
                                 <div class="position-bars__center">
                                 <div class="plan-inline-controls" role="group" aria-label="Plan navigation">
-                                    
+
                                     <div class="plan-inline-center">
                                         <div class="weight-adjuster-stack">
                                             <div
@@ -3748,7 +3772,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                   
+
                                 </div>
 
                             </div>
@@ -4060,6 +4084,7 @@
         <script src="protocol.js"></script>
         <script src="device.js"></script>
         <script src="chart.js"></script>
+        <script src="superset-executor.js"></script>
         <script src="dropbox.js"></script>
         <script src="plan-runner.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>

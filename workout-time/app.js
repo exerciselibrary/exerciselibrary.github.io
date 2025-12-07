@@ -190,6 +190,12 @@ class VitruvianApp {
     this._lastTargetSyncError = null;
     this._lastWeightSyncError = null;
 
+    // Superset/Group execution logic
+    this.supersetExecutor = null; // Will be initialized when planItems are loaded
+    this.currentGroupIndex = 0;
+    this.currentPhase = 'exercise'; // 'exercise' or 'rest'
+    this.groupExecutionMode = false; // true when in grouped exercise mode
+
     this._hasPerformedInitialSync = false; // track if we've auto-synced once per session
     this._autoSyncInFlight = false;
     this._dropboxConnectInFlight = false;
@@ -632,6 +638,24 @@ class VitruvianApp {
           this._weightInputKg = kgValue;
         }
         this.updateLiveWeightDisplay();
+      });
+    }
+
+    const groupInput = document.getElementById("groupNumber");
+    if (groupInput) {
+      groupInput.addEventListener("change", () => {
+        if (this.currentWorkout) {
+          this.currentWorkout.groupNumber = groupInput.value || '';
+        }
+      });
+    }
+
+    const echoGroupInput = document.getElementById("echoGroupNumber");
+    if (echoGroupInput) {
+      echoGroupInput.addEventListener("change", () => {
+        if (this.currentWorkout) {
+          this.currentWorkout.groupNumber = echoGroupInput.value || '';
+        }
       });
     }
 
@@ -8136,6 +8160,7 @@ class VitruvianApp {
         warmupEndTime: null,
         endTime: null,
         setName: planItem?.name || null,
+        groupNumber: planItem?.groupNumber || '',
         setNumber:
           this.planActive && planItem ? this.planCursor?.set ?? null : null,
         setTotal: planItem?.sets ?? null,
@@ -8272,6 +8297,7 @@ class VitruvianApp {
         warmupEndTime: null,
         endTime: null,
         setName: planItem?.name || null,
+        groupNumber: planItem?.groupNumber || '',
         setNumber:
           this.planActive && planItem ? this.planCursor?.set ?? null : null,
         setTotal: planItem?.sets ?? null,
@@ -8358,6 +8384,7 @@ class VitruvianApp {
 
     if (item.type === "exercise") {
       const modeSelect = document.getElementById("mode");
+      const groupInput = document.getElementById("groupNumber");
       const weightInput = document.getElementById("weight");
       const repsInput = document.getElementById("reps");
       const progressionInput = document.getElementById("progression");
@@ -8370,6 +8397,9 @@ class VitruvianApp {
 
       if (modeSelect) {
         modeSelect.value = String(item.mode);
+      }
+      if (groupInput) {
+        groupInput.value = String(item.groupNumber || '');
       }
       if (weightInput) {
         weightInput.value = this.formatWeightValue(
@@ -8393,12 +8423,16 @@ class VitruvianApp {
       }
     } else if (item.type === "echo") {
       const levelSelect = document.getElementById("echoLevel");
+      const echoGroupInput = document.getElementById("echoGroupNumber");
       const eccentricInput = document.getElementById("eccentric");
       const targetInput = document.getElementById("targetReps");
       const echoJustLiftCheckbox = document.getElementById("echoJustLiftCheckbox");
 
       if (levelSelect) {
         levelSelect.value = String((item.level ?? 0) + 1);
+      }
+      if (echoGroupInput) {
+        echoGroupInput.value = String(item.groupNumber || '');
       }
       if (eccentricInput) {
         eccentricInput.value = String(item.eccentricPct ?? 100);
@@ -8668,6 +8702,7 @@ class VitruvianApp {
       const nameValue = toAttrValue(item.name || "");
       const setsValue = toAttrValue(toNumberString(item.sets));
       const restValue = toAttrValue(toNumberString(item.restSec));
+      const groupNumberValue = toAttrValue(item.groupNumber || "");
 
       const nameField = `
         <div class="form-group">
@@ -8687,6 +8722,13 @@ class VitruvianApp {
         <div class="form-group">
           <label>Rest (sec)</label>
           <input type="number" min="0" max="600" value="${restValue}" oninput="app.updatePlanField(${i}, 'restSec', parseInt(this.value)||0)" />
+        </div>
+      `;
+
+      const groupNumberField = `
+        <div class="form-group">
+          <label>Superset Group</label>
+          <input type="text" value="${groupNumberValue}" placeholder="e.g., 1, 2, 3" oninput="app.updatePlanField(${i}, 'groupNumber', this.value)" />
         </div>
       `;
 
@@ -8791,14 +8833,12 @@ class VitruvianApp {
           </div>
 
           <div class="form-group">
-            <label class="label-with-hint">
-              <span>Intensity Technique</span>
-              <i
-                class="bi bi-info-circle"
-                title="Optional finisher applied to the last set: Dropset, Rest-Pause, or Slow negatives."
-                aria-label="Intensity technique help"
-              ></i>
-            </label>
+            <label>Intensity Technique</label>
+            <i
+              class="bi bi-info-circle"
+              title="Optional finisher applied to the last set: Dropset, Rest-Pause, or Slow negatives."
+              aria-label="Intensity technique help"
+            ></i>
             <select onchange="app.updatePlanField(${i}, 'intensity', this.value)">
               <option value="none" ${item.intensity === "none" ? "selected" : ""}>None (default)</option>
               <option value="dropset" ${item.intensity === "dropset" ? "selected" : ""}>Dropset</option>
@@ -8808,6 +8848,7 @@ class VitruvianApp {
           </div>
 
           ${restField}
+          ${groupNumberField}
           ${toggleFields}
         `;
       } else {
@@ -8849,6 +8890,7 @@ class VitruvianApp {
 
           ${setsField}
           ${restField}
+          ${groupNumberField}
           ${toggleFields}
         `;
       }
@@ -9539,6 +9581,7 @@ class VitruvianApp {
         );
       }
       this.renderPlanUI();
+      this.initializeGroupExecution(); // Initialize superset executor if groups exist
       if (!suppressLog) {
         this.addLogEntry(`Loaded plan "${planName}"`, "success");
       }
@@ -9585,6 +9628,163 @@ class VitruvianApp {
     } catch (e) {
       alert(`Could not delete plan: ${e.message}`);
     }
+  }
+
+  /**
+   * Initialize the superset executor when loading a plan.
+   * Call this after this.planItems is set.
+   */
+  initializeGroupExecution() {
+    if (!window.SupersetExecutor || !this.planItems || this.planItems.length === 0) {
+      return;
+    }
+
+    // Initialize executor with planItems
+    this.supersetExecutor = new window.SupersetExecutor(this.planItems);
+    this.currentGroupIndex = 0;
+    this.currentPhase = "exercise";
+    this.groupExecutionMode = this.supersetExecutor.hasGroups();
+
+    if (this.groupExecutionMode) {
+      const groupInfo = this.supersetExecutor.getGroupInfo(0);
+      this.addLogEntry(
+        `Loaded group mode: ${groupInfo.exerciseCount} exercises, round ${groupInfo.currentRound}`,
+        "info",
+      );
+    }
+  }
+
+  /**
+   * Navigate to next item using group execution logic if in group mode.
+   * Returns true if navigation was successful, false if at the end.
+   */
+  navigateToNextInGroup() {
+    if (!this.groupExecutionMode || !this.supersetExecutor) {
+      return false;
+    }
+
+    const result = this.supersetExecutor.navigateNext(
+      this.currentGroupIndex,
+      this.planCursor.index,
+      this.currentPhase,
+    );
+
+    if (!result) {
+      return false; // End of all groups
+    }
+
+    if (result.type === "rest") {
+      this.currentPhase = "rest";
+      const groupInfo = this.supersetExecutor.getGroupInfo(result.groupIndex);
+      this.addLogEntry(
+        `Rest between exercises - Round ${groupInfo.currentRound}`,
+        "info",
+      );
+      // TODO: Start rest countdown timer
+      return true;
+    }
+
+    if (result.type === "exercise" || result.type === "next_round") {
+      this.currentPhase = "exercise";
+      this.currentGroupIndex = result.groupIndex;
+      this.planCursor.index = result.itemIndex;
+      this.planTimelineIndex = result.itemIndex;
+      this.loadPlanItemIntoForm();
+      return true;
+    }
+
+    if (result.type === "complete") {
+      this.addLogEntry("All groups completed!", "success");
+      this.groupExecutionMode = false;
+      return false;
+    }
+
+    return false;
+  }
+
+  /**
+   * Navigate to previous item using group execution logic if in group mode.
+   * Returns true if navigation was successful, false if at the beginning.
+   */
+  navigateToPreviousInGroup() {
+    if (!this.groupExecutionMode || !this.supersetExecutor) {
+      return false;
+    }
+
+    const result = this.supersetExecutor.navigatePrevious(
+      this.currentGroupIndex,
+      this.planCursor.index,
+      this.currentPhase,
+    );
+
+    if (!result) {
+      return false; // Beginning of groups
+    }
+
+    if (result.type === "exercise") {
+      this.currentPhase = "exercise";
+      this.currentGroupIndex = result.groupIndex;
+      this.planCursor.index = result.itemIndex;
+      this.planTimelineIndex = result.itemIndex;
+      this.loadPlanItemIntoForm();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Complete the current set in group execution mode.
+   * Handles progression through sets and rest periods.
+   */
+  completeCurrentSetInGroup() {
+    if (!this.groupExecutionMode || !this.supersetExecutor) {
+      return;
+    }
+
+    const result = this.supersetExecutor.completeSet(
+      this.currentGroupIndex,
+      this.planCursor.index,
+    );
+
+    if (!result) {
+      return; // No action needed
+    }
+
+    if (result.type === "rest") {
+      this.currentPhase = "rest";
+      const groupInfo = this.supersetExecutor.getGroupInfo(this.currentGroupIndex);
+      this.addLogEntry(
+        `Rest between exercises - Round ${groupInfo.currentRound}`,
+        "info",
+      );
+      // TODO: Start rest countdown timer
+    } else if (result.type === "next_round") {
+      this.currentPhase = "exercise";
+      this.addLogEntry(`Starting round ${result.nextRound}`, "info");
+      this.supersetExecutor.completeRest(this.currentGroupIndex);
+    } else if (result.type === "complete") {
+      this.addLogEntry("Group exercise completed!", "success");
+      this.currentPhase = "exercise";
+    }
+  }
+
+  /**
+   * Get the current group execution state for display.
+   */
+  getGroupExecutionState() {
+    if (!this.groupExecutionMode || !this.supersetExecutor) {
+      return null;
+    }
+
+    const groupInfo = this.supersetExecutor.getGroupInfo(this.currentGroupIndex);
+    return {
+      groupId: groupInfo.groupId,
+      exerciseCount: groupInfo.exerciseCount,
+      currentRound: groupInfo.currentRound,
+      itemsWithSets: groupInfo.itemsWithSets,
+      phase: this.currentPhase,
+    };
   }
 
 }
