@@ -399,6 +399,20 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .muscle-flag.miss {
   color: #c92a2a;
 }
+
+/* Minimal styling for shared modal helper */
+.vt-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:10000; }
+.vt-modal-box { background: #0f1115; color: var(--text); border: 1px solid #22293a; border-radius: 10px; max-width: 720px; width: 92%; max-height: 80vh; overflow:auto; padding: 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+.vt-modal-title { margin: 0 0 8px; font-size: 18px; }
+.vt-modal-desc { color: var(--muted); margin: 0 0 12px; }
+.vt-modal-list { margin: 0 0 12px 18px; max-height: 40vh; overflow:auto; }
+.vt-modal-list-item { margin-bottom: 6px; }
+.vt-modal-controls { display:flex; gap:8px; align-items:center; margin-top:12px; }
+.vt-modal-checkbox-label { color: var(--muted); font-size:13px; display:flex; align-items:center; gap:8px; }
+.vt-modal-btn { padding: 8px 12px; border-radius: 8px; border: 1px solid #2a3244; background: var(--panel); color: var(--text); cursor:pointer; }
+.vt-modal-btn:hover { background:#171a21; }
+.vt-modal-btn-confirm { background: var(--accent); border-color: #4c6ef5; color: #0b1220; }
+.vt-modal-btn-confirm:hover { filter:brightness(1.05); }
 .muscle-summary-count {
   font-size: 0.85em;
   color: var(--muted);

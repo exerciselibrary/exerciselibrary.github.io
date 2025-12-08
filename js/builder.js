@@ -941,6 +941,8 @@ const canMergePlanItems = (prev, next) => {
         planItem = {
           type: 'echo',
           name: displayName,
+          setName: set.name || '',
+          groupNumber: set.groupNumber || '',
           level: levelIndex,
           eccentricPct: eccentric,
           targetReps: 0,
@@ -975,6 +977,8 @@ const canMergePlanItems = (prev, next) => {
         planItem = {
           type: 'exercise',
           name: displayName,
+          setName: set.name || '',
+          groupNumber: set.groupNumber || '',
           mode: modeCode,
           perCableKg,
           reps: parseReps(set.reps),
@@ -1384,6 +1388,8 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             if (set.mode === 'ECHO') {
               set.stopAtTop = false;
             }
+            set.name = typeof item?.setName === 'string' ? item.setName : '';
+            set.groupNumber = typeof item?.groupNumber === 'string' ? item.groupNumber : '';
 
             sets.push(set);
           }
@@ -1571,6 +1577,56 @@ export const renderSetRow = (exerciseId, set, index) => {
 
   if (!set.mode) set.mode = 'OLD_SCHOOL';
   if (!set.echoLevel) set.echoLevel = ECHO_LEVELS[0].value;
+
+  const nameCell = document.createElement('td');
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'e.g., A1, Exercise, Echo Block';
+  nameInput.value = set.name || '';
+  nameInput.addEventListener('input', () => {
+    set.name = nameInput.value;
+  });
+  nameInput.addEventListener('change', () => {
+    const finalValue = nameInput.value;
+    set.name = finalValue;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.name !== finalValue) {
+        target.name = finalValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  nameCell.appendChild(nameInput);
+
+  const groupCell = document.createElement('td');
+  const groupInput = document.createElement('input');
+  groupInput.type = 'text';
+  groupInput.placeholder = 'e.g., 1, 2, 3';
+  groupInput.value = set.groupNumber || '';
+  groupInput.addEventListener('input', () => {
+    set.groupNumber = groupInput.value;
+  });
+  groupInput.addEventListener('change', () => {
+    const finalValue = groupInput.value;
+    set.groupNumber = finalValue;
+    let updated = false;
+    propagateSetValue(entry, index, (target) => {
+      if (target.groupNumber !== finalValue) {
+        target.groupNumber = finalValue;
+        updated = true;
+      }
+    });
+    persistState();
+    if (updated) {
+      triggerRender();
+    }
+  });
+  groupCell.appendChild(groupInput);
 
   const modeCell = document.createElement('td');
   modeCell.className = 'mode-cell';
@@ -2010,6 +2066,8 @@ export const renderSetRow = (exerciseId, set, index) => {
 
   tr.append(
     setCell,
+    nameCell,
+    groupCell,
     modeCell,
     repsCell,
     weightCell,
@@ -3271,6 +3329,8 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const thead = document.createElement('thead');
   thead.innerHTML = `<tr>
     <th>Set</th>
+    <th>Name</th>
+    <th>Group</th>
     <th>Mode</th>
     <th>Reps / Ecc%</th>
     <th>Weight (${getWeightLabel()})</th>

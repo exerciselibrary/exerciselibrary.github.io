@@ -28,6 +28,7 @@
       this.initializePlanSummary?.();
 
       this.planActive = true;
+      this.initializeGroupExecution();
       this.planTimeline = timeline;
       this.planTimelineIndex = 0;
       this._activePlanEntry = null;
@@ -67,6 +68,24 @@
     },
 
     _runCurrentPlanBlock: async function _runCurrentPlanBlock() {
+      try {
+        this.addLogEntry(
+          `DEBUG: _runCurrentPlanBlock start — timelineIndex=${this.planTimelineIndex} cursor=${JSON.stringify(this.planCursor)}`,
+          "debug",
+        );
+        if (this.supersetExecutor && this.groupExecutionMode) {
+          try {
+            this.addLogEntry(
+              `DEBUG: Superset state: ${JSON.stringify(this.supersetExecutor.getState())}`,
+              "debug",
+            );
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      } catch (e) {
+        /* best-effort debug logging */
+      }
       if (!this.planActive) {
         return;
       }
@@ -137,6 +156,26 @@
     },
 
     _planAdvance: function _planAdvance(completion = {}) {
+      try {
+        this.addLogEntry(
+          `DEBUG: _planAdvance start — timelineIndex=${this.planTimelineIndex} cursor=${JSON.stringify(this.planCursor)} reason=${String(
+            completion?.reason,
+          )}`,
+          "debug",
+        );
+        if (this.supersetExecutor && this.groupExecutionMode) {
+          try {
+            this.addLogEntry(
+              `DEBUG: Superset state (pre-advance): ${JSON.stringify(this.supersetExecutor.getState())}`,
+              "debug",
+            );
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      } catch (e) {
+        /* best-effort */
+      }
       if (!this.planActive) {
         return;
       }
@@ -150,6 +189,156 @@
         return;
       }
 
+      // If group execution is enabled, use group-based advancement
+      if (this.groupExecutionMode && this.supersetExecutor) {
+        const currentItemIndex = this.planCursor.index;
+        const nextStep = this.supersetExecutor.getNextExercise(currentItemIndex);
+
+        if (nextStep.action === "next-exercise") {
+          // Move to next exercise in group without rest
+          const nextItem = this.planItems[nextStep.itemIndex];
+          if (nextItem) {
+            const remaining = this.supersetExecutor.getRemainingSets(nextStep.itemIndex);
+            const totalSets = Math.max(1, Number(nextItem.sets) || 1);
+            const setToRun = Math.max(1, totalSets - remaining + 1);
+
+            // Find the corresponding timeline index for that item/set
+            let timelineIndex = this.planTimeline.findIndex(
+              (e) => e && e.itemIndex === nextStep.itemIndex && Number(e.set) === Number(setToRun),
+            );
+            if (timelineIndex === -1) {
+              // Fallback: find any timeline entry for the item
+              timelineIndex = this.planTimeline.findIndex((e) => e && e.itemIndex === nextStep.itemIndex);
+            }
+
+            if (timelineIndex !== -1) {
+              const prevIndex = this.planTimelineIndex;
+              this.planTimelineIndex = timelineIndex;
+              this.addLogEntry(
+                `DEBUG: planTimelineIndex moved ${prevIndex} → ${this.planTimelineIndex} for next-exercise`,
+                "debug",
+              );
+            }
+
+            this.planCursor = { index: nextStep.itemIndex, set: setToRun };
+            this._applyItemToUI?.(nextItem);
+            this.updatePlanSetIndicator?.();
+            this.updateCurrentSetLabel?.();
+            const nextLabel = nextItem.name || (nextItem.type === "exercise" ? "Exercise" : "Echo");
+            this.addLogEntry(
+              `→ ${nextLabel} (${remaining} set${remaining === 1 ? "" : "s"} remaining)`,
+              "info",
+            );
+            try {
+              this.addLogEntry(
+                `DEBUG: after next-exercise — timelineIndex=${this.planTimelineIndex} cursor=${JSON.stringify(this.planCursor)}`,
+                "debug",
+              );
+            } catch (e) {}
+            if (this.planPaused) {
+              this._queuedPlanRun = () => this._runCurrentPlanBlock();
+            } else {
+              this._runCurrentPlanBlock();
+            }
+          }
+          return;
+        }
+
+        if (nextStep.action === "rest-then-continue") {
+          // Rest, then continue to next round
+          const nextItem = this.planItems[nextStep.itemIndex];
+          const restItem = this.planItems[nextStep.restAfter];
+          const nextLabel =
+            nextItem?.name || (nextItem?.type === "exercise" ? "Exercise" : "Echo");
+          const nextSummary = nextItem ? this.describePlanItem(nextItem) : "";
+          const restDuration = restItem?.restSec || 60;
+
+          const runNext = () => {
+            if (nextItem) {
+              const remaining = this.supersetExecutor.getRemainingSets(nextStep.itemIndex);
+              const totalSets = Math.max(1, Number(nextItem.sets) || 1);
+              const setToRun = Math.max(1, totalSets - remaining + 1);
+
+              // Find corresponding timeline index
+              let timelineIndex = this.planTimeline.findIndex(
+                (e) => e && e.itemIndex === nextStep.itemIndex && Number(e.set) === Number(setToRun),
+              );
+                if (timelineIndex === -1) {
+                  timelineIndex = this.planTimeline.findIndex((e) => e && e.itemIndex === nextStep.itemIndex);
+                }
+                if (timelineIndex !== -1) {
+                  const prevIndex = this.planTimelineIndex;
+                  this.planTimelineIndex = timelineIndex;
+                  this.addLogEntry(
+                    `DEBUG: planTimelineIndex moved ${prevIndex} → ${this.planTimelineIndex} for rest-then-continue`,
+                    "debug",
+                  );
+                }
+
+              this.planCursor = { index: nextStep.itemIndex, set: setToRun };
+              this._applyItemToUI?.(nextItem);
+            }
+            this.updatePlanSetIndicator?.();
+            this.updateCurrentSetLabel?.();
+            try {
+              this.addLogEntry(
+                `DEBUG: after rest-then-continue — timelineIndex=${this.planTimelineIndex} cursor=${JSON.stringify(this.planCursor)}`,
+                "debug",
+              );
+            } catch (e) {}
+            if (this.planPaused) {
+              this._queuedPlanRun = () => this._runCurrentPlanBlock();
+            } else {
+              this._runCurrentPlanBlock();
+            }
+          };
+
+          this.addLogEntry(
+            `Rest ${restDuration}s between group rounds → ${nextLabel}`,
+            "info",
+          );
+          this._beginRest(
+            restDuration,
+            runNext,
+            `Next: ${nextLabel}`,
+            nextSummary,
+            nextItem,
+          );
+          return;
+        }
+
+        if (nextStep.action === "complete") {
+          // Group is complete - ensure timeline index moves to after the group's
+          // last timeline entry so regular advancement resumes correctly.
+          try {
+            const group = this.supersetExecutor.findGroupForItem(currentItemIndex);
+            if (group && Array.isArray(group.items) && group.items.length) {
+              const groupItemSet = new Set(group.items.map((it) => it.index));
+              let lastTimelineIdx = -1;
+              for (let i = 0; i < this.planTimeline.length; i++) {
+                const te = this.planTimeline[i];
+                if (te && groupItemSet.has(te.itemIndex)) {
+                  lastTimelineIdx = i;
+                }
+              }
+              if (lastTimelineIdx >= 0) {
+                const prev = this.planTimelineIndex;
+                this.planTimelineIndex = lastTimelineIdx;
+                this.addLogEntry(
+                  `DEBUG: group complete — moved planTimelineIndex ${prev} → ${this.planTimelineIndex} (group last entry)`,
+                  'debug',
+                );
+              }
+            }
+          } catch (err) {
+            /* best-effort — don't block */
+          }
+          // Do NOT disable group mode yet; check if next item is in another group
+          // Default advancement will re-enable if needed
+        }
+      }
+
+      // Default timeline-based advancement (non-group mode)
       this.planTimelineIndex += 1;
 
       if (!Array.isArray(this.planTimeline) || this.planTimelineIndex >= this.planTimeline.length) {
@@ -159,6 +348,28 @@
 
       const upcomingEntry = this.planTimeline[this.planTimelineIndex];
       const upcomingItem = upcomingEntry ? this.planItems[upcomingEntry.itemIndex] : null;
+
+      // If the upcoming item is part of a group, re-enable group execution mode
+      if (upcomingItem && this.supersetExecutor) {
+        try {
+          const upcomingIsGrouped = this.supersetExecutor.isGrouped(upcomingEntry.itemIndex);
+          if (upcomingIsGrouped) {
+            this.groupExecutionMode = true;
+            this.addLogEntry(
+              `DEBUG: upcoming item is grouped — re-enabling groupExecutionMode`,
+              'debug',
+            );
+          } else {
+            this.groupExecutionMode = false;
+            this.addLogEntry(
+              `DEBUG: upcoming item is not grouped — disabling groupExecutionMode`,
+              'debug',
+            );
+          }
+        } catch (err) {
+          this.groupExecutionMode = false;
+        }
+      }
       const viewUpcoming =
         upcomingEntry && upcomingItem && upcomingEntry.overrides
           ? { ...upcomingItem, ...upcomingEntry.overrides }

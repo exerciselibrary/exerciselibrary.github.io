@@ -77,6 +77,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
     assert.deepEqual(echoHeavy, {
       type: 'echo',
       name: 'Echo Combo',
+      setName: '',
+      groupNumber: '',
       level: 3,
       eccentricPct: 130,
       targetReps: 0,
@@ -121,6 +123,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
     assert.deepEqual(weightSet, {
       type: 'exercise',
       name: 'Echo Combo',
+      setName: '',
+      groupNumber: '',
       mode: 0,
       perCableKg: 18.144,
       reps: 10,
@@ -176,6 +180,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
     assert.deepEqual(echoLight, {
       type: 'echo',
       name: 'Tempo Pull',
+      setName: '',
+      groupNumber: '',
       level: 1,
       eccentricPct: 100,
       targetReps: 0,
@@ -220,6 +226,8 @@ test('buildPlanItems normalizes builder entries into plan items', () => {
     assert.deepEqual(tempoSet, {
       type: 'exercise',
       name: 'Tempo Pull',
+      setName: '',
+      groupNumber: '',
       mode: 2,
       perCableKg: 13.608,
       reps: 8,

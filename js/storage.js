@@ -95,6 +95,8 @@ export const normalizeProgressionFrequency = (value) => {
 
 export const createSet = () => ({
   id: Math.random().toString(36).slice(2),
+  name: '',
+  groupNumber: '',
   reps: '',
   weight: '',
   mode: 'OLD_SCHOOL',
@@ -142,7 +144,9 @@ export const getBuilderSnapshot = () => ({
           Boolean(set.justLift),
           Boolean(set.stopAtTop),
           set.overloadValue ?? '',
-          set.intensity ?? 'none'
+          set.intensity ?? 'none',
+          set.name ?? '',
+          set.groupNumber ?? ''
         ])
       };
     })
@@ -207,7 +211,9 @@ export const applyBuilderSnapshot = (snapshot) => {
           Boolean(set.justLift),
           Boolean(set.stopAtTop),
           set.overloadValue ?? '',
-          set.intensity ?? 'none'
+          set.intensity ?? 'none',
+          set.name ?? '',
+          set.groupNumber ?? ''
         ])
       });
     }
@@ -224,9 +230,13 @@ export const applyBuilderSnapshot = (snapshot) => {
       const justLiftIndex = legacySet ? 8 : 10;
       const stopAtTopIndex = legacySet ? 9 : 11;
       const intensityIndex = legacySet ? null : 13;
+      const nameIndex = 14;
+      const groupNumberIndex = 15;
 
       const set = {
         id: Math.random().toString(36).slice(2),
+        name: setValues[nameIndex] ?? '',
+        groupNumber: setValues[groupNumberIndex] ?? '',
         reps: setValues[0] ?? '',
         weight: setValues[1] ?? '',
         mode: setValues[2] || 'OLD_SCHOOL',
