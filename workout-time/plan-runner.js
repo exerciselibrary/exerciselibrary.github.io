@@ -2,6 +2,14 @@
 // Extracted to keep workout-time/app.js more focused on core UI wiring.
 (function (global) {
   const PlanRunnerPrototype = {
+    _normalizeRestSeconds: function _normalizeRestSeconds(value, fallback = 0) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) {
+        return Math.max(0, fallback);
+      }
+      return Math.max(0, parsed);
+    },
+
     startPlan: function startPlan() {
       if (!this.device || !this.device.isConnected) {
         this.addLogEntry("⚠️ Please connect your Vitruvian device before starting a plan.", "error");
@@ -82,7 +90,7 @@
           } catch (e) {
             /* ignore */
           }
-        }
+        restSec: this._normalizeRestSeconds(entry?.restSecOverride ?? item.restSec),
       } catch (e) {
         /* best-effort debug logging */
       }
@@ -161,7 +169,7 @@
           `DEBUG: _planAdvance start — timelineIndex=${this.planTimelineIndex} cursor=${JSON.stringify(this.planCursor)} reason=${String(
             completion?.reason,
           )}`,
-          "debug",
+      const restSec = this._normalizeRestSeconds(restSource?.restSec);
         );
         if (this.supersetExecutor && this.groupExecutionMode) {
           try {
@@ -226,7 +234,7 @@
             this.updateCurrentSetLabel?.();
             const nextLabel = nextItem.name || (nextItem.type === "exercise" ? "Exercise" : "Echo");
             this.addLogEntry(
-              `→ ${nextLabel} (${remaining} set${remaining === 1 ? "" : "s"} remaining)`,
+      const restTotal = this._normalizeRestSeconds(totalSec);
               "info",
             );
             try {
@@ -711,7 +719,7 @@
       }
     },
 
-    _pauseRestCountdown: function _pauseRestCountdown() {
+        const restSec = this._normalizeRestSeconds(item.restSec);
       const state = this._restState;
       if (!state) {
         return;
