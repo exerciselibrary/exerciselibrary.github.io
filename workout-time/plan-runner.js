@@ -90,7 +90,7 @@
           } catch (e) {
             /* ignore */
           }
-        restSec: this._normalizeRestSeconds(entry?.restSecOverride ?? item.restSec),
+        }
       } catch (e) {
         /* best-effort debug logging */
       }
@@ -169,7 +169,7 @@
           `DEBUG: _planAdvance start — timelineIndex=${this.planTimelineIndex} cursor=${JSON.stringify(this.planCursor)} reason=${String(
             completion?.reason,
           )}`,
-      const restSec = this._normalizeRestSeconds(restSource?.restSec);
+          "debug",
         );
         if (this.supersetExecutor && this.groupExecutionMode) {
           try {
@@ -234,7 +234,7 @@
             this.updateCurrentSetLabel?.();
             const nextLabel = nextItem.name || (nextItem.type === "exercise" ? "Exercise" : "Echo");
             this.addLogEntry(
-      const restTotal = this._normalizeRestSeconds(totalSec);
+              `Superset continuing → ${nextLabel}`,
               "info",
             );
             try {
@@ -719,7 +719,7 @@
       }
     },
 
-        const restSec = this._normalizeRestSeconds(item.restSec);
+    _pauseRestCountdown: function _pauseRestCountdown() {
       const state = this._restState;
       if (!state) {
         return;
