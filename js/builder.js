@@ -1578,31 +1578,6 @@ export const renderSetRow = (exerciseId, set, index) => {
   if (!set.mode) set.mode = 'OLD_SCHOOL';
   if (!set.echoLevel) set.echoLevel = ECHO_LEVELS[0].value;
 
-  const nameCell = document.createElement('td');
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.placeholder = 'e.g., A1, Exercise, Echo Block';
-  nameInput.value = set.name || '';
-  nameInput.addEventListener('input', () => {
-    set.name = nameInput.value;
-  });
-  nameInput.addEventListener('change', () => {
-    const finalValue = nameInput.value;
-    set.name = finalValue;
-    let updated = false;
-    propagateSetValue(entry, index, (target) => {
-      if (target.name !== finalValue) {
-        target.name = finalValue;
-        updated = true;
-      }
-    });
-    persistState();
-    if (updated) {
-      triggerRender();
-    }
-  });
-  nameCell.appendChild(nameInput);
-
   const groupCell = document.createElement('td');
   const groupInput = document.createElement('input');
   groupInput.type = 'text';
@@ -2066,7 +2041,6 @@ export const renderSetRow = (exerciseId, set, index) => {
 
   tr.append(
     setCell,
-    nameCell,
     groupCell,
     modeCell,
     repsCell,
@@ -3329,7 +3303,6 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
   const thead = document.createElement('thead');
   thead.innerHTML = `<tr>
     <th>Set</th>
-    <th>Name</th>
     <th>Group</th>
     <th>Mode</th>
     <th>Reps / Ecc%</th>
