@@ -54,3 +54,84 @@ test("personal records persist locally when Dropbox is disconnected", async () =
     env.restore();
   }
 });
+
+test("personal records baseline prefers the best known entry, even if the cache is stale", async () => {
+  const env = setupVitruvianTestEnvironment();
+  try {
+    const moduleUrl = new URL(APP_MODULE_URL);
+    moduleUrl.searchParams.set(
+      "test",
+      `personal-records-baseline-${Date.now()}`,
+    );
+    await import(moduleUrl.href);
+
+    const app = new env.window.VitruvianApp();
+    const identityKey = "exercise:1";
+    const identity = { key: identityKey, label: "Incline Press" };
+
+    // Seed a stale personal record that is lighter than the best workout in history.
+    app.personalRecords = {
+      [identityKey]: {
+        key: identityKey,
+        label: identity.label,
+        weightKg: 20,
+        timestamp: "2024-01-01T10:00:00.000Z",
+      },
+    };
+
+    const buildWorkout = (weightKg, timestamp) =>
+      app.normalizeWorkout({
+        exerciseIdNew: 1,
+        setName: identity.label,
+        movementData: [
+          {
+            timestamp: new Date(timestamp),
+            loadA: weightKg,
+            loadB: weightKg,
+            posA: 0,
+            posB: 0,
+          },
+          {
+            timestamp: new Date(new Date(timestamp).getTime() + 500),
+            loadA: weightKg,
+            loadB: weightKg,
+            posA: 60,
+            posB: 60,
+          },
+        ],
+        endTime: new Date(timestamp),
+      });
+
+    const historicalBest = buildWorkout(25, "2024-02-01T12:00:00.000Z");
+    app.workoutHistory.unshift(historicalBest);
+
+    const currentWorkout = buildWorkout(23, "2024-03-01T12:00:00.000Z");
+    const stored = app.addToWorkoutHistory(currentWorkout);
+
+    const prInfo = app.displayTotalLoadPR(stored);
+    assert.equal(prInfo.status, "existing");
+    assert.equal(
+      prInfo.previousBestKg,
+      25,
+      "previous best should reflect history when it beats the cached record",
+    );
+
+    const updated = app.applyPersonalRecordCandidate(
+      identity,
+      app.calculateTotalLoadPeakKg(currentWorkout),
+      "2024-03-01T12:00:01.000Z",
+      { reason: "test", excludeWorkout: stored },
+    );
+
+    assert.equal(
+      updated,
+      true,
+      "stale cache should be repaired to the best known personal record",
+    );
+    assert.equal(app.getPersonalRecord(identityKey).weightKg, 25);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  } finally {
+    env.restore();
+  }
+});
