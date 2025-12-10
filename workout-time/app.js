@@ -4530,47 +4530,50 @@ class VitruvianApp {
       return 0;
     }
 
-    const record = this.getPersonalRecord(identity.key);
     const excludeWorkout = options.excludeWorkout || null;
+    const epsilon = 0.0001;
+    const record = this.getPersonalRecord(identity.key);
+    let recordWeight = 0;
 
-    if (excludeWorkout) {
-      if (record && Number.isFinite(record.weightKg)) {
-        const recordTimestamp = record.timestamp
-          ? new Date(record.timestamp).getTime()
-          : null;
+    if (record && Number.isFinite(record.weightKg)) {
+      let isSameWorkout = false;
+
+      if (excludeWorkout) {
+        const recordTimestamp = record.timestamp ? new Date(record.timestamp).getTime() : null;
         const workoutTimestamp = this.getWorkoutTimestamp(excludeWorkout);
         const workoutTime = workoutTimestamp ? workoutTimestamp.getTime() : null;
-        const epsilon = 0.0001;
         const workoutPeak = this.calculateTotalLoadPeakKg(excludeWorkout);
 
-        const isSameWorkout =
+        isSameWorkout =
           recordTimestamp !== null &&
           workoutTime !== null &&
           Math.abs(recordTimestamp - workoutTime) < 2000 &&
           Math.abs(workoutPeak - record.weightKg) <= epsilon;
-
-        if (!isSameWorkout) {
-          return record.weightKg;
-        }
       }
 
-      return this.getHistoricalBestLoadKg(identity, options);
+      if (!isSameWorkout) {
+        recordWeight = record.weightKg;
+      }
     }
 
-    if (record && Number.isFinite(record.weightKg)) {
-      return record.weightKg;
-    }
+    const historicalBest = this.getHistoricalBestEntry(identity, { excludeWorkout });
 
-    return this.getHistoricalBestLoadKg(identity, options);
+    return Math.max(recordWeight, historicalBest.weightKg || 0);
   }
 
   getHistoricalBestLoadKg(identity, options = {}) {
+    return this.getHistoricalBestEntry(identity, options).weightKg;
+  }
+
+  getHistoricalBestEntry(identity, options = {}) {
     if (!identity || typeof identity.key !== "string") {
-      return 0;
+      return { weightKg: 0, timestamp: null };
     }
 
     const excludeWorkout = options.excludeWorkout || null;
+    const epsilon = 0.0001;
     let best = 0;
+    let bestTimestamp = null;
 
     for (const item of this.workoutHistory) {
       if (excludeWorkout && item === excludeWorkout) {
@@ -4583,12 +4586,21 @@ class VitruvianApp {
       }
 
       const value = this.calculateTotalLoadPeakKg(item);
-      if (value > best) {
+      if (!Number.isFinite(value) || value <= 0) {
+        continue;
+      }
+
+      const timestamp = this.getWorkoutTimestamp(item);
+      const timeValue = timestamp instanceof Date ? timestamp.getTime() : 0;
+      const bestTime = bestTimestamp instanceof Date ? bestTimestamp.getTime() : 0;
+
+      if (value > best + epsilon || (Math.abs(value - best) <= epsilon && timeValue > bestTime)) {
         best = value;
+        bestTimestamp = timestamp || bestTimestamp;
       }
     }
 
-    return best;
+    return { weightKg: best, timestamp: bestTimestamp };
   }
 
   initializeCurrentWorkoutPersonalBest() {
@@ -5415,7 +5427,10 @@ class VitruvianApp {
       identity,
       targetWeightKg,
       timestamp,
-      { reason: options.reason || "workout-complete" },
+      {
+        reason: options.reason || "workout-complete",
+        excludeWorkout: workout,
+      },
     );
 
     if (this.isEchoWorkout(workout)) {
@@ -5431,7 +5446,10 @@ class VitruvianApp {
           eccIdentity,
           analysis.maxEccentricKg,
           timestamp,
-          { reason: "echo-workout-complete" },
+          {
+            reason: "echo-workout-complete",
+            excludeWorkout: workout,
+          },
         );
       }
     }
@@ -5466,26 +5484,55 @@ class VitruvianApp {
     })();
 
     const epsilon = 0.0001;
-    const existing = this.personalRecords?.[key];
+    const excludeWorkout = options.excludeWorkout || null;
+    const record = (() => {
+      const current = this.personalRecords?.[key];
+      if (!current || !Number.isFinite(current.weightKg)) {
+        return null;
+      }
+      if (!excludeWorkout) {
+        return current;
+      }
+      const recordTimestamp = current.timestamp ? new Date(current.timestamp).getTime() : null;
+      const workoutTimestamp = this.getWorkoutTimestamp(excludeWorkout);
+      const workoutTime = workoutTimestamp ? workoutTimestamp.getTime() : null;
+      const workoutPeak = this.calculateTotalLoadPeakKg(excludeWorkout);
+      const isSameWorkout =
+        recordTimestamp !== null &&
+        workoutTime !== null &&
+        Math.abs(recordTimestamp - workoutTime) < 2000 &&
+        Math.abs(workoutPeak - current.weightKg) <= epsilon;
+      return isSameWorkout ? null : current;
+    })();
+    const historicalBest = this.getHistoricalBestEntry(identity, { excludeWorkout });
+    const recordWeight = record?.weightKg ?? 0;
+    const baselineWeight = Math.max(recordWeight, historicalBest.weightKg || 0);
+    const weightDelta = weightKg - baselineWeight;
+    const previousTime = record?.timestamp ? new Date(record.timestamp).getTime() : null;
+    const candidateTime = isoTimestamp ? new Date(isoTimestamp).getTime() : Date.now();
+
+    let targetWeight = weightKg;
+    let targetTimestamp = isoTimestamp;
     let shouldUpdate = false;
 
-    if (!existing) {
+    if (weightDelta > epsilon) {
       shouldUpdate = true;
-    } else {
-      const weightDelta = weightKg - existing.weightKg;
-      if (weightDelta > epsilon) {
+    } else if (Math.abs(weightDelta) <= epsilon) {
+      if (!record || (previousTime !== null && candidateTime > previousTime)) {
         shouldUpdate = true;
-      } else if (Math.abs(weightDelta) <= epsilon) {
-        const previousTime = existing.timestamp
-          ? new Date(existing.timestamp).getTime()
-          : 0;
-        const candidateTime = isoTimestamp
-          ? new Date(isoTimestamp).getTime()
-          : Date.now();
-        if (candidateTime > previousTime) {
-          shouldUpdate = true;
-        }
       }
+    } else if (historicalBest.weightKg > recordWeight + epsilon) {
+      // Repair stale personal-record cache using the best known historical entry.
+      targetWeight = historicalBest.weightKg;
+      if (
+        historicalBest.timestamp instanceof Date &&
+        !Number.isNaN(historicalBest.timestamp.getTime())
+      ) {
+        targetTimestamp = historicalBest.timestamp.toISOString();
+      } else if (record?.timestamp) {
+        targetTimestamp = record.timestamp;
+      }
+      shouldUpdate = true;
     }
 
     if (!shouldUpdate) {
@@ -5499,8 +5546,8 @@ class VitruvianApp {
     this.personalRecords[key] = {
       key,
       label,
-      weightKg,
-      timestamp: isoTimestamp,
+      weightKg: targetWeight,
+      timestamp: targetTimestamp,
     };
 
     if (!options.skipCacheSave) {
