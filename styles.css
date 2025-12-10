@@ -625,11 +625,16 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
   padding: 16px;
   display: grid;
   gap: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .builder-card.grouped {
   border-color: color-mix(in oklab, var(--group-color, #7aa2f7), #101523 35%);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--group-color, #7aa2f7), transparent 75%);
   position: relative;
+}
+.builder-card:focus-within {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
 }
 .builder-card.grouped::before {
   content: '';
@@ -648,6 +653,32 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .builder-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .builder-controls { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .builder-control-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.builder-behavior {
+  display: flex;
+  justify-content: flex-end;
+}
+.forward-fill-toggle {
+  display: inline-flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.forward-fill-toggle input {
+  margin-top: 3px;
+  width: auto;
+}
+.forward-fill-copy strong {
+  display: block;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.forward-fill-copy span {
+  display: block;
+  line-height: 1.2;
+}
 .builder-move-buttons { display: inline-flex; gap: 6px; }
 .btn.icon { padding: 0; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 999px; }
 .btn.icon.small { width: 28px; height: 28px; font-size: 14px; }
@@ -663,6 +694,10 @@ input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px 
 .sets-table input, .sets-table select { width: 100%; }
 .sets-table td.set-flag { text-align: center; }
 .sets-table td.set-flag input { width: auto; }
+.sets-table td:focus-within {
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.45);
+}
 .sets-table .flag-control { display: flex; justify-content: center; }
 .sets-table .flag-note { margin-top: 4px; font-size: 11px; }
 .sets-table .progression-cell { min-width: 180px; }

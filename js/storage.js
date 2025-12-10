@@ -120,7 +120,7 @@ export const getBuilderSnapshot = () => ({
       const entry = state.builder.items.get(id);
       if (!entry) return null;
       const numericId = toNumericExerciseId(entry.exercise?.id_new);
-      return {
+      const serialized = {
         i: id,
         ...(numericId !== null ? { ni: numericId } : {}),
         n: entry.exercise.name,
@@ -149,6 +149,10 @@ export const getBuilderSnapshot = () => ({
           set.groupNumber ?? ''
         ])
       };
+      if (entry.forwardFillEnabled === false) {
+        serialized.ff = false;
+      }
+      return serialized;
     })
     .filter(Boolean)
 });
@@ -184,7 +188,8 @@ export const applyBuilderSnapshot = (snapshot) => {
       itemMap.set(item.i || item.id, {
         ...item,
         ni: numericId,
-        m: Array.isArray(item.m) ? item.m : []
+        m: Array.isArray(item.m) ? item.m : [],
+        ff: item.ff
       });
     } else if (Array.isArray(item.sets)) {
       const numericId = toNumericExerciseId(item.ni ?? item.exercise?.id_new);
@@ -214,7 +219,8 @@ export const applyBuilderSnapshot = (snapshot) => {
           set.intensity ?? 'none',
           set.name ?? '',
           set.groupNumber ?? ''
-        ])
+        ]),
+        ff: item.forwardFillEnabled === false ? false : item.ff
       });
     }
   });
@@ -222,6 +228,7 @@ export const applyBuilderSnapshot = (snapshot) => {
   snapshot.order.forEach((id) => {
     const item = itemMap.get(id);
     if (!item) return;
+    const forwardFillEnabled = item?.ff !== false;
 
     const sets = (item.s || []).map((values) => {
       const setValues = Array.isArray(values) ? values : [];
@@ -328,7 +335,8 @@ export const applyBuilderSnapshot = (snapshot) => {
         equipment: exercise.equipment || [],
         videos: exercise.videos || []
       },
-      sets
+      sets,
+      forwardFillEnabled
     });
   });
 };

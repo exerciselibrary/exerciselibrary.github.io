@@ -327,8 +327,61 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
   );
 }
 
+const SELECTABLE_INPUT_TYPES = new Set(['text', 'number', 'tel', 'search', 'email', 'url']);
+const autoSelectInputs = new WeakSet();
+const scheduleAutoSelect =
+  typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
+
+const shouldAutoSelectBuilderInput = (target) => {
+  if (!target || target.tagName !== 'INPUT') return false;
+  if (!target.closest('.builder-card')) return false;
+  if (target.readOnly || target.disabled) return false;
+  const type = (target.type || 'text').toLowerCase();
+  if (type === 'checkbox' || type === 'radio' || type === 'button' || type === 'submit' || type === 'range') {
+    return false;
+  }
+  return SELECTABLE_INPUT_TYPES.has(type) || type === '';
+};
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener('focusin', (event) => {
+    const target = event.target;
+    if (!shouldAutoSelectBuilderInput(target)) return;
+    autoSelectInputs.add(target);
+    scheduleAutoSelect(() => {
+      try {
+        target.select();
+      } catch (err) {
+        // Ignore selection issues for unsupported inputs.
+      }
+    });
+  });
+
+  document.addEventListener(
+    'mouseup',
+    (event) => {
+      const target = event.target;
+      if (!shouldAutoSelectBuilderInput(target) || !autoSelectInputs.has(target)) return;
+      event.preventDefault();
+      autoSelectInputs.delete(target);
+    },
+    true
+  );
+
+  document.addEventListener(
+    'blur',
+    (event) => {
+      if (autoSelectInputs.has(event.target)) {
+        autoSelectInputs.delete(event.target);
+      }
+    },
+    true
+  );
+}
+
 const propagateSetValue = (entry, startIndex, apply) => {
   if (!entry || !Array.isArray(entry.sets)) return;
+  if (entry.forwardFillEnabled === false) return;
   for (let i = startIndex + 1; i < entry.sets.length; i += 1) {
     apply(entry.sets[i], i);
   }
@@ -1410,7 +1463,8 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
             equipment: Array.isArray(resolvedExercise.equipment) ? resolvedExercise.equipment : [],
             videos: resolvedExercise.videos || []
           },
-          sets
+          sets,
+          forwardFillEnabled: true
         });
       } else {
         const { item, index } = entry;
@@ -1418,7 +1472,8 @@ export const loadPlanIntoBuilder = (planItems = [], options = {}) => {
         state.builder.order.push(legacyEntry.exercise.id);
         state.builder.items.set(legacyEntry.exercise.id, {
           exercise: attachExerciseIdentifiers(legacyEntry.exercise),
-          sets: legacyEntry.sets
+          sets: legacyEntry.sets,
+          forwardFillEnabled: true
         });
       }
     });
@@ -2070,7 +2125,8 @@ export const addExerciseToBuilder = (exercise, options = {}) => {
       equipment: normalized.equipment || [],
       videos: normalized.videos || []
     },
-    sets: [createSet()]
+    sets: [createSet()],
+    forwardFillEnabled: true
   };
   state.builder.items.set(targetId, entry);
 
@@ -3020,6 +3076,9 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
     orderIndex = 0,
     totalCount = state.builder.order.length
   } = options;
+  if (typeof entry.forwardFillEnabled !== 'boolean') {
+    entry.forwardFillEnabled = true;
+  }
   const id = entry.exercise.id;
   const card = document.createElement('div');
   card.className = 'builder-card';
@@ -3140,6 +3199,29 @@ const buildBuilderCard = (entry, displayIndex, options = {}) => {
 
   controls.append(header, actions);
   card.appendChild(controls);
+
+  const behaviorControls = document.createElement('div');
+  behaviorControls.className = 'builder-behavior';
+  const forwardFillLabel = document.createElement('label');
+  forwardFillLabel.className = 'forward-fill-toggle';
+  const forwardFillCheckbox = document.createElement('input');
+  forwardFillCheckbox.type = 'checkbox';
+  forwardFillCheckbox.checked = entry.forwardFillEnabled !== false;
+  forwardFillCheckbox.setAttribute('aria-label', 'Apply edits to later sets');
+  forwardFillCheckbox.addEventListener('change', () => {
+    entry.forwardFillEnabled = forwardFillCheckbox.checked;
+    persistState();
+  });
+  const forwardFillCopy = document.createElement('div');
+  forwardFillCopy.className = 'forward-fill-copy';
+  const forwardFillTitle = document.createElement('strong');
+  forwardFillTitle.textContent = 'Apply edits to later sets';
+  const forwardFillHint = document.createElement('span');
+  forwardFillHint.textContent = 'Uncheck to edit sets individually.';
+  forwardFillCopy.append(forwardFillTitle, forwardFillHint);
+  forwardFillLabel.append(forwardFillCheckbox, forwardFillCopy);
+  behaviorControls.appendChild(forwardFillLabel);
+  card.appendChild(behaviorControls);
 
   const bulkControls = document.createElement('div');
   bulkControls.className = 'builder-bulk-controls';
