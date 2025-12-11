@@ -8580,6 +8580,127 @@ class VitruvianApp {
     return null;
   }
 
+  canStackPlanItems(prev, next) {
+    if (!prev || !next) {
+      return false;
+    }
+
+    const normalizeNumber = (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    const normalizeBool = (value) => value === true;
+    const normalizeIntensity = (value) => {
+      if (typeof value !== "string") {
+        return "none";
+      }
+      const trimmed = value.trim().toLowerCase();
+      return trimmed || "none";
+    };
+
+    const prevType = prev.type || "exercise";
+    const nextType = next.type || "exercise";
+    if (prevType !== nextType) {
+      return false;
+    }
+
+    const prevId = this.getPlanExerciseNumericId(prev) ?? this.getPlanExerciseId(prev);
+    const nextId = this.getPlanExerciseNumericId(next) ?? this.getPlanExerciseId(next);
+    if (prevId && nextId && prevId !== nextId) {
+      return false;
+    }
+
+    const prevName = typeof prev.name === "string" ? prev.name.trim() : "";
+    const nextName = typeof next.name === "string" ? next.name.trim() : "";
+    if (!prevId && !nextId && prevName && nextName && prevName !== nextName) {
+      return false;
+    }
+
+    const prevGroup = typeof prev.groupNumber === "string" ? prev.groupNumber.trim() : "";
+    const nextGroup = typeof next.groupNumber === "string" ? next.groupNumber.trim() : "";
+    if (prevGroup !== nextGroup) {
+      return false;
+    }
+
+    const prevIntensity = normalizeIntensity(prev.intensity);
+    const nextIntensity = normalizeIntensity(next.intensity);
+    if (prevIntensity !== "none" || nextIntensity !== "none") {
+      return false;
+    }
+
+    if (prevType === "exercise") {
+      return (
+        normalizeNumber(prev.mode) === normalizeNumber(next.mode) &&
+        normalizeNumber(prev.perCableKg) === normalizeNumber(next.perCableKg) &&
+        normalizeNumber(prev.reps) === normalizeNumber(next.reps) &&
+        normalizeNumber(prev.restSec) === normalizeNumber(next.restSec) &&
+        normalizeNumber(prev.progressionKg) === normalizeNumber(next.progressionKg) &&
+        normalizeNumber(prev.progressionPercent) === normalizeNumber(next.progressionPercent) &&
+        (prev.progressionMode || "NONE") === (next.progressionMode || "NONE") &&
+        (prev.progressionFrequency || "WORKOUT") === (next.progressionFrequency || "WORKOUT") &&
+        normalizeNumber(prev.progressiveOverloadKg) === normalizeNumber(next.progressiveOverloadKg) &&
+        normalizeNumber(prev.progressiveOverloadPercent) === normalizeNumber(next.progressiveOverloadPercent) &&
+        normalizeBool(prev.justLift) === normalizeBool(next.justLift) &&
+        normalizeBool(prev.stopAtTop) === normalizeBool(next.stopAtTop) &&
+        normalizeNumber(prev.cables) === normalizeNumber(next.cables)
+      );
+    }
+
+    return (
+      normalizeNumber(prev.level) === normalizeNumber(next.level) &&
+      normalizeNumber(prev.eccentricPct) === normalizeNumber(next.eccentricPct) &&
+      normalizeNumber(prev.targetReps) === normalizeNumber(next.targetReps) &&
+      normalizeNumber(prev.restSec) === normalizeNumber(next.restSec) &&
+      normalizeBool(prev.justLift) === normalizeBool(next.justLift) &&
+      normalizeBool(prev.stopAtTop) === normalizeBool(next.stopAtTop)
+    );
+  }
+
+  stackPlanItems(items) {
+    if (!Array.isArray(items) || !items.length) {
+      return [];
+    }
+
+    const stacked = [];
+
+    for (const item of items) {
+      if (!item) {
+        continue;
+      }
+      const candidate = { ...item };
+      if (candidate.builderMeta && typeof candidate.builderMeta === "object") {
+        candidate.builderMeta = { ...candidate.builderMeta };
+      }
+      const candidateSets = Math.max(1, Number(candidate.sets) || 1);
+      candidate.sets = candidateSets;
+
+      const last = stacked[stacked.length - 1];
+      if (last && this.canStackPlanItems(last, candidate)) {
+        const lastSetsBefore = Math.max(1, Number(last.sets) || 1);
+        const nextSets = candidateSets;
+        last.sets = lastSetsBefore + nextSets;
+
+        const lastMeta = last.builderMeta || (last.builderMeta = {});
+        const nextMeta = candidate.builderMeta || {};
+        const prevCount = Number(lastMeta.setCount) || lastSetsBefore;
+        const nextCount = Number(nextMeta.setCount) || nextSets;
+        lastMeta.setCount = prevCount + nextCount;
+
+        if (lastMeta.totalSets !== undefined) {
+          const currentTotal = Number(lastMeta.totalSets);
+          const combinedTotal = prevCount + nextCount;
+          lastMeta.totalSets = Number.isFinite(currentTotal)
+            ? Math.max(currentTotal, combinedTotal)
+            : combinedTotal;
+        }
+      } else {
+        stacked.push(candidate);
+      }
+    }
+
+    return stacked;
+  }
+
   getPlanCableCount(planItem) {
     const raw = Number(planItem?.cables);
     if (Number.isFinite(raw) && raw >= 1) {
@@ -9436,8 +9557,10 @@ class VitruvianApp {
       throw new Error('Invalid plan payload');
     }
 
+    const stackedItems = this.stackPlanItems(items);
+
     try {
-      localStorage.setItem(this.planKey(name), JSON.stringify(items));
+      localStorage.setItem(this.planKey(name), JSON.stringify(stackedItems));
     } catch (error) {
       throw new Error('Unable to store plan locally');
     }
@@ -9588,7 +9711,31 @@ class VitruvianApp {
           `Saved plan "${planName}" could not be parsed: ${err.message}`,
         );
       }
-      this.planItems = Array.isArray(parsed) ? parsed : [];
+      const parsedItems = Array.isArray(parsed) ? parsed : [];
+      const stackedItems = this.stackPlanItems(parsedItems);
+      const restacked = stackedItems.length !== parsedItems.length;
+      this.planItems = stackedItems;
+
+      if (restacked) {
+        try {
+          this.savePlanLocally(planName, this.planItems);
+          if (this.dropboxManager?.isConnected) {
+            this.syncPlanToDropbox(planName, this.planItems, {
+              silent: true,
+              suppressError: true,
+            });
+          }
+          this.addLogEntry(
+            `Stacked consecutive identical plan items into multi-set entries for "${planName}".`,
+            "info",
+          );
+        } catch (persistError) {
+          this.addLogEntry(
+            `Unable to persist stacked plan entries: ${persistError?.message || persistError}`,
+            "warn",
+          );
+        }
+      }
 
       // Normalize: ensure all items have groupNumber field (for backwards compatibility)
       this.planItems = this.planItems.map((item) => {
