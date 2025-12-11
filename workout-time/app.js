@@ -7922,7 +7922,7 @@ class VitruvianApp {
     }
   }
 
-  playRepTopSound() {
+  playRepAudioCue({ isWarmup, workingRepNumber }) {
     try {
       const context = this.getAudioContext();
       if (!context) {
@@ -7935,17 +7935,6 @@ class VitruvianApp {
       }
       this._lastRepTopBeep = now;
 
-      // Determine if we're in warmup or working reps.
-      // During warmup reps, always use oscillator beep.
-      // During working reps, try repcount audio file first, then fallback to oscillator.
-      const currentWarmupReps = Number(this.warmupReps) || 0;
-      const currentWorkingReps = Number(this.workingReps) || 0;
-      const totalSoFar = currentWarmupReps + currentWorkingReps;
-      const nextRepOverall = totalSoFar + 1;
-      const isWarmupRep = Number.isFinite(this.warmupTarget) && nextRepOverall <= (Number(this.warmupTarget) || 0);
-      const nextRepCount = currentWorkingReps + 1;
-
-      // Helper to play oscillator beep
       const playOscillatorBeep = () => {
         try {
           const oscillator = context.createOscillator();
@@ -7968,25 +7957,24 @@ class VitruvianApp {
         }
       };
 
-      // If warmup, always use beep. If working, try repcount audio first.
-      if (isWarmupRep) {
+      if (isWarmup) {
         playOscillatorBeep();
-      } else {
-        // Working reps: try repcount audio file (1-25), fallback to beep
-        if (nextRepCount >= 1 && nextRepCount <= 25 && this.isAudioTriggersEnabled()) {
-          this.playAudio("repcount", { rep: nextRepCount })
-            .then((played) => {
-              if (!played) {
-                playOscillatorBeep();
-              }
-            })
-            .catch(() => {
+        return;
+      }
+
+      const repNum = Number(workingRepNumber);
+      if (repNum >= 1 && repNum <= 25 && this.isAudioTriggersEnabled()) {
+        this.playAudio("repcount", { rep: repNum })
+          .then((played) => {
+            if (!played) {
               playOscillatorBeep();
-            });
-        } else {
-          // Audio disabled, out of range, or warmup: use beep
-          playOscillatorBeep();
-        }
+            }
+          })
+          .catch(() => {
+            playOscillatorBeep();
+          });
+      } else {
+        playOscillatorBeep();
       }
     } catch (error) {
       // Silently ignore audio failures to avoid spamming logs
@@ -8046,7 +8034,6 @@ class VitruvianApp {
           `TOP detected! Counter: ${this.lastTopCounter} -> ${topCounter}, pos=[${this.currentSample.posA}, ${this.currentSample.posB}]`,
           "success",
         );
-        this.playRepTopSound();
         this.recordTopPosition(
           this.currentSample.posA,
           this.currentSample.posB,
@@ -8118,6 +8105,17 @@ class VitruvianApp {
         return;
       }
       this.ensureWorkoutStartTime();
+
+      const totalReps = this.warmupReps + this.workingReps + 1;
+
+      // Play audio cue for this completed rep (runs on completion so we don't miss reps when top notifications drop)
+      const isWarmupRep = totalReps <= this.warmupTarget;
+      const workingRepNumber = isWarmupRep ? null : this.workingReps + 1;
+      this.playRepAudioCue({
+        isWarmup: isWarmupRep,
+        workingRepNumber,
+      });
+
       // Rep completed! Record bottom position
       this.addLogEntry(
         `BOTTOM detected! Counter: ${this.lastRepCounter} -> ${completeCounter}, pos=[${this.currentSample.posA}, ${this.currentSample.posB}]`,
@@ -8127,8 +8125,6 @@ class VitruvianApp {
         this.currentSample.posA,
         this.currentSample.posB,
       );
-
-      const totalReps = this.warmupReps + this.workingReps + 1;
 
       if (totalReps <= this.warmupTarget) {
         // Still in warmup
