@@ -10,11 +10,33 @@
       return Math.max(0, parsed);
     },
 
-    startPlan: function startPlan() {
+    startPlan: async function startPlan() {
       if (!this.device || !this.device.isConnected) {
         this.addLogEntry("⚠️ Please connect your Vitruvian device before starting a plan.", "error");
         alert("Please connect your Vitruvian device before starting a plan.");
         return;
+      }
+
+      // Stop any in-progress workout so the new plan can start with fresh targets/weights
+      const hasLiveWorkout =
+        !!this.currentProgramParams ||
+        !!(this.device && this.device.lastProgramParams) ||
+        this._planSetInProgress;
+
+      if (hasLiveWorkout && typeof this.stopWorkout === "function") {
+        try {
+          await this.stopWorkout({
+            reason: "user",
+            complete: false,
+            skipPlanAdvance: true,
+          });
+        } catch (error) {
+          this.addLogEntry(
+            `Unable to stop the current workout before starting a new plan: ${error.message}`,
+            "error",
+          );
+          return;
+        }
       }
 
       if (this.planActive) {
