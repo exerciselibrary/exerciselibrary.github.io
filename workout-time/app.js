@@ -4994,6 +4994,45 @@ class VitruvianApp {
     return true;
   }
 
+  mapRecordsArrayToMap(records = []) {
+    const map = {};
+    for (const entry of records) {
+      const normalized = this.normalizePersonalRecord(entry);
+      if (normalized) {
+        map[normalized.key] = normalized;
+      }
+    }
+    return map;
+  }
+
+  mergeRecordIntoMap(target, candidate) {
+    if (!target || !candidate || !candidate.key) {
+      return false;
+    }
+
+    const existing = target[candidate.key];
+    if (!existing) {
+      target[candidate.key] = candidate;
+      return true;
+    }
+
+    const epsilon = 0.0001;
+    const delta = Number(candidate.weightKg) - Number(existing.weightKg);
+    const candidateTime = candidate.timestamp
+      ? new Date(candidate.timestamp).getTime()
+      : 0;
+    const existingTime = existing.timestamp
+      ? new Date(existing.timestamp).getTime()
+      : 0;
+
+    if (delta > epsilon || (Math.abs(delta) <= epsilon && candidateTime > existingTime)) {
+      target[candidate.key] = candidate;
+      return true;
+    }
+
+    return false;
+  }
+
   hasWorkoutEffortForPR(workout) {
     if (!workout || typeof workout !== "object") {
       return false;
@@ -5855,16 +5894,7 @@ class VitruvianApp {
     try {
       const payload = await this.dropboxManager.loadPersonalRecords();
       const exists = payload?.exists !== false;
-      const records = Array.isArray(payload?.records) ? payload.records : [];
-      const dropboxRecords = {};
-      const epsilon = 0.0001;
-
-      for (const entry of records) {
-        const normalized = this.normalizePersonalRecord(entry);
-        if (normalized) {
-          dropboxRecords[normalized.key] = normalized;
-        }
-      }
+      const dropboxRecords = this.mapRecordsArrayToMap(payload?.records || []);
 
       const shouldMergeLocal =
         exists && (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync);
@@ -5874,27 +5904,7 @@ class VitruvianApp {
       if (shouldMergeLocal && this.personalRecords) {
         for (const entry of Object.values(this.personalRecords)) {
           const normalized = this.normalizePersonalRecord(entry);
-          if (!normalized) {
-            continue;
-          }
-
-          const current = nextRecords[normalized.key];
-          if (!current) {
-            nextRecords[normalized.key] = normalized;
-            mergedLocalChanges = true;
-            continue;
-          }
-
-          const delta = normalized.weightKg - current.weightKg;
-          const normalizedTime = normalized.timestamp
-            ? new Date(normalized.timestamp).getTime()
-            : 0;
-          const currentTime = current.timestamp
-            ? new Date(current.timestamp).getTime()
-            : 0;
-
-          if (delta > epsilon || (Math.abs(delta) <= epsilon && normalizedTime > currentTime)) {
-            nextRecords[normalized.key] = normalized;
+          if (normalized && this.mergeRecordIntoMap(nextRecords, normalized)) {
             mergedLocalChanges = true;
           }
         }
@@ -5965,8 +5975,40 @@ class VitruvianApp {
     this.setPendingPersonalRecordsDropboxSync(false);
 
     try {
+      const localList = this.getPersonalRecordsList();
+      const localMap = this.mapRecordsArrayToMap(localList);
+
+      const remotePayload = await this.dropboxManager.loadPersonalRecords();
+      const remoteExists = remotePayload?.exists !== false;
+      const remoteMap = this.mapRecordsArrayToMap(remotePayload?.records || []);
+
+      const mergedMap = remoteExists ? { ...remoteMap } : {};
+      let merged = false;
+      for (const entry of Object.values(localMap)) {
+        const updated = this.mergeRecordIntoMap(mergedMap, entry);
+        merged = merged || updated;
+      }
+
+      const mergedList = Object.values(mergedMap);
+
+      // Update local cache if merge added/updated any entries we didn't have.
+      if (!this.personalRecordMapsEqual(mergedMap, localMap)) {
+        this.personalRecords = mergedMap;
+        this.savePersonalRecordsCache();
+      }
+
+      const changedRemote =
+        !remoteExists || !this.personalRecordMapsEqual(mergedMap, remoteMap);
+
+      if (!changedRemote) {
+        this.setPersonalRecordsDirty(false);
+        this._personalRecordsForceSync = false;
+        this.setPendingPersonalRecordsDropboxSync(false);
+        return;
+      }
+
       await this.dropboxManager.savePersonalRecords({
-        records: this.getPersonalRecordsList(),
+        records: mergedList,
       });
       this.setPersonalRecordsDirty(false);
       this._personalRecordsForceSync = false;
