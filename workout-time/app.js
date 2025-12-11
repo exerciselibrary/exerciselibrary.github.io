@@ -200,6 +200,7 @@ class VitruvianApp {
     this._dropboxSyncHoldTimer = null;
     this._dropboxSyncHoldTriggered = false;
     this._dropboxSyncBusyCount = 0;
+    this._hasLoadedDropboxPersonalRecords = false;
     this._deviceConnectInFlight = false;
     this._deviceHoldTimer = null;
     this._deviceHoldTriggered = false;
@@ -1164,7 +1165,11 @@ class VitruvianApp {
     // Handle connection state changes
     this.dropboxManager.onConnectionChange = (isConnected) => {
       this.updateDropboxUI(isConnected);
-      if (isConnected && (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync)) {
+      if (
+        isConnected &&
+        this._hasLoadedDropboxPersonalRecords &&
+        (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync)
+      ) {
         this.syncPersonalRecordsToDropbox({ reason: "connection-change", silent: true }).catch(() => {
           /* already logged inside syncPersonalRecordsToDropbox */
         });
@@ -2863,6 +2868,7 @@ class VitruvianApp {
 
     this.dropboxManager.disconnect();
     this._dropboxSyncBusyCount = 0;
+    this._hasLoadedDropboxPersonalRecords = false;
     this.setDropboxSyncBusy(false);
     this.addLogEntry("Disconnected from Dropbox", "info");
     return true;
@@ -2948,8 +2954,11 @@ class VitruvianApp {
       await this.syncPlansFromDropbox({ silent: auto });
       await this.syncPersonalRecordsFromDropbox({ silent: auto });
 
-      const backfilled = this.ensurePersonalRecordsFromHistory();
-      if (backfilled) {
+      const backfilled = this.ensurePersonalRecordsFromHistory({
+        // Avoid marking PRs dirty during auto syncs; users can trigger manual syncs
+        markDirty: !auto,
+      });
+      if (backfilled && !auto) {
         this.queuePersonalRecordsDropboxSync("history-backfill");
       }
 
@@ -3383,9 +3392,12 @@ class VitruvianApp {
     this.updatePersonalBestDisplay();
     this.updatePositionBarColors(this.currentSample);
 
-    this.syncPersonalRecordsToDropbox({ reason: "unit-change", force: true, silent: true }).catch(() => {
-      /* errors handled inside syncPersonalRecordsToDropbox */
-    });
+    // Avoid pushing an empty personal-records payload before we've pulled Dropbox data.
+    if (this._hasLoadedDropboxPersonalRecords) {
+      this.syncPersonalRecordsToDropbox({ reason: "unit-change", force: true, silent: true }).catch(() => {
+        /* errors handled inside syncPersonalRecordsToDropbox */
+      });
+    }
   }
 
   getUnitLabel(unit = this.weightUnit) {
@@ -5565,7 +5577,8 @@ class VitruvianApp {
     return true;
   }
 
-  ensurePersonalRecordsFromHistory() {
+  ensurePersonalRecordsFromHistory(options = {}) {
+    const { markDirty = true, saveCache = true } = options;
     const workouts = Array.isArray(this.workoutHistory)
       ? this.workoutHistory
       : [];
@@ -5632,6 +5645,7 @@ class VitruvianApp {
         {
           skipDropboxSync: true,
           skipCacheSave: true,
+          skipDirtyFlag: !markDirty,
         },
       );
       if (applied) {
@@ -5654,12 +5668,16 @@ class VitruvianApp {
     }
 
     if (removed) {
-      this.savePersonalRecordsCache();
-      this.setPersonalRecordsDirty(true);
+      if (saveCache) {
+        this.savePersonalRecordsCache();
+      }
+      if (markDirty) {
+        this.setPersonalRecordsDirty(true);
+      }
       return true;
     }
 
-    if (updated) {
+    if (updated && saveCache) {
       this.savePersonalRecordsCache();
     }
 
@@ -5798,6 +5816,17 @@ class VitruvianApp {
           `Loaded ${records.length} personal record${records.length === 1 ? "" : "s"} from Dropbox`,
           "success",
         );
+      }
+      this._hasLoadedDropboxPersonalRecords = true;
+      // If we had pending local changes queued while offline, push them now that
+      // we've fetched the latest Dropbox state.
+      if (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync) {
+        this.syncPersonalRecordsToDropbox({
+          reason: "post-download-catchup",
+          silent: true,
+        }).catch(() => {
+          /* errors already logged in syncPersonalRecordsToDropbox */
+        });
       }
     } catch (error) {
       if (!options.silent) {
