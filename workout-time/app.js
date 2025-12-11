@@ -4412,6 +4412,14 @@ class VitruvianApp {
       workout.plannedWeightKg = toNumber(workout.plannedWeightKg);
     }
 
+    if (Object.prototype.hasOwnProperty.call(workout, "warmupReps")) {
+      workout.warmupReps = toNumber(workout.warmupReps);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(workout, "workingReps")) {
+      workout.workingReps = toNumber(workout.workingReps);
+    }
+
     if (!Array.isArray(workout.movementData)) {
       workout.movementData = [];
     }
@@ -4594,6 +4602,10 @@ class VitruvianApp {
 
       const info = this.getWorkoutIdentityInfo(item);
       if (!info || info.key !== identity.key) {
+        continue;
+      }
+
+      if (!this.hasWorkoutEffortForPR(item)) {
         continue;
       }
 
@@ -4943,6 +4955,63 @@ class VitruvianApp {
       .sort((a, b) =>
         a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
       );
+  }
+
+  personalRecordMapsEqual(a = {}, b = {}) {
+    const keysA = Object.keys(a || {});
+    const keysB = Object.keys(b || {});
+    if (keysA.length !== keysB.length) {
+      return false;
+    }
+
+    const epsilon = 0.0001;
+    for (const key of keysA) {
+      const recordA = a?.[key];
+      const recordB = b?.[key];
+      if (!recordB) {
+        return false;
+      }
+
+      const labelA = recordA?.label || "";
+      const labelB = recordB?.label || "";
+      if (labelA !== labelB) {
+        return false;
+      }
+
+      const weightA = Number(recordA?.weightKg) || 0;
+      const weightB = Number(recordB?.weightKg) || 0;
+      if (Math.abs(weightA - weightB) > epsilon) {
+        return false;
+      }
+
+      const tsA = recordA?.timestamp ? new Date(recordA.timestamp).getTime() : 0;
+      const tsB = recordB?.timestamp ? new Date(recordB.timestamp).getTime() : 0;
+      if (tsA !== tsB) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  hasWorkoutEffortForPR(workout) {
+    if (!workout || typeof workout !== "object") {
+      return false;
+    }
+
+    const workingReps = Number.isFinite(Number(workout?.workingReps))
+      ? Number(workout.workingReps)
+      : Number(workout?.reps) || 0;
+    const warmupReps = Number(workout?.warmupReps) || 0;
+    const hasReps = workingReps + warmupReps > 0;
+    const hasMovement = Array.isArray(workout?.movementData)
+      ? workout.movementData.some(
+          (point) =>
+            (Number(point?.loadA) || 0) > 0 || (Number(point?.loadB) || 0) > 0,
+        )
+      : false;
+
+    return hasReps || hasMovement;
   }
 
   annotateWorkoutsForExport(workouts) {
@@ -5414,6 +5483,11 @@ class VitruvianApp {
       return false;
     }
 
+    if (!this.hasWorkoutEffortForPR(workout)) {
+      this.clearPersonalRecordCandidate();
+      return false;
+    }
+
     const baseIdentity = this.getWorkoutIdentityInfo(workout);
     const identity = this.isEchoWorkout(workout)
       ? this.getEchoPhaseIdentity(baseIdentity, "concentric", workout) || baseIdentity
@@ -5606,6 +5680,10 @@ class VitruvianApp {
     };
 
     for (const workout of workouts) {
+      if (!this.hasWorkoutEffortForPR(workout)) {
+        continue;
+      }
+
       const identity = this.getWorkoutIdentityInfo(workout);
       if (!identity) {
         continue;
@@ -5733,6 +5811,10 @@ class VitruvianApp {
     };
 
     for (const workout of workouts) {
+      if (!this.hasWorkoutEffortForPR(workout)) {
+        continue;
+      }
+
       const baseIdentity = this.getWorkoutIdentityInfo(workout);
       if (!baseIdentity) {
         continue;
@@ -5772,61 +5854,78 @@ class VitruvianApp {
 
     try {
       const payload = await this.dropboxManager.loadPersonalRecords();
+      const exists = payload?.exists !== false;
       const records = Array.isArray(payload?.records) ? payload.records : [];
-      let merged = false;
+      const dropboxRecords = {};
+      const epsilon = 0.0001;
 
       for (const entry of records) {
         const normalized = this.normalizePersonalRecord(entry);
-        if (!normalized) {
-          continue;
-        }
-
-        if (!this.personalRecords) {
-          this.personalRecords = {};
-        }
-
-        const existing = this.personalRecords[normalized.key];
-        if (!existing) {
-          this.personalRecords[normalized.key] = normalized;
-          merged = true;
-          continue;
-        }
-
-        const epsilon = 0.0001;
-        const delta = normalized.weightKg - existing.weightKg;
-        const normalizedTime = normalized.timestamp
-          ? new Date(normalized.timestamp).getTime()
-          : 0;
-        const existingTime = existing.timestamp
-          ? new Date(existing.timestamp).getTime()
-          : 0;
-
-        if (delta > epsilon || (Math.abs(delta) <= epsilon && normalizedTime > existingTime)) {
-          this.personalRecords[normalized.key] = normalized;
-          merged = true;
+        if (normalized) {
+          dropboxRecords[normalized.key] = normalized;
         }
       }
 
-      if (merged) {
+      const shouldMergeLocal =
+        exists && (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync);
+      let mergedLocalChanges = false;
+      let nextRecords = exists ? { ...dropboxRecords } : { ...(this.personalRecords || {}) };
+
+      if (shouldMergeLocal && this.personalRecords) {
+        for (const entry of Object.values(this.personalRecords)) {
+          const normalized = this.normalizePersonalRecord(entry);
+          if (!normalized) {
+            continue;
+          }
+
+          const current = nextRecords[normalized.key];
+          if (!current) {
+            nextRecords[normalized.key] = normalized;
+            mergedLocalChanges = true;
+            continue;
+          }
+
+          const delta = normalized.weightKg - current.weightKg;
+          const normalizedTime = normalized.timestamp
+            ? new Date(normalized.timestamp).getTime()
+            : 0;
+          const currentTime = current.timestamp
+            ? new Date(current.timestamp).getTime()
+            : 0;
+
+          if (delta > epsilon || (Math.abs(delta) <= epsilon && normalizedTime > currentTime)) {
+            nextRecords[normalized.key] = normalized;
+            mergedLocalChanges = true;
+          }
+        }
+      }
+
+      const changed = !this.personalRecordMapsEqual(nextRecords, this.personalRecords);
+      if (changed) {
+        this.personalRecords = nextRecords;
         this.savePersonalRecordsCache();
       }
 
-      if (!options.silent && records.length > 0) {
+      this._hasLoadedDropboxPersonalRecords = true;
+
+      if (!exists) {
+        return;
+      }
+
+      if (!mergedLocalChanges) {
+        this.setPersonalRecordsDirty(false);
+        this.setPendingPersonalRecordsDropboxSync(false);
+      } else {
+        this.setPersonalRecordsDirty(true);
+        this.queuePersonalRecordsDropboxSync(options.reason || "dropbox-personal-records-merge");
+      }
+
+      const loadedCount = Object.keys(dropboxRecords).length;
+      if (!options.silent && loadedCount > 0) {
         this.addLogEntry(
-          `Loaded ${records.length} personal record${records.length === 1 ? "" : "s"} from Dropbox`,
+          `Loaded ${loadedCount} personal record${loadedCount === 1 ? "" : "s"} from Dropbox`,
           "success",
         );
-      }
-      this._hasLoadedDropboxPersonalRecords = true;
-      // If we had pending local changes queued while offline, push them now that
-      // we've fetched the latest Dropbox state.
-      if (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync) {
-        this.syncPersonalRecordsToDropbox({
-          reason: "post-download-catchup",
-          silent: true,
-        }).catch(() => {
-          /* errors already logged in syncPersonalRecordsToDropbox */
-        });
       }
     } catch (error) {
       if (!options.silent) {
@@ -6698,12 +6797,16 @@ class VitruvianApp {
 
         // Include detailed movement data (positions and loads over time)
         movementData: movementData,
+        warmupReps: this.warmupReps,
+        workingReps: this.workingReps,
         // Average loads between warmup end and workout end
         // averageLoad: total (left+right), averageLoadLeft: left cable, averageLoadRight: right cable
         averageLoad: averageLoads ? averageLoads.averageTotal : null,
         averageLoadLeft: averageLoads ? averageLoads.averageLeft : null,
         averageLoadRight: averageLoads ? averageLoads.averageRight : null,
       };
+
+      const shouldRecordPR = this.hasWorkoutEffortForPR(workout);
 
       const isSkipped = reason === "skipped";
       let storedWorkout = null;
@@ -6722,7 +6825,7 @@ class VitruvianApp {
       }
 
       let prInfo = null;
-      if (storedWorkout) {
+      if (storedWorkout && shouldRecordPR) {
         prInfo = this.displayTotalLoadPR(storedWorkout);
         try {
           if (this.isAudioTriggersEnabled() && prInfo?.status === "new") {
@@ -6733,7 +6836,7 @@ class VitruvianApp {
         this.hidePRBanner();
       }
 
-      if (!isSkipped) {
+      if (!isSkipped && shouldRecordPR) {
         this.finalizePersonalRecordForWorkout(summaryWorkout);
       } else {
         this.clearPersonalRecordCandidate();
@@ -9271,7 +9374,13 @@ class VitruvianApp {
     }
   }
 
-  startPlan() {
+  async startPlan() {
+    if (this.dropboxManager?.isConnected) {
+      await this.syncPersonalRecordsFromDropbox({
+        silent: true,
+        reason: "plan-start",
+      });
+    }
     return window.PlanRunnerPrototype.startPlan.call(this);
   }
 

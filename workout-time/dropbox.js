@@ -515,12 +515,13 @@ class DropboxManager {
         version: data?.version ?? 1,
         updatedAt: data?.updatedAt ?? null,
         records,
+        exists: true,
       };
     } catch (error) {
       const summary = error?.error?.error_summary || "";
       if (summary.includes("path/not_found/")) {
         this.log("Personal records file not found in Dropbox; starting fresh", "info");
-        return { version: 1, updatedAt: null, records: [] };
+        return { version: 1, updatedAt: null, records: [], exists: false };
       }
 
       this.log(`Failed to load personal records: ${error.message}`, "error");
