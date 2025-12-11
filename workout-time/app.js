@@ -5818,6 +5818,16 @@ class VitruvianApp {
         );
       }
       this._hasLoadedDropboxPersonalRecords = true;
+      // If we had pending local changes queued while offline, push them now that
+      // we've fetched the latest Dropbox state.
+      if (this._personalRecordsDirty || this._pendingPersonalRecordsDropboxSync) {
+        this.syncPersonalRecordsToDropbox({
+          reason: "post-download-catchup",
+          silent: true,
+        }).catch(() => {
+          /* errors already logged in syncPersonalRecordsToDropbox */
+        });
+      }
     } catch (error) {
       if (!options.silent) {
         this.addLogEntry(
