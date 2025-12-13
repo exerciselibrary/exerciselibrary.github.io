@@ -1154,8 +1154,10 @@
         btn.disabled = prevDisabled;
         btn.setAttribute("aria-label", "Previous set");
       });
-      const nextDisabled =
-        !active || this.planTimelineIndex >= Math.max(0, this.planTimeline.length - 1);
+      const timelineLength = Array.isArray(this.planTimeline) ? this.planTimeline.length : 0;
+      const atLastEntry = this.planTimelineIndex >= Math.max(0, timelineLength - 1);
+      const resting = !!this._restState;
+      const nextDisabled = !active || (atLastEntry && !resting);
       nextButtons.forEach((btn) => {
         btn.disabled = nextDisabled;
         btn.setAttribute("aria-label", "Next set");
