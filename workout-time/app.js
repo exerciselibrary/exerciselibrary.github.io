@@ -2117,8 +2117,11 @@ class VitruvianApp {
           detailsParts.push(`Cables: ${cables}`);
         }
 
-        const totalLoadKg =
-          hasWeight && Number.isFinite(cables) && cables > 0 ? weightKg * cables : null;
+        const totalLoadKg = Number.isFinite(entry.totalLoadKg) && entry.totalLoadKg > 0
+          ? entry.totalLoadKg
+          : hasWeight && Number.isFinite(cables) && cables > 0
+            ? weightKg * cables
+            : null;
         if (totalLoadKg !== null) {
           detailsParts.push(
             `Total load: ${this.formatWeightWithUnit(totalLoadKg, undefined, this._planSummaryDisplayUnit)}`,
@@ -2190,7 +2193,7 @@ class VitruvianApp {
         const loadEl = document.createElement("div");
         loadEl.className = "plan-summary-item__load";
         const volumeKg = Number(entry.volumeKg);
-        if (!entry.isUnlimited && Number.isFinite(volumeKg) && volumeKg > 0) {
+        if (Number.isFinite(volumeKg) && volumeKg > 0) {
           loadEl.textContent = `Total volume lifted: ${this.formatWeightWithUnit(
             volumeKg,
             undefined,
@@ -2270,12 +2273,17 @@ class VitruvianApp {
     const isEcho = itemType === "echo";
     const totalSets = Number(entryMeta?.totalSets || planItem?.sets) || null;
     const setNumber = entryMeta?.set ?? workout.setNumber ?? null;
-    const cablesValue = Number(entryMeta?.cables || planItem?.cables);
-    const cables = Number.isFinite(cablesValue) && cablesValue > 0 ? cablesValue : 2;
+    const cables = this.getActiveCableCountFromWorkout(workout, planItem);
 
     const weightPerCableKg = Number.isFinite(workout.weightKg) && workout.weightKg > 0
       ? workout.weightKg
       : Number(entryMeta?.perCableKg || planItem?.perCableKg) || 0;
+
+    const perCablePeakKg = this.getPerCablePeakForSummary(workout, weightPerCableKg);
+    const totalLoadPerRepKg =
+      Number.isFinite(perCablePeakKg) && perCablePeakKg > 0 && Number.isFinite(cables) && cables > 0
+        ? perCablePeakKg * cables
+        : null;
 
     const plannedReps = Number(planItem?.reps);
     const completedReps = Number.isFinite(workout.reps) ? workout.reps : plannedReps;
@@ -2285,8 +2293,11 @@ class VitruvianApp {
       (!Number.isFinite(completedReps) && (!Number.isFinite(plannedReps) || plannedReps <= 0)) ||
       (Number.isFinite(plannedReps) && plannedReps <= 0);
 
-    const repsValue = unlimited ? 0 : Math.max(0, completedReps || 0);
-    const volumeKg = unlimited ? 0 : weightPerCableKg * cables * repsValue;
+    const repsValue = Math.max(0, completedReps || 0);
+    const volumeKg =
+      Number.isFinite(totalLoadPerRepKg) && totalLoadPerRepKg > 0
+        ? totalLoadPerRepKg * repsValue
+        : 0;
 
     const prInfo = meta.prInfo || null;
     const prDetails =
@@ -2311,6 +2322,7 @@ class VitruvianApp {
       isUnlimited: unlimited,
       weightKg: weightPerCableKg,
       cables,
+      totalLoadKg: totalLoadPerRepKg,
       volumeKg,
       pr: prInfo?.status === "new",
       prDetails,
@@ -8910,6 +8922,66 @@ class VitruvianApp {
       }
     }
     return 2;
+  }
+
+  getActiveCableCountFromMovementData(movementData = []) {
+    if (!Array.isArray(movementData) || movementData.length === 0) {
+      return 0;
+    }
+
+    const threshold = 0.5; // ignore tiny noise
+    let activeA = false;
+    let activeB = false;
+
+    for (const point of movementData) {
+      if (!point) continue;
+      const loadA = Number(point.loadA) || 0;
+      const loadB = Number(point.loadB) || 0;
+      if (!activeA && loadA > threshold) {
+        activeA = true;
+      }
+      if (!activeB && loadB > threshold) {
+        activeB = true;
+      }
+      if (activeA && activeB) {
+        break;
+      }
+    }
+
+    return (activeA ? 1 : 0) + (activeB ? 1 : 0);
+  }
+
+  getActiveCableCountFromWorkout(workout, planItem) {
+    const movementData = Array.isArray(workout?.movementData)
+      ? workout.movementData
+      : [];
+    const activeFromData = this.getActiveCableCountFromMovementData(movementData);
+    if (activeFromData > 0) {
+      return activeFromData;
+    }
+
+    const stored = this.extractCableCountFromWorkout(workout);
+    if (Number.isFinite(stored) && stored > 0) {
+      return stored;
+    }
+
+    const planned = Number(planItem?.cables);
+    if (Number.isFinite(planned) && planned > 0) {
+      return Math.min(2, Math.max(1, planned));
+    }
+
+    return 2;
+  }
+
+  getPerCablePeakForSummary(workout, fallbackKg = null) {
+    const peak = this.calculateTotalLoadPeakKg(workout);
+    if (Number.isFinite(peak) && peak > 0) {
+      return peak;
+    }
+    if (Number.isFinite(fallbackKg) && fallbackKg > 0) {
+      return fallbackKg;
+    }
+    return null;
   }
 
   deriveTotalLoadKg(workout) {
