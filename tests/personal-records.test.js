@@ -55,6 +55,73 @@ test("personal records persist locally when Dropbox is disconnected", async () =
   }
 });
 
+test("personal records ignore idle baseline load until a rep is logged", async () => {
+  const env = setupVitruvianTestEnvironment();
+  try {
+    const moduleUrl = new URL(APP_MODULE_URL);
+    moduleUrl.searchParams.set(
+      "test",
+      `personal-records-idle-load-${Date.now()}`,
+    );
+    await import(moduleUrl.href);
+
+    const app = new env.window.VitruvianApp();
+    const identityKey = "exercise:42";
+    app.currentWorkout = {
+      identityKey,
+      identityLabel: "Test Move",
+      priorBestTotalLoadKg: 0,
+      currentPersonalBestKg: 0,
+      livePeakTotalLoadKg: 0,
+      celebratedPersonalBestKg: 0,
+      hasNewPersonalBest: false,
+    };
+
+    // Baseline machine tension (≈8.8 lb) should not register as a PR before reps start.
+    app.updateLiveStats({
+      timestamp: new Date(),
+      loadA: 4,
+      loadB: 0,
+      posA: 0,
+      posB: 0,
+    });
+
+    assert.equal(
+      app.currentWorkout.currentPersonalBestKg,
+      0,
+      "idle load should not update personal best before reps",
+    );
+    assert.equal(
+      app._pendingPersonalRecordCandidate,
+      null,
+      "no PR candidate should be tracked before reps",
+    );
+
+    // Once a rep has begun (startTime set), real peaks can update PR tracking.
+    app.currentWorkout.startTime = new Date();
+    app.updateLiveStats({
+      timestamp: new Date(),
+      loadA: 12,
+      loadB: 0,
+      posA: 40,
+      posB: 40,
+    });
+
+    assert.equal(
+      app.currentWorkout.currentPersonalBestKg,
+      12,
+      "personal best should update after reps begin",
+    );
+    assert.equal(
+      app._pendingPersonalRecordCandidate?.identityKey,
+      identityKey,
+      "PR candidate should map to the active exercise once reps begin",
+    );
+  } finally {
+    env.restore();
+  }
+});
+
 test("personal records baseline prefers the best known entry, even if the cache is stale", async () => {
   const env = setupVitruvianTestEnvironment();
   try {
