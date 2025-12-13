@@ -3831,6 +3831,9 @@ class VitruvianApp {
       this.currentWorkout &&
       typeof this.currentWorkout === "object"
     ) {
+      const hasEffort =
+        (this.warmupReps || 0) + (this.workingReps || 0) > 0 ||
+        this.currentWorkout.startTime instanceof Date;
       const priorBest =
         Number(this.currentWorkout.priorBestTotalLoadKg) || 0;
       const previousPeak =
@@ -3841,12 +3844,12 @@ class VitruvianApp {
       const epsilon = 0.0001;
 
       this.currentWorkout.livePeakTotalLoadKg = livePeak;
-      this.currentWorkout.currentPersonalBestKg = Math.max(
-        priorBest,
-        livePeak,
-      );
+      this.currentWorkout.currentPersonalBestKg = hasEffort
+        ? Math.max(priorBest, livePeak)
+        : priorBest;
 
       if (
+        hasEffort &&
         this.currentWorkout.identityKey &&
         livePeak > celebrated + epsilon
       ) {
