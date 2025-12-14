@@ -73,3 +73,4 @@ Notes
 - The builder stores one weight value per set to reflect the single cable limit (220 lbs).
 - All data comes from `exercise_dump.json` (`muscleGroups`, `muscles`, `equipment`, `videos[{ thumbnail, video }]`).
 - Workout selections persist automatically in `localStorage`; use the Clear button to reset locally.
+- Workout-time personal records are keyed by identity: standard runs use the exercise’s numeric id, Echo runs track concentric and eccentric separately with `|echo-` suffixes, and if no id/set name is present the mode string is used. Because Echo and non-Echo keys differ, an Echo PR will not block a new PR in Old School (and vice versa).
