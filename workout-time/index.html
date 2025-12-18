@@ -3139,6 +3139,61 @@
                         </div>
                     </div>
 
+                    <!-- Rep Counting -->
+                    <div class="section">
+                        <h2>Rep Counting</h2>
+                        <div
+                            class="form-group"
+                            style="display: flex; flex-direction: column; gap: 8px"
+                        >
+                            <label
+                                style="
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                    margin-bottom: 4px;
+                                "
+                            >
+                                <input
+                                    type="radio"
+                                    name="repCountingPoint"
+                                    id="repCountingBottom"
+                                    value="bottom"
+                                    onchange="app.setRepCountingPreference(false)"
+                                    style="width: auto"
+                                />
+                                <span>Count reps at bottom</span>
+                            </label>
+                            <label
+                                style="
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                    margin-bottom: 4px;
+                                "
+                            >
+                                <input
+                                    type="radio"
+                                    name="repCountingPoint"
+                                    id="repCountingTop"
+                                    value="top"
+                                    onchange="app.setRepCountingPreference(true)"
+                                    style="width: auto"
+                                />
+                                <span>Count reps at top</span>
+                            </label>
+                            <div
+                                style="
+                                    font-size: 0.8em;
+                                    color: var(--text-muted);
+                                    line-height: 1.4;
+                                "
+                            >
+                                Stop at Top still finishes the final rep at the top.
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Program Mode Section -->
                     <div class="section hidden" id="programSection">
                         <h2>Program Mode</h2>
