@@ -3142,54 +3142,29 @@
                     <!-- Rep Counting -->
                     <div class="section">
                         <h2>Rep Counting</h2>
-                        <div
-                            class="form-group"
-                            style="display: flex; flex-direction: column; gap: 8px"
-                        >
-                            <label
-                                style="
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 8px;
-                                    margin-bottom: 4px;
-                                "
+                        <div class="form-group">
+                            <button
+                                type="button"
+                                id="repCountingToggle"
+                                class="theme-toggle-btn"
+                                aria-pressed="false"
+                                onclick="app.setRepCountingPreference(!app.countRepsAtTop)"
                             >
-                                <input
-                                    type="radio"
-                                    name="repCountingPoint"
-                                    id="repCountingBottom"
-                                    value="bottom"
-                                    onchange="app.setRepCountingPreference(false)"
-                                    style="width: auto"
-                                />
-                                <span>Count reps at bottom</span>
-                            </label>
-                            <label
-                                style="
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 8px;
-                                    margin-bottom: 4px;
-                                "
-                            >
-                                <input
-                                    type="radio"
-                                    name="repCountingPoint"
-                                    id="repCountingTop"
-                                    value="top"
-                                    onchange="app.setRepCountingPreference(true)"
-                                    style="width: auto"
-                                />
-                                <span>Count reps at top</span>
-                            </label>
+                                <span class="theme-toggle__icon">↕️</span>
+                                <span class="theme-toggle__label">
+                                    <span id="repCountingLabelTop" style="display: none;">Count at Top</span>
+                                    <span id="repCountingLabelBottom">Count at Bottom</span>
+                                </span>
+                            </button>
                             <div
                                 style="
                                     font-size: 0.8em;
                                     color: var(--text-muted);
                                     line-height: 1.4;
+                                    margin-top: 8px;
                                 "
                             >
-                                Stop at Top still finishes the final rep at the top.
+                                Toggle to count reps at the top instead of the bottom. Stop at Top still finishes the final rep at the top.
                             </div>
                         </div>
                     </div>

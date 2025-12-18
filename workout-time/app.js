@@ -4146,14 +4146,19 @@ class VitruvianApp {
   }
 
   reflectRepCountingPreference() {
-    const bottomRadio = document.getElementById("repCountingBottom");
-    const topRadio = document.getElementById("repCountingTop");
-
-    if (bottomRadio) {
-      bottomRadio.checked = !this.countRepsAtTop;
+    const toggle = document.getElementById("repCountingToggle");
+    const labelTop = document.getElementById("repCountingLabelTop");
+    const labelBottom = document.getElementById("repCountingLabelBottom");
+    if (toggle) {
+      toggle.setAttribute(
+        "aria-pressed",
+        this.countRepsAtTop ? "true" : "false",
+      );
+      toggle.classList.toggle("is-active", this.countRepsAtTop);
     }
-    if (topRadio) {
-      topRadio.checked = this.countRepsAtTop;
+    if (labelTop && labelBottom) {
+      labelTop.style.display = this.countRepsAtTop ? "inline" : "none";
+      labelBottom.style.display = this.countRepsAtTop ? "none" : "inline";
     }
   }
 
