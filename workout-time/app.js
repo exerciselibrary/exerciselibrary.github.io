@@ -126,6 +126,7 @@ class VitruvianApp {
     this._countdownBeepThrottle = 0;
     this._lastRestChime = 0;
     this.stopAtTop = false; // Stop at top of final rep instead of bottom
+    this.countRepsAtTop = this.loadRepCountingPreference(); // Count reps at top instead of bottom
     this.warmupReps = 0;
     this.workingReps = 0;
     this.warmupTarget = 3; // Default warmup target
@@ -284,6 +285,7 @@ class VitruvianApp {
       };
       this.updatePlanSetIndicator();
       this.updateCurrentSetLabel();
+      this.reflectRepCountingPreference();
     }, 0);
 
     this.setupThemeToggle();
@@ -4120,6 +4122,58 @@ class VitruvianApp {
     this.stopAtTop = checkbox.checked;
     this.addLogEntry(
       `Stop at top of final rep: ${this.stopAtTop ? "enabled" : "disabled"}`,
+      "info",
+    );
+  }
+
+  loadRepCountingPreference() {
+    try {
+      return localStorage.getItem("vitruvian.repCountingPoint") === "top";
+    } catch {
+      return false;
+    }
+  }
+
+  saveRepCountingPreference(atTop) {
+    try {
+      localStorage.setItem(
+        "vitruvian.repCountingPoint",
+        atTop ? "top" : "bottom",
+      );
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  reflectRepCountingPreference() {
+    const toggle = document.getElementById("repCountingToggle");
+    const labelTop = document.getElementById("repCountingLabelTop");
+    const labelBottom = document.getElementById("repCountingLabelBottom");
+    if (toggle) {
+      toggle.setAttribute(
+        "aria-pressed",
+        this.countRepsAtTop ? "true" : "false",
+      );
+      toggle.classList.toggle("is-active", this.countRepsAtTop);
+    }
+    if (labelTop && labelBottom) {
+      labelTop.style.display = this.countRepsAtTop ? "inline" : "none";
+      labelBottom.style.display = this.countRepsAtTop ? "none" : "inline";
+    }
+  }
+
+  setRepCountingPreference(atTop) {
+    const normalized = !!atTop;
+    if (this.countRepsAtTop === normalized) {
+      this.reflectRepCountingPreference();
+      return;
+    }
+
+    this.countRepsAtTop = normalized;
+    this.saveRepCountingPreference(normalized);
+    this.reflectRepCountingPreference();
+    this.addLogEntry(
+      `Counting reps at the ${normalized ? "top" : "bottom"} of the rep`,
       "info",
     );
   }
@@ -7996,6 +8050,61 @@ class VitruvianApp {
     }
   }
 
+  countRepAtPoint({ source }) {
+    const totalReps = this.warmupReps + this.workingReps + 1;
+    const isWarmupRep = totalReps <= this.warmupTarget;
+    const workingRepNumber = isWarmupRep ? null : this.workingReps + 1;
+
+    this.playRepAudioCue({
+      isWarmup: isWarmupRep,
+      workingRepNumber,
+    });
+
+    if (isWarmupRep) {
+      this.warmupReps++;
+      this.addLogEntry(
+        `Warmup rep ${this.warmupReps}/${this.warmupTarget} ${source === "top" && this.countRepsAtTop ? "counted at top" : "complete"}`,
+        "success",
+      );
+
+      if (this.warmupReps === this.warmupTarget && this.currentWorkout && !this.currentWorkout.warmupEndTime) {
+        this.currentWorkout.warmupEndTime = new Date();
+        try {
+          if (this.isAudioTriggersEnabled()) {
+            this.playAudio("startLifting").catch(() => {});
+          }
+        } catch (e) {}
+      }
+    } else {
+      this.workingReps++;
+
+      const repLabel =
+        this.targetReps > 0
+          ? `Working rep ${this.workingReps}/${this.targetReps}`
+          : `Working rep ${this.workingReps}`;
+      const suffix =
+        source === "top" && this.countRepsAtTop ? " counted at top" : " complete";
+      this.addLogEntry(`${repLabel}${suffix}`, "success");
+
+      if (
+        !this.stopAtTop &&
+        !this.isJustLiftMode &&
+        this.targetReps > 0 &&
+        this.workingReps >= this.targetReps
+      ) {
+        this.addLogEntry(
+          this.countRepsAtTop
+            ? "Target reps reached at top! Auto-completing workout..."
+            : "Target reps reached! Auto-completing workout...",
+          "success",
+        );
+        this.completeWorkout({ reason: "target-reps" });
+      }
+    }
+
+    this.updateRepCounters();
+  }
+
   handleRepNotification(data) {
     // Parse rep notification
     if (data.length < 6) {
@@ -8092,6 +8201,10 @@ class VitruvianApp {
           this.lastRepCounter = completeCounter;
           return;
         }
+
+        if (this.countRepsAtTop && !this._stopAtTopPending) {
+          this.countRepAtPoint({ source: "top" });
+        }
       }
     }
 
@@ -8121,16 +8234,6 @@ class VitruvianApp {
       }
       this.ensureWorkoutStartTime();
 
-      const totalReps = this.warmupReps + this.workingReps + 1;
-
-      // Play audio cue for this completed rep (runs on completion so we don't miss reps when top notifications drop)
-      const isWarmupRep = totalReps <= this.warmupTarget;
-      const workingRepNumber = isWarmupRep ? null : this.workingReps + 1;
-      this.playRepAudioCue({
-        isWarmup: isWarmupRep,
-        workingRepNumber,
-      });
-
       // Rep completed! Record bottom position
       this.addLogEntry(
         `BOTTOM detected! Counter: ${this.lastRepCounter} -> ${completeCounter}, pos=[${this.currentSample.posA}, ${this.currentSample.posB}]`,
@@ -8141,57 +8244,12 @@ class VitruvianApp {
         this.currentSample.posB,
       );
 
-      if (totalReps <= this.warmupTarget) {
-        // Still in warmup
-        this.warmupReps++;
-        this.addLogEntry(
-          `Warmup rep ${this.warmupReps}/${this.warmupTarget} complete`,
-          "success",
-        );
-
-        // Record when warmup ends (last warmup rep complete)
-        if (this.warmupReps === this.warmupTarget && this.currentWorkout && !this.currentWorkout.warmupEndTime) {
-          this.currentWorkout.warmupEndTime = new Date();
-          try {
-            if (this.isAudioTriggersEnabled()) {
-              this.playAudio("startLifting").catch(() => {});
-            }
-          } catch (e) {}
-        }
-      } else {
-        // Working reps
-        this.workingReps++;
-
-        if (this.targetReps > 0) {
-          this.addLogEntry(
-            `Working rep ${this.workingReps}/${this.targetReps} complete`,
-            "success",
-          );
-        } else {
-          this.addLogEntry(
-            `Working rep ${this.workingReps} complete`,
-            "success",
-          );
-        }
-
-        // Auto-complete workout when target reps are reached (but not for Just Lift)
-        // Only applies when stopAtTop is disabled
-        if (
-          !this.stopAtTop &&
-          !this.isJustLiftMode &&
-          this.targetReps > 0 &&
-          this.workingReps >= this.targetReps
-        ) {
-          // Complete immediately at bottom (default behavior)
-          this.addLogEntry(
-            "Target reps reached! Auto-completing workout...",
-            "success",
-          );
-          this.completeWorkout({ reason: "target-reps" });
-        }
+      if (this.countRepsAtTop) {
+        this.lastRepCounter = completeCounter;
+        return;
       }
 
-      this.updateRepCounters();
+      this.countRepAtPoint({ source: "bottom" });
     }
 
     this.lastRepCounter = completeCounter;
