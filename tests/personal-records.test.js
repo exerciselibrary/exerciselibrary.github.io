@@ -122,13 +122,13 @@ test("personal records ignore idle baseline load until a rep is logged", async (
   }
 });
 
-test("personal records baseline prefers the best known entry, even if the cache is stale", async () => {
+test("personal records rely on stored entries instead of workout history", async () => {
   const env = setupVitruvianTestEnvironment();
   try {
     const moduleUrl = new URL(APP_MODULE_URL);
     moduleUrl.searchParams.set(
       "test",
-      `personal-records-baseline-${Date.now()}`,
+      `personal-records-source-${Date.now()}`,
     );
     await import(moduleUrl.href);
 
@@ -136,7 +136,7 @@ test("personal records baseline prefers the best known entry, even if the cache 
     const identityKey = "exercise:1";
     const identity = { key: identityKey, label: "Incline Press" };
 
-    // Seed a stale personal record that is lighter than the best workout in history.
+    // Seed a personal record that should remain the source of truth.
     app.personalRecords = {
       [identityKey]: {
         key: identityKey,
@@ -172,15 +172,15 @@ test("personal records baseline prefers the best known entry, even if the cache 
     const historicalBest = buildWorkout(25, "2024-02-01T12:00:00.000Z");
     app.workoutHistory.unshift(historicalBest);
 
-    const currentWorkout = buildWorkout(23, "2024-03-01T12:00:00.000Z");
+    const currentWorkout = buildWorkout(19, "2024-03-01T12:00:00.000Z");
     const stored = app.addToWorkoutHistory(currentWorkout);
 
     const prInfo = app.displayTotalLoadPR(stored);
     assert.equal(prInfo.status, "existing");
     assert.equal(
       prInfo.previousBestKg,
-      25,
-      "previous best should reflect history when it beats the cached record",
+      20,
+      "previous best should come from the stored personal record",
     );
 
     const updated = app.applyPersonalRecordCandidate(
@@ -192,10 +192,10 @@ test("personal records baseline prefers the best known entry, even if the cache 
 
     assert.equal(
       updated,
-      true,
-      "stale cache should be repaired to the best known personal record",
+      false,
+      "lower-weight entries should not overwrite stored personal records",
     );
-    assert.equal(app.getPersonalRecord(identityKey).weightKg, 25);
+    assert.equal(app.getPersonalRecord(identityKey).weightKg, 20);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
   } finally {

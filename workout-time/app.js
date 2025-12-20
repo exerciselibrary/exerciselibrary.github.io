@@ -2566,6 +2566,11 @@ class VitruvianApp {
       // Show last backup info if available
       this.updateLastBackupDisplay();
 
+      this.syncPersonalRecordsFromDropbox({
+        silent: true,
+        reason: "connection-change",
+      }).catch(() => {});
+
       this.scheduleAutoDropboxSync("connection-change");
       this.syncPlansFromDropbox({ silent: true }).catch(() => {});
     } else {
@@ -2968,14 +2973,6 @@ class VitruvianApp {
       await this.syncPlansFromDropbox({ silent: auto });
       await this.syncPersonalRecordsFromDropbox({ silent: auto });
 
-      const backfilled = this.ensurePersonalRecordsFromHistory({
-        // Avoid marking PRs dirty during auto syncs; users can trigger manual syncs
-        markDirty: !auto,
-      });
-      if (backfilled && !auto) {
-        this.queuePersonalRecordsDropboxSync("history-backfill");
-      }
-
       // Update last backup display to show sync time
       if (normalizedCloud.length > 0) {
         localStorage.setItem("vitruvian.dropbox.lastBackup", new Date().toISOString());
@@ -3172,7 +3169,7 @@ class VitruvianApp {
     }
 
     const confirmed = window.confirm(
-      "This will rebuild personal-records.json from your full workout history and upload it to Dropbox. This may take a moment. Continue?",
+      "This will rebuild personal-records.json from your full workout history using the latest format and upload it to Dropbox. This may take a moment. Continue?",
     );
     if (!confirmed) {
       this.addLogEntry("Personal records sync cancelled", "info");
@@ -3187,7 +3184,7 @@ class VitruvianApp {
 
     try {
       updateStatus("Downloading latest personal-records.json...");
-      await this.syncPersonalRecordsFromDropbox({ silent: true });
+      await this.syncPersonalRecordsFromDropbox({ silent: true, reason: "manual-sync" });
 
       updateStatus("Downloading workouts from Dropbox...");
       const cloudWorkouts = await this.dropboxManager.loadWorkouts({
@@ -3201,7 +3198,11 @@ class VitruvianApp {
       if (normalizedCloud.length > 0) {
         this.buildPersonalRecordsFromWorkouts(normalizedCloud);
       } else {
-        this.ensurePersonalRecordsFromHistory();
+        if (!this.personalRecords) {
+          this.personalRecords = {};
+        }
+        this.setPersonalRecordsDirty(true);
+        this.savePersonalRecordsCache();
       }
 
       updateStatus("Uploading to Dropbox...");
@@ -4622,7 +4623,6 @@ class VitruvianApp {
     const excludeWorkout = options.excludeWorkout || null;
     const epsilon = 0.0001;
     const record = this.getPersonalRecord(identity.key);
-    let recordWeight = 0;
 
     if (record && Number.isFinite(record.weightKg)) {
       let isSameWorkout = false;
@@ -4641,59 +4641,11 @@ class VitruvianApp {
       }
 
       if (!isSameWorkout) {
-        recordWeight = record.weightKg;
+        return record.weightKg;
       }
     }
 
-    const historicalBest = this.getHistoricalBestEntry(identity, { excludeWorkout });
-
-    return Math.max(recordWeight, historicalBest.weightKg || 0);
-  }
-
-  getHistoricalBestLoadKg(identity, options = {}) {
-    return this.getHistoricalBestEntry(identity, options).weightKg;
-  }
-
-  getHistoricalBestEntry(identity, options = {}) {
-    if (!identity || typeof identity.key !== "string") {
-      return { weightKg: 0, timestamp: null };
-    }
-
-    const excludeWorkout = options.excludeWorkout || null;
-    const epsilon = 0.0001;
-    let best = 0;
-    let bestTimestamp = null;
-
-    for (const item of this.workoutHistory) {
-      if (excludeWorkout && item === excludeWorkout) {
-        continue;
-      }
-
-      const info = this.getWorkoutIdentityInfo(item);
-      if (!info || info.key !== identity.key) {
-        continue;
-      }
-
-      if (!this.hasWorkoutEffortForPR(item)) {
-        continue;
-      }
-
-      const value = this.calculateTotalLoadPeakKg(item);
-      if (!Number.isFinite(value) || value <= 0) {
-        continue;
-      }
-
-      const timestamp = this.getWorkoutTimestamp(item);
-      const timeValue = timestamp instanceof Date ? timestamp.getTime() : 0;
-      const bestTime = bestTimestamp instanceof Date ? bestTimestamp.getTime() : 0;
-
-      if (value > best + epsilon || (Math.abs(value - best) <= epsilon && timeValue > bestTime)) {
-        best = value;
-        bestTimestamp = timestamp || bestTimestamp;
-      }
-    }
-
-    return { weightKg: best, timestamp: bestTimestamp };
+    return 0;
   }
 
   initializeCurrentWorkoutPersonalBest() {
@@ -5698,10 +5650,8 @@ class VitruvianApp {
         Math.abs(workoutPeak - current.weightKg) <= epsilon;
       return isSameWorkout ? null : current;
     })();
-    const historicalBest = this.getHistoricalBestEntry(identity, { excludeWorkout });
     const recordWeight = record?.weightKg ?? 0;
-    const baselineWeight = Math.max(recordWeight, historicalBest.weightKg || 0);
-    const weightDelta = weightKg - baselineWeight;
+    const weightDelta = weightKg - recordWeight;
     const previousTime = record?.timestamp ? new Date(record.timestamp).getTime() : null;
     const candidateTime = isoTimestamp ? new Date(isoTimestamp).getTime() : Date.now();
 
@@ -5715,18 +5665,6 @@ class VitruvianApp {
       if (!record || (previousTime !== null && candidateTime > previousTime)) {
         shouldUpdate = true;
       }
-    } else if (historicalBest.weightKg > recordWeight + epsilon) {
-      // Repair stale personal-record cache using the best known historical entry.
-      targetWeight = historicalBest.weightKg;
-      if (
-        historicalBest.timestamp instanceof Date &&
-        !Number.isNaN(historicalBest.timestamp.getTime())
-      ) {
-        targetTimestamp = historicalBest.timestamp.toISOString();
-      } else if (record?.timestamp) {
-        targetTimestamp = record.timestamp;
-      }
-      shouldUpdate = true;
     }
 
     if (!shouldUpdate) {
@@ -5757,117 +5695,6 @@ class VitruvianApp {
     }
 
     return true;
-  }
-
-  ensurePersonalRecordsFromHistory(options = {}) {
-    const { markDirty = true, saveCache = true } = options;
-    const workouts = Array.isArray(this.workoutHistory)
-      ? this.workoutHistory
-      : [];
-
-    const bestByIdentity = new Map();
-    const epsilon = 0.0001;
-
-    const registerBest = (identity, weightKg, timestamp) => {
-      if (!identity || !Number.isFinite(weightKg) || weightKg <= 0) {
-        return;
-      }
-      const existing = bestByIdentity.get(identity.key);
-      if (!existing) {
-        bestByIdentity.set(identity.key, { identity, weightKg, timestamp });
-        return;
-      }
-      const delta = weightKg - existing.weightKg;
-      const tsMs = timestamp instanceof Date ? timestamp.getTime() : 0;
-      const existingMs =
-        existing.timestamp instanceof Date ? existing.timestamp.getTime() : 0;
-
-      if (delta > epsilon || (Math.abs(delta) <= epsilon && tsMs > existingMs)) {
-        bestByIdentity.set(identity.key, { identity, weightKg, timestamp });
-      }
-    };
-
-    for (const workout of workouts) {
-      if (!this.hasWorkoutEffortForPR(workout)) {
-        continue;
-      }
-
-      const identity = this.getWorkoutIdentityInfo(workout);
-      if (!identity) {
-        continue;
-      }
-
-      const timestamp = this.getWorkoutTimestamp(workout);
-      if (this.isEchoWorkout(workout)) {
-        const analysis = this.ensurePhaseAnalysis(workout);
-        if (analysis) {
-          const concIdentity =
-            this.getEchoPhaseIdentity(identity, "concentric", workout) || identity;
-          if (Number.isFinite(analysis.maxConcentricKg) && analysis.maxConcentricKg > 0) {
-            registerBest(concIdentity, analysis.maxConcentricKg, timestamp);
-          }
-          const eccIdentity = this.getEchoPhaseIdentity(identity, "eccentric", workout);
-          if (eccIdentity && Number.isFinite(analysis.maxEccentricKg) && analysis.maxEccentricKg > 0) {
-            registerBest(eccIdentity, analysis.maxEccentricKg, timestamp);
-          }
-        }
-        continue;
-      }
-
-      const peakKg = this.calculateTotalLoadPeakKg(workout);
-      if (!Number.isFinite(peakKg) || peakKg <= 0) {
-        continue;
-      }
-
-      registerBest(identity, peakKg, timestamp);
-    }
-
-    let updated = false;
-    for (const entry of bestByIdentity.values()) {
-      const applied = this.applyPersonalRecordCandidate(
-        entry.identity,
-        entry.weightKg,
-        entry.timestamp,
-        {
-          skipDropboxSync: true,
-          skipCacheSave: true,
-          skipDirtyFlag: !markDirty,
-        },
-      );
-      if (applied) {
-        updated = true;
-      }
-    }
-
-    if (!this.personalRecords) {
-      this.personalRecords = {};
-    }
-
-    const bestKeys = new Set(bestByIdentity.keys());
-    let removed = false;
-
-    for (const key of Object.keys(this.personalRecords)) {
-      if (!bestKeys.has(key)) {
-        delete this.personalRecords[key];
-        removed = true;
-      }
-    }
-
-    if (removed) {
-      if (saveCache) {
-        this.savePersonalRecordsCache();
-      }
-      if (markDirty) {
-        this.setPersonalRecordsDirty(true);
-      }
-      return true;
-    }
-
-    if (updated && saveCache) {
-      this.savePersonalRecordsCache();
-    }
-
-    return updated;
   }
 
   buildPersonalRecordsFromWorkouts(workouts = []) {
@@ -6241,6 +6068,7 @@ class VitruvianApp {
     const priorBestKg = this.getPriorBestTotalLoadKg(identity, {
       excludeWorkout: workout,
     });
+    const record = this.getPersonalRecord(identity.key);
 
     const epsilon = 0.0001;
     const isNewPR = currentPeakKg > priorBestKg + epsilon;
@@ -6254,6 +6082,13 @@ class VitruvianApp {
       : null;
     const bestDisplay = this.formatWeightWithUnit(bestKg);
     const currentDisplay = this.formatWeightWithUnit(currentPeakKg);
+    const formatNumber = (value) =>
+      Number.isFinite(value) ? value.toFixed(3) : "n/a";
+    const workoutTimestamp = this.getWorkoutTimestamp(workout);
+    const workoutId =
+      typeof this.getWorkoutDisplayId === "function"
+        ? this.getWorkoutDisplayId(workout)
+        : null;
 
     banner.classList.remove("hidden", "pr-banner--new", "pr-banner--tie");
 
@@ -6282,6 +6117,27 @@ class VitruvianApp {
         "info",
       );
     }
+
+    this.addLogEntry(
+      `PR debug (${identity.key}): current=${formatNumber(currentPeakKg)}kg prior=${formatNumber(priorBestKg)}kg best=${formatNumber(bestKg)}kg status=${status}`,
+      "debug",
+    );
+    console.debug("[PR debug]", {
+      workoutId,
+      identityKey: identity.key,
+      identityLabel: identity.label,
+      currentPeakKg,
+      priorBestKg,
+      bestPeakKg: bestKg,
+      deltaKg,
+      deltaPct,
+      status,
+      recordWeightKg: record?.weightKg ?? null,
+      recordTimestamp: record?.timestamp ?? null,
+      isEcho: this.isEchoWorkout(workout),
+      setName: workout?.setName ?? null,
+      workoutTimestamp: workoutTimestamp instanceof Date ? workoutTimestamp.toISOString() : null,
+    });
 
     return {
       status,
@@ -6490,11 +6346,6 @@ class VitruvianApp {
       if (typeof this.chartManager.clear === "function") {
         this.chartManager.clear();
       }
-    }
-
-    const personalRecordsUpdated = this.ensurePersonalRecordsFromHistory();
-    if (personalRecordsUpdated) {
-      this.queuePersonalRecordsDropboxSync("history-delete");
     }
 
     this.addLogEntry(`Deleted ${descriptor} from workout history`, "info");
