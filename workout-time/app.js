@@ -4655,14 +4655,55 @@ class VitruvianApp {
     }
 
     const baseIdentity = this.getWorkoutIdentityInfo(this.currentWorkout);
-    const identity = this.isEchoWorkout(this.currentWorkout)
+    const isEcho = this.isEchoWorkout(this.currentWorkout);
+    const identity = isEcho
       ? this.getEchoPhaseIdentity(baseIdentity, "concentric", this.currentWorkout) || baseIdentity
       : baseIdentity;
     if (identity) {
       this.currentWorkout.identityKey = identity.key;
       this.currentWorkout.identityLabel = identity.label;
-      this.currentWorkout.priorBestTotalLoadKg =
-        this.getPriorBestTotalLoadKg(identity);
+      const priorBestKg = this.getPriorBestTotalLoadKg(identity);
+      this.currentWorkout.priorBestTotalLoadKg = priorBestKg;
+      const record = this.getPersonalRecord(identity.key);
+      const recordCount = this.personalRecords
+        ? Object.keys(this.personalRecords).length
+        : 0;
+      const formatNumber = (value) =>
+        Number.isFinite(value) ? value.toFixed(3) : "n/a";
+      if (isEcho || priorBestKg <= 0) {
+        const planCursorIndex = Number.isInteger(this.planCursor?.index)
+          ? this.planCursor.index
+          : null;
+        const planCursorSet = Number.isInteger(this.planCursor?.set)
+          ? this.planCursor.set
+          : null;
+        this.addLogEntry(
+          `PR init (${identity.key}): prior=${formatNumber(priorBestKg)}kg records=${recordCount}`,
+          "debug",
+        );
+        console.debug("[PR init]", {
+          isEcho,
+          identityKey: identity.key,
+          identityLabel: identity.label,
+          baseIdentityKey: baseIdentity?.key ?? null,
+          echoEccentricKey: isEcho
+            ? this.getEchoPhaseIdentity(baseIdentity, "eccentric", this.currentWorkout)?.key ?? null
+            : null,
+          priorBestKg,
+          recordWeightKg: record?.weightKg ?? null,
+          recordTimestamp: record?.timestamp ?? null,
+          exerciseIdNew: this.currentWorkout.exerciseIdNew ?? null,
+          exerciseId: this.currentWorkout.exerciseId ?? null,
+          setName: this.currentWorkout.setName ?? null,
+          itemType: this.currentWorkout.itemType ?? null,
+          mode: this.currentWorkout.mode ?? null,
+          planName: this.currentWorkout.planName ?? null,
+          planActive: this.planActive ?? false,
+          planCursorIndex,
+          planCursorSet,
+          personalRecordsCount: recordCount,
+        });
+      }
     } else {
       this.currentWorkout.identityKey = null;
       this.currentWorkout.identityLabel = null;
