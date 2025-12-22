@@ -792,22 +792,15 @@ class DropboxManager {
     const client = await this.ensureDropboxClient();
     const payload = this.buildWorkoutPayload(workout);
     const summary = payload.summary || {};
-    const contents = JSON.stringify(summary, null, 2);
-    const response = await client.filesUpload({
-      path,
-      contents,
-      mode: { ".tag": mode || "overwrite" },
-      autorename: Boolean(autorename),
-    });
-    let metadata = response?.result?.metadata || response?.result || {};
-    let resolvedPath = metadata.path_lower || metadata.path || path;
     const normalized = this.normalizeWorkoutDates({ ...summary });
-    this.attachDropboxMetadata(normalized, {
-      path: resolvedPath,
-      name: metadata.name || null,
-      id: metadata.id || null,
-      rev: metadata.rev || null,
-    });
+    let metadata = {};
+    let resolvedPath = path;
+    let detailPath = payload.detailPayload?.path || null;
+    let detailCount = Number.isFinite(Number(normalized.movementDataCount))
+      ? Number(normalized.movementDataCount)
+      : Array.isArray(workout?.movementData)
+        ? workout.movementData.length
+        : 0;
 
     if (payload.detailPayload && payload.detailPayload.path) {
       const detailResponse = await client.filesUpload({
@@ -818,32 +811,16 @@ class DropboxManager {
       });
       const detailMetadata =
         detailResponse?.result?.metadata || detailResponse?.result || {};
-      const detailPath =
-        detailMetadata.path_lower || detailMetadata.path || payload.detailPayload.path;
-      summary.movementDataPath = detailPath;
-      normalized.movementDataPath = detailPath;
-      normalized.movementDataCount = Number.isFinite(Number(normalized.movementDataCount))
-        ? normalized.movementDataCount
+      detailPath = detailMetadata.path_lower || detailMetadata.path || payload.detailPayload.path;
+      detailCount = Number.isFinite(Number(normalized.movementDataCount))
+        ? Number(normalized.movementDataCount)
         : Array.isArray(workout?.movementData)
           ? workout.movementData.length
           : 0;
-      summary.movementDataCount = normalized.movementDataCount;
-
-      if (detailPath !== payload.detailPayload.path) {
-        const summaryResponse = await client.filesUpload({
-          path: resolvedPath,
-          contents: JSON.stringify(summary, null, 2),
-          mode: { ".tag": "overwrite" },
-        });
-        metadata = summaryResponse?.result?.metadata || summaryResponse?.result || metadata;
-        resolvedPath = metadata.path_lower || metadata.path || resolvedPath;
-        this.attachDropboxMetadata(normalized, {
-          path: resolvedPath,
-          name: metadata.name || null,
-          id: metadata.id || null,
-          rev: metadata.rev || null,
-        });
-      }
+      summary.movementDataPath = detailPath;
+      summary.movementDataCount = detailCount;
+      normalized.movementDataPath = detailPath;
+      normalized.movementDataCount = detailCount;
 
       const cache = this.getCacheApi();
       if (cache && typeof cache.setWorkoutDetail === "function") {
@@ -859,6 +836,22 @@ class DropboxManager {
         }
       }
     }
+
+    const contents = JSON.stringify(summary, null, 2);
+    const response = await client.filesUpload({
+      path,
+      contents,
+      mode: { ".tag": mode || "overwrite" },
+      autorename: Boolean(autorename),
+    });
+    metadata = response?.result?.metadata || response?.result || metadata;
+    resolvedPath = metadata.path_lower || metadata.path || path;
+    this.attachDropboxMetadata(normalized, {
+      path: resolvedPath,
+      name: metadata.name || null,
+      id: metadata.id || null,
+      rev: metadata.rev || null,
+    });
 
     const cacheRecord = this.buildCacheRecord(
       {
