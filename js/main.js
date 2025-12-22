@@ -1,5 +1,6 @@
 // Entry point for the Exercise Library web app.
 // Wires together the shared state, feature modules, and DOM events.
+import '../shared/data-cache.js';
 import { state, els } from './context.js';
 import { niceName } from './utils.js';
 import {

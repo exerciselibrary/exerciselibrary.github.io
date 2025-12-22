@@ -110,6 +110,7 @@ export class AnalyticsDashboard {
     this.workloadAvgEccentricEl = null;
     this.workloadHideTimeout = null;
     this.currentWorkloadStats = null;
+    this._cacheDisabled = false;
   }
 
   init() {
@@ -179,7 +180,7 @@ export class AnalyticsDashboard {
       this.alignIdsButton.disabled = true;
     }
 
-    this.loadCachedWorkouts();
+    void this.loadCachedWorkouts();
     this.updateRangeButtons();
     if (!this.workouts.length) {
       this.refreshExerciseOptions();
@@ -194,7 +195,7 @@ export class AnalyticsDashboard {
     this.recomputeExercisePeaks();
     this.refreshExerciseOptions();
     this.updateChart();
-    this.saveWorkoutsCache();
+    void this.saveWorkoutsCache();
     this.updateAlignIdsButtonState();
   }
 
@@ -228,7 +229,13 @@ export class AnalyticsDashboard {
     this.showSyncStatus('Syncing Dropbox workouts…', 'info');
 
     try {
-      const workouts = await this.dropboxManager.loadWorkouts({ maxEntries: Infinity });
+      const workouts = await this.dropboxManager.loadWorkouts({
+        maxEntries: Infinity,
+        useIndex: true,
+        useIncremental: true,
+        includeMovementData: false,
+        preferCache: true,
+      });
       this.setWorkouts(workouts);
       const summary = workouts.length === 1 ? 'Loaded 1 workout.' : `Loaded ${workouts.length} workouts.`;
       this.showSyncStatus(summary, 'success');
@@ -252,7 +259,7 @@ export class AnalyticsDashboard {
       this.recomputeExercisePeaks();
       this.refreshExerciseOptions();
       this.updateChart();
-      this.saveWorkoutsCache();
+      void this.saveWorkoutsCache();
       const workoutLabel = result.updatedCount === 1 ? 'workout' : 'workouts';
       const setLabel = result.affectedSets === 1 ? 'set' : 'sets';
       this.showSyncStatus(
@@ -2181,8 +2188,33 @@ export class AnalyticsDashboard {
     return ticks;
   }
 
-  loadCachedWorkouts() {
-    if (typeof window === 'undefined' || !window.localStorage) {
+  async loadCachedWorkouts() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (this.dropboxManager && typeof this.dropboxManager.getCachedWorkouts === 'function') {
+      try {
+        const restored = await this.dropboxManager.getCachedWorkouts({ maxEntries: ANALYTICS_CACHE_LIMIT });
+        if (restored.length) {
+          this.workouts = restored;
+          this.clearDropboxAlignPrompt();
+          if (typeof this.dropboxManager.getCachedWorkoutsUpdatedAt === 'function') {
+            this.cachedAt = await this.dropboxManager.getCachedWorkoutsUpdatedAt();
+          } else {
+            this.cachedAt = this.loadCacheMetaTimestamp();
+          }
+          this.recomputeExercisePeaks();
+          this.refreshExerciseOptions();
+          this.updateChart();
+          this.updateAlignIdsButtonState();
+          return;
+        }
+      } catch (error) {
+        console.warn('Failed to load analytics cache from IndexedDB', error);
+      }
+    }
+
+    if (!window.localStorage) {
       return;
     }
     try {
@@ -2206,15 +2238,19 @@ export class AnalyticsDashboard {
         this.updateChart();
         this.updateAlignIdsButtonState();
       }
-    } catch (
-      error
-    ) {
+    } catch (error) {
       console.warn('Failed to load analytics cache', error);
     }
   }
 
-  saveWorkoutsCache() {
-    if (typeof window === 'undefined' || !window.localStorage) {
+  async saveWorkoutsCache() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (!window.localStorage) {
+      return;
+    }
+    if (this._cacheDisabled) {
       return;
     }
     try {
@@ -2227,16 +2263,44 @@ export class AnalyticsDashboard {
       const payload = limited
         .map((workout) => this.serializeCachedWorkout(workout))
         .filter(Boolean);
-      window.localStorage.setItem(ANALYTICS_CACHE_KEY, JSON.stringify(payload));
       const cachedAt = new Date().toISOString();
+      window.localStorage.setItem(ANALYTICS_CACHE_KEY, JSON.stringify(payload));
       window.localStorage.setItem(
         ANALYTICS_CACHE_META_KEY,
         JSON.stringify({ updatedAt: cachedAt, workoutCount: limited.length })
       );
       this.cachedAt = new Date(cachedAt);
-    } catch (
-      error
-    ) {
+    } catch (error) {
+      if (this.isQuotaExceededError(error)) {
+        try {
+          window.localStorage.removeItem(ANALYTICS_CACHE_KEY);
+          window.localStorage.removeItem(ANALYTICS_CACHE_META_KEY);
+        } catch {
+          /* ignore cleanup errors */
+        }
+        try {
+          const sorted = [...this.workouts].sort((a, b) => {
+            const timeA = this.getWorkoutTimestamp(a)?.getTime() || 0;
+            const timeB = this.getWorkoutTimestamp(b)?.getTime() || 0;
+            return timeB - timeA;
+          });
+          const fallbackLimit = Math.min(ANALYTICS_CACHE_LIMIT, 100);
+          const limited = sorted.slice(0, fallbackLimit);
+          const payload = limited
+            .map((workout) => this.serializeCachedWorkout(workout))
+            .filter(Boolean);
+          const cachedAt = new Date().toISOString();
+          window.localStorage.setItem(ANALYTICS_CACHE_KEY, JSON.stringify(payload));
+          window.localStorage.setItem(
+            ANALYTICS_CACHE_META_KEY,
+            JSON.stringify({ updatedAt: cachedAt, workoutCount: limited.length })
+          );
+          this.cachedAt = new Date(cachedAt);
+          return;
+        } catch {
+          this._cacheDisabled = true;
+        }
+      }
       console.warn('Failed to cache analytics data', error);
     }
   }
@@ -2324,15 +2388,18 @@ export class AnalyticsDashboard {
   serializeCachedWorkout(workout) {
     try {
       const timestamp = this.getWorkoutTimestamp(workout);
+      this.ensurePhaseAnalysis(workout);
+      const peakKg = this.calculateTotalLoadPeakKg(workout);
+      const totalLoadKg = this.getWorkoutTotalLoadKg(workout);
       const phaseAnalysis =
         this.cloneSerializable(workout.phaseAnalysis || workout.echoAnalysis || null);
       return {
         timestamp: timestamp instanceof Date ? timestamp.toISOString() : null,
         weightKg: Number(workout.weightKg) || 0,
-        totalLoadKg: Number(workout.totalLoadKg) || 0,
-        cablePeakKg: Number(workout.cablePeakKg) || 0,
+        totalLoadKg: Number(totalLoadKg) || Number(workout.totalLoadKg) || 0,
+        cablePeakKg: Number(peakKg) || Number(workout.cablePeakKg) || 0,
         totalLoadPeakKg:
-          Number(workout.totalLoadPeakKg) || Number(workout.cablePeakKg) || 0,
+          Number(workout.totalLoadPeakKg) || Number(peakKg) || Number(workout.cablePeakKg) || 0,
         reps: Number(workout.reps) || 0,
         cableCount: Number(workout.cableCount ?? workout.cables) || null,
         setName: workout.setName || null,
@@ -2343,7 +2410,6 @@ export class AnalyticsDashboard {
           ? workout.exerciseIdNew
           : workout.exerciseIdNew ?? null,
         itemType: workout.itemType || null,
-        movementData: this.serializeMovementTelemetry(workout.movementData),
         phaseAnalysis,
         echoAnalysis: this.cloneSerializable(workout.echoAnalysis || null),
         phaseRange: this.cloneSerializable(workout.phaseRange || null),
@@ -2363,7 +2429,6 @@ export class AnalyticsDashboard {
     if (timestamp && Number.isNaN(timestamp.getTime())) {
       return null;
     }
-    const movementData = this.deserializeMovementTelemetry(entry.movementData);
     return {
       timestamp,
       weightKg: Number(entry.weightKg) || 0,
@@ -2379,7 +2444,7 @@ export class AnalyticsDashboard {
       exerciseId: entry.exerciseId || null,
       exerciseIdNew: entry.exerciseIdNew ?? null,
       itemType: entry.itemType || null,
-      movementData,
+      movementData: [],
       phaseAnalysis: entry.phaseAnalysis && typeof entry.phaseAnalysis === 'object'
         ? entry.phaseAnalysis
         : null,
@@ -2393,6 +2458,16 @@ export class AnalyticsDashboard {
         ? entry.echoRange
         : null,
     };
+  }
+
+  isQuotaExceededError(error) {
+    if (!error) return false;
+    const name = typeof error.name === 'string' ? error.name : '';
+    if (name === 'QuotaExceededError') {
+      return true;
+    }
+    const message = typeof error.message === 'string' ? error.message : '';
+    return message.toLowerCase().includes('quota');
   }
 
   recomputeExercisePeaks() {
