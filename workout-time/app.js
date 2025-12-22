@@ -2924,7 +2924,11 @@ class VitruvianApp {
         .filter(Boolean);
 
       // Load workouts from Dropbox
-      const cloudWorkouts = await this.dropboxManager.loadWorkouts();
+      const cloudWorkouts = await this.dropboxManager.loadWorkouts({
+        useIndex: true,
+        useIncremental: true,
+        preferCache: true,
+      });
       const normalizedCloud = cloudWorkouts
         .map((workout) => this.normalizeWorkout(workout))
         .filter(Boolean);
@@ -3083,6 +3087,9 @@ class VitruvianApp {
 
       const cloudWorkouts = await this.dropboxManager.loadWorkouts({
         maxEntries: Infinity,
+        useIndex: true,
+        useIncremental: true,
+        preferCache: true,
       });
       const normalized = cloudWorkouts
         .map((workout) => this.normalizeWorkout(workout))
@@ -3189,6 +3196,9 @@ class VitruvianApp {
       updateStatus("Downloading workouts from Dropbox...");
       const cloudWorkouts = await this.dropboxManager.loadWorkouts({
         maxEntries: Infinity,
+        useIndex: true,
+        useIncremental: true,
+        preferCache: true,
       });
       const normalizedCloud = cloudWorkouts
         .map((workout) => this.normalizeWorkout(workout))
@@ -3254,6 +3264,10 @@ class VitruvianApp {
       updateStatus("Downloading workouts from Dropbox...");
       const cloudWorkouts = await this.dropboxManager.loadWorkouts({
         maxEntries: Infinity,
+        useIndex: true,
+        useIncremental: true,
+        preferCache: true,
+        includeMovementData: true,
       });
 
       if (!Array.isArray(cloudWorkouts) || cloudWorkouts.length === 0) {
@@ -4511,6 +4525,13 @@ class VitruvianApp {
 
     this.applyCableActivationToMovementData(workout.movementData);
 
+    const movementCount = Array.isArray(workout.movementData)
+      ? workout.movementData.length
+      : 0;
+    if (!Number.isFinite(Number(workout.movementDataCount)) || workout.movementDataCount < movementCount) {
+      workout.movementDataCount = movementCount;
+    }
+
     this.calculateTotalLoadPeakKg(workout);
     this.ensurePhaseAnalysis(workout);
     return workout;
@@ -4878,6 +4899,20 @@ class VitruvianApp {
     return null;
   }
 
+  getWorkoutMovementDataCount(workout) {
+    if (!workout || typeof workout !== "object") {
+      return 0;
+    }
+    const storedCount = Number(workout.movementDataCount);
+    if (Number.isFinite(storedCount) && storedCount >= 0) {
+      return storedCount;
+    }
+    if (Array.isArray(workout.movementData)) {
+      return workout.movementData.length;
+    }
+    return 0;
+  }
+
   loadPersonalRecordsCache() {
     if (typeof window === "undefined" || !window.localStorage) {
       return {};
@@ -5105,12 +5140,13 @@ class VitruvianApp {
       : Number(workout?.reps) || 0;
     const warmupReps = Number(workout?.warmupReps) || 0;
     const hasReps = workingReps + warmupReps > 0;
-    const hasMovement = Array.isArray(workout?.movementData)
+    const movementCount = this.getWorkoutMovementDataCount(workout);
+    const hasMovement = movementCount > 0 || (Array.isArray(workout?.movementData)
       ? workout.movementData.some(
           (point) =>
             (Number(point?.loadA) || 0) > 0 || (Number(point?.loadB) || 0) > 0,
         )
-      : false;
+      : false);
 
     return hasReps || hasMovement;
   }
@@ -5200,9 +5236,7 @@ class VitruvianApp {
           (workout.endTime.getTime() - workout.startTime.getTime()) / 1000,
         ).toString();
       }
-      const movementPoints = Array.isArray(workout.movementData)
-        ? workout.movementData.length
-        : 0;
+      const movementPoints = this.getWorkoutMovementDataCount(workout);
       const isPR =
         workout._exportIdentityLabel && workout._exportIsPR ? "Yes" : "No";
       const planName = typeof workout.planName === "string" ? workout.planName : "";
@@ -6227,7 +6261,8 @@ class VitruvianApp {
     this.chartManager.viewWorkout(workout);
 
     if (newKey !== previousKey) {
-      if (Array.isArray(workout.movementData) && workout.movementData.length > 0) {
+      const movementCount = this.getWorkoutMovementDataCount(workout);
+      if (movementCount > 0) {
         this.addLogEntry(
           "Selected workout ready to export via the Load History Export CSV button.",
           "info",
@@ -6261,12 +6296,17 @@ class VitruvianApp {
     }
 
     const workout = this.workoutHistory[index];
-    if (!workout.movementData || workout.movementData.length === 0) {
+    const movementCount = this.getWorkoutMovementDataCount(workout);
+    const hasDetailPath = typeof workout?.movementDataPath === "string";
+    if (movementCount === 0 && !hasDetailPath) {
       alert("This workout does not have detailed movement data");
       return;
     }
 
-    this.addLogEntry(`Exporting detailed CSV for workout (${workout.movementData.length} data points)...`, "info");
+    const movementLabel = movementCount > 0
+      ? `${movementCount} data points`
+      : "detailed data";
+    this.addLogEntry(`Exporting detailed CSV for workout (${movementLabel})...`, "info");
 
     // Get unit conversion function
     const toDisplayFn = this.weightUnit === "lb"
@@ -6548,9 +6588,10 @@ class VitruvianApp {
         const peakText = peakKg > 0
           ? ` • Peak ${this.formatWeightWithUnit(peakKg)}`
           : "";
-        const hasMovementData = workout.movementData && workout.movementData.length > 0;
+        const movementCount = this.getWorkoutMovementDataCount(workout);
+        const hasMovementData = movementCount > 0;
         const dataPointsText = hasMovementData
-          ? ` • ${workout.movementData.length} data points`
+          ? ` • ${movementCount} data points`
           : "";
 
         const key = this.getWorkoutHistoryKey(workout);
