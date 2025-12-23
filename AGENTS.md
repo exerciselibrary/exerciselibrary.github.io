@@ -8,13 +8,19 @@ This document orients automation and human collaborators to the structure, conve
 - `styles.css` — shared styling for the public site.
 - `exercise_dump.json` — exported exercise metadata referenced by the app.
 - `js/` — modular ES modules that power the exercise plan builder (`builder.js`, `context.js`, `library.js`, etc.).
+  - `grouping.js` owns builder grouping/shuffle helpers and shared grouping labels/colors.
+  - `muscles.js` provides canonical muscle metadata and alias normalization.
+  - `search.js` builds the fuzzy search index/scoring used by the library filters.
   - `plan-storage.js` centralises workout plan persistence. Interact with localStorage through the helpers exposed here rather than reimplementing storage access.
   - `custom-exercises.js` merges Dropbox-backed custom exercises into `state.data`, assigns fresh identifiers, and exposes helpers for creating/syncing custom workout entries. Use its helpers instead of rebuilding catalogue math.
   - `analytics-dashboard.js` powers the analytics tab, mapping Dropbox workouts + telemetry data into charts/statistics surfaced on the main site.
 - `workout-time/` — standalone Vitruvian workout control UI (`index.html`, `app.js`, supporting assets).
   - `grouping-logic.js` and `superset-executor-v2.js` coordinate grouped/superset execution order; keep these aligned with the plan runner’s navigation expectations.
+  - `dropbox.js` handles OAuth sync and caches workout data via `shared/data-cache.js`.
+- `shared/data-cache.js` — IndexedDB-backed cache (with in-memory fallback) for Dropbox workouts/details; attaches to `window.VitruvianCache`.
 - `shared/weight-utils.js` — single source of truth for kg/lb conversions; also attaches itself to `window.WeightUtils` so the workout-time console can reuse the same math.
 - `shared/echo-telemetry.js` — telemetry-processing helpers shared between the analytics dashboard and the workout-time console.
+- `shared/version.js` — app version helpers + `workouttime:version-ready` event for the workout-time UI badge.
 - `tests/` — committed `node:test` specs (builder serialization, plan storage, search, workout console flows, and custom-workout creation).
 - `local-tests/` — lightweight Node-based test harness (builder, search, storage-sync, progression, and plan-runner tests).
 - `Intensity_FAQ.md` — reference for how intensity techniques expand into micro-sets inside the workout-time app; keep it in sync with the builder dropdown and plan-runner behavior.
@@ -25,10 +31,12 @@ This document orients automation and human collaborators to the structure, conve
 - Dropbox custom exercises are orchestrated through `js/main.js` + `custom-exercises.js`. Always use `buildCustomExerciseEntry`, `setCustomExercises`, and `getDropboxPayloadForCustomExercises` to keep IDs/search indexes consistent when creating custom workouts.
 - The workout control in `workout-time/app.js` communicates with hardware over WebSocket. Update connection logic cautiously; mirror any protocol changes in both UI and device code.
 - The analytics tab relies on `analytics-dashboard.js` and the shared telemetry helpers. Update those modules in tandem if telemetry schemas change.
+- Library search builds a cached index in `js/search.js`; adjust `js/search.js`, `js/library.js`, and `js/utils.js` together when tuning scoring or tokenization.
 - Static assets are served as-is. No bundler is configured, so prefer vanilla JS modules and relative imports.
 - For storage interactions in the plan builder, rely on `plan-storage.js` helpers. They normalise plan names, manage the plan index, and guard against localStorage failures. Avoid duplicating that logic elsewhere to keep UI state and persistence consistent.
 - Grouped/superset workouts are driven by the `groupNumber` field emitted by the builder; `workout-time/grouping-logic.js` builds the grouped timeline and `superset-executor-v2.js` drives in-workout navigation. Keep these in sync so rest timing and round-robin ordering match the builder’s intent.
 - Intensity techniques (Dropset, Rest-Pause, Slow negatives) are serialized via `js/storage.js` and expanded into micro-sets inside `workout-time/plan-runner.js`. Keep the options, defaults, and FAQ aligned whenever progression or intensity math changes.
+- Dropbox workout caching now uses `shared/data-cache.js` (IndexedDB). Keep cache metadata in `workout-time/dropbox.js` aligned with analytics consumption in `js/analytics-dashboard.js`.
 
 ## Development Tips
 - Use `npx http-server .` or similar to preview pages locally. Both the root `index.html` and `workout-time/index.html` expect to run in a browser environment.
@@ -39,6 +47,7 @@ This document orients automation and human collaborators to the structure, conve
 - Maintain accessibility: new UI components should include keyboard support and ARIA labelling consistent with existing markup.
 - After touching persistence or plan-index flows, update `plan-storage.js` first and adapt consumers (currently `js/main.js`) to avoid drift between cached plan state and saved plans.
 - When documentation or instructions change (including this file), summarise the rationale in the PR description so future collaborators understand why guidance shifted.
+- Keep `shared/version.js` in sync with `package.json` when bumping the app version for workout-time badges.
 
 ## Agent Guidance
 - When adding features, reflect changes in both the documentation and the relevant UI (root site vs. workout control panel) to keep experiences in sync.
