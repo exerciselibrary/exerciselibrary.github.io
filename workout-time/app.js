@@ -7069,7 +7069,7 @@ class VitruvianApp {
     return totalReps < this.warmupTarget ? 2 : 3;
   }
 
-  // Record top position (when u16[0] increments)
+  // Record top position (when u16[1] increments)
   recordTopPosition(posA, posB) {
     // Add to rolling window
     this.topPositionsA.push(posA);
@@ -8057,7 +8057,7 @@ class VitruvianApp {
       return; // Need at least u16[0], u16[1], u16[2]
     }
 
-    const topCounter = u16Values[0]; // Reached top of range
+    const topCounter = u16Values[1]; // Reached top of range
     const completeCounter = u16Values[2]; // Rep complete (bottom)
 
     // Log counters for debugging
