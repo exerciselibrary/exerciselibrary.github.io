@@ -6133,11 +6133,16 @@ class VitruvianApp {
     const banner = document.getElementById("prBanner");
     if (!banner) return;
 
-    const identity = this.getWorkoutIdentityInfo(workout);
-    if (!identity) {
+    const baseIdentity = this.getWorkoutIdentityInfo(workout);
+    if (!baseIdentity) {
       this.hidePRBanner();
       return;
     }
+
+    const identity = this.isEchoWorkout(workout)
+      ? this.getEchoPhaseIdentity(baseIdentity, "concentric", workout) || baseIdentity
+      : baseIdentity;
+    const identityLabel = identity.label || baseIdentity.label;
 
     const currentPeakKg = this.calculateTotalLoadPeakKg(workout);
     const priorBestKg = this.getPriorBestTotalLoadKg(identity, {
@@ -6172,23 +6177,23 @@ class VitruvianApp {
     if (isNewPR || priorBestKg <= 0) {
       status = "new";
       banner.classList.add("pr-banner--new");
-      banner.textContent = `New total load PR for ${identity.label}: ${bestDisplay}!`;
+      banner.textContent = `New total load PR for ${identityLabel}: ${bestDisplay}!`;
       this.addLogEntry(
-        `New total load PR for ${identity.label}: ${bestDisplay}`,
+        `New total load PR for ${identityLabel}: ${bestDisplay}`,
         "success",
       );
     } else if (matchedPR) {
       status = "matched";
       banner.classList.add("pr-banner--tie");
-      banner.textContent = `Matched total load PR for ${identity.label}: ${bestDisplay}`;
+      banner.textContent = `Matched total load PR for ${identityLabel}: ${bestDisplay}`;
       this.addLogEntry(
-        `Matched total load PR for ${identity.label}: ${bestDisplay}`,
+        `Matched total load PR for ${identityLabel}: ${bestDisplay}`,
         "info",
       );
     } else {
-      banner.textContent = `Total load PR for ${identity.label}: ${bestDisplay} (current set ${currentDisplay})`;
+      banner.textContent = `Total load PR for ${identityLabel}: ${bestDisplay} (current set ${currentDisplay})`;
       this.addLogEntry(
-        `Total load PR for ${identity.label} remains ${bestDisplay} (current set ${currentDisplay})`,
+        `Total load PR for ${identityLabel} remains ${bestDisplay} (current set ${currentDisplay})`,
         "info",
       );
     }
@@ -6221,7 +6226,7 @@ class VitruvianApp {
       previousBestKg: priorBestKg,
       deltaKg,
       deltaPct,
-      label: identity.label,
+      label: identityLabel,
     };
   }
 
