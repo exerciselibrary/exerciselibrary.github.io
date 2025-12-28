@@ -158,6 +158,9 @@ class VitruvianApp {
     this.autoStopStartTime = null; // When we entered the auto-stop danger zone
     this.isJustLiftMode = false; // Flag for Just Lift mode with auto-stop
     this.lastTopCounter = undefined; // Track u16[1] for top detection
+    this._lastTopCounterU16_0 = undefined;
+    this._lastTopCounterU16_1 = undefined;
+    this._echoTopCounterIndex = null;
     this.defaultPerCableKg = DEFAULT_PER_CABLE_KG;
     this._weightInputKg = DEFAULT_PER_CABLE_KG;
     this._cancelRest = null;
@@ -4431,6 +4434,9 @@ class VitruvianApp {
     this.autoStopStartTime = null;
     this.isJustLiftMode = false;
     this.lastTopCounter = undefined;
+    this._lastTopCounterU16_0 = undefined;
+    this._lastTopCounterU16_1 = undefined;
+    this._echoTopCounterIndex = null;
     this.updateRepCounters();
     this.updateCurrentSetLabel();
     this.updatePlanSetIndicator();
@@ -8062,8 +8068,60 @@ class VitruvianApp {
       return; // Need at least u16[0], u16[1], u16[2]
     }
 
-    const topCounter = u16Values[1]; // Reached top of range
+    const topCounterU16_0 = u16Values[0]; // Legacy top counter (Echo fallback)
+    const topCounterU16_1 = u16Values[1]; // Reached top of range (count-at-top)
     const completeCounter = u16Values[2]; // Rep complete (bottom)
+
+    const calcDelta = (current, previous) => {
+      if (!Number.isFinite(current) || previous === undefined) {
+        return 0;
+      }
+      if (current >= previous) {
+        return current - previous;
+      }
+      return 0xffff - previous + current + 1;
+    };
+
+    const prevTop0 = this._lastTopCounterU16_0;
+    const prevTop1 = this._lastTopCounterU16_1;
+    const deltaTop0 = calcDelta(topCounterU16_0, prevTop0);
+    const deltaTop1 = calcDelta(topCounterU16_1, prevTop1);
+    const isEchoWorkout = this.currentWorkout?.itemType === "echo";
+
+    let topCounterIndex = 1;
+    if (isEchoWorkout) {
+      if (this._echoTopCounterIndex === null) {
+        if (deltaTop1 > 0) {
+          topCounterIndex = 1;
+        } else if (deltaTop0 > 0) {
+          topCounterIndex = 0;
+        }
+        this._echoTopCounterIndex = topCounterIndex;
+      } else if (this._echoTopCounterIndex === 1) {
+        if (deltaTop1 === 0 && deltaTop0 > 0) {
+          topCounterIndex = 0;
+          this._echoTopCounterIndex = 0;
+        } else {
+          topCounterIndex = 1;
+        }
+      } else {
+        if (deltaTop0 === 0 && deltaTop1 > 0) {
+          topCounterIndex = 1;
+          this._echoTopCounterIndex = 1;
+        } else {
+          topCounterIndex = 0;
+        }
+      }
+    }
+
+    const topCounter = topCounterIndex === 0 ? topCounterU16_0 : topCounterU16_1;
+    const topCounterPrev = topCounterIndex === 0 ? prevTop0 : prevTop1;
+    if (topCounterPrev !== undefined && this.lastTopCounter !== topCounterPrev) {
+      this.lastTopCounter = topCounterPrev;
+    }
+
+    this._lastTopCounterU16_0 = topCounterU16_0;
+    this._lastTopCounterU16_1 = topCounterU16_1;
 
     // Log counters for debugging
     this.addLogEntry(
@@ -8076,7 +8134,7 @@ class VitruvianApp {
       return;
     }
 
-    // Track top of range (u16[1])
+    // Track top of range (selected counter)
     if (this.lastTopCounter === undefined) {
       this.lastTopCounter = topCounter;
     } else {
@@ -8349,6 +8407,12 @@ class VitruvianApp {
       this.isJustLiftMode = isJustLift;
       this.lastRepCounter = undefined;
       this.lastTopCounter = undefined;
+      this._lastTopCounterU16_0 = undefined;
+      this._lastTopCounterU16_1 = undefined;
+      this._echoTopCounterIndex = null;
+      this._lastTopCounterU16_0 = undefined;
+      this._lastTopCounterU16_1 = undefined;
+      this._echoTopCounterIndex = null;
 
       // Reset workout state and set current workout info
       this.warmupReps = 0;
