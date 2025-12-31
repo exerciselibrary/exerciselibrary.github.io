@@ -157,10 +157,10 @@ class VitruvianApp {
     this.currentSample = null; // Latest monitor sample
     this.autoStopStartTime = null; // When we entered the auto-stop danger zone
     this.isJustLiftMode = false; // Flag for Just Lift mode with auto-stop
-    this.lastTopCounter = undefined; // Track selected top counter for rep detection
+    this.lastTopCounter = undefined; // Track u16[1] for top detection
     this._lastTopCounterU16_0 = undefined;
     this._lastTopCounterU16_1 = undefined;
-    this._topCounterIndex = null;
+    this._echoTopCounterIndex = null;
     this.defaultPerCableKg = DEFAULT_PER_CABLE_KG;
     this._weightInputKg = DEFAULT_PER_CABLE_KG;
     this._cancelRest = null;
@@ -4436,7 +4436,7 @@ class VitruvianApp {
     this.lastTopCounter = undefined;
     this._lastTopCounterU16_0 = undefined;
     this._lastTopCounterU16_1 = undefined;
-    this._topCounterIndex = null;
+    this._echoTopCounterIndex = null;
     this.updateRepCounters();
     this.updateCurrentSetLabel();
     this.updatePlanSetIndicator();
@@ -7080,7 +7080,7 @@ class VitruvianApp {
     return totalReps < this.warmupTarget ? 2 : 3;
   }
 
-  // Record top position (when the selected top counter increments)
+  // Record top position (when u16[1] increments)
   recordTopPosition(posA, posB) {
     // Add to rolling window
     this.topPositionsA.push(posA);
@@ -8068,7 +8068,7 @@ class VitruvianApp {
       return; // Need at least u16[0], u16[1], u16[2]
     }
 
-    const topCounterU16_0 = u16Values[0]; // Legacy top counter (fallback)
+    const topCounterU16_0 = u16Values[0]; // Legacy top counter (Echo fallback)
     const topCounterU16_1 = u16Values[1]; // Reached top of range (count-at-top)
     const completeCounter = u16Values[2]; // Rep complete (bottom)
 
@@ -8086,28 +8086,31 @@ class VitruvianApp {
     const prevTop1 = this._lastTopCounterU16_1;
     const deltaTop0 = calcDelta(topCounterU16_0, prevTop0);
     const deltaTop1 = calcDelta(topCounterU16_1, prevTop1);
+    const isEchoWorkout = this.currentWorkout?.itemType === "echo";
 
-    let topCounterIndex = this._topCounterIndex ?? 1;
-    if (this._topCounterIndex === null) {
-      if (deltaTop1 > 0) {
-        topCounterIndex = 1;
-      } else if (deltaTop0 > 0) {
-        topCounterIndex = 0;
-      }
-      this._topCounterIndex = topCounterIndex;
-    } else if (this._topCounterIndex === 1) {
-      if (deltaTop1 === 0 && deltaTop0 > 0) {
-        topCounterIndex = 0;
-        this._topCounterIndex = 0;
+    let topCounterIndex = 1;
+    if (isEchoWorkout) {
+      if (this._echoTopCounterIndex === null) {
+        if (deltaTop1 > 0) {
+          topCounterIndex = 1;
+        } else if (deltaTop0 > 0) {
+          topCounterIndex = 0;
+        }
+        this._echoTopCounterIndex = topCounterIndex;
+      } else if (this._echoTopCounterIndex === 1) {
+        if (deltaTop1 === 0 && deltaTop0 > 0) {
+          topCounterIndex = 0;
+          this._echoTopCounterIndex = 0;
+        } else {
+          topCounterIndex = 1;
+        }
       } else {
-        topCounterIndex = 1;
-      }
-    } else {
-      if (deltaTop0 === 0 && deltaTop1 > 0) {
-        topCounterIndex = 1;
-        this._topCounterIndex = 1;
-      } else {
-        topCounterIndex = 0;
+        if (deltaTop0 === 0 && deltaTop1 > 0) {
+          topCounterIndex = 1;
+          this._echoTopCounterIndex = 1;
+        } else {
+          topCounterIndex = 0;
+        }
       }
     }
 
@@ -8406,10 +8409,10 @@ class VitruvianApp {
       this.lastTopCounter = undefined;
       this._lastTopCounterU16_0 = undefined;
       this._lastTopCounterU16_1 = undefined;
-      this._topCounterIndex = null;
+      this._echoTopCounterIndex = null;
       this._lastTopCounterU16_0 = undefined;
       this._lastTopCounterU16_1 = undefined;
-      this._topCounterIndex = null;
+      this._echoTopCounterIndex = null;
 
       // Reset workout state and set current workout info
       this.warmupReps = 0;
@@ -8543,9 +8546,6 @@ class VitruvianApp {
       this.isJustLiftMode = isJustLift;
       this.lastRepCounter = undefined;
       this.lastTopCounter = undefined;
-      this._lastTopCounterU16_0 = undefined;
-      this._lastTopCounterU16_1 = undefined;
-      this._topCounterIndex = null;
       this._lastTargetSyncError = null;
       this._lastWeightSyncError = null;
 
