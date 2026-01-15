@@ -6593,11 +6593,21 @@ class VitruvianApp {
         const peakText = peakKg > 0
           ? ` • Peak ${this.formatWeightWithUnit(peakKg)}`
           : "";
-        const movementCount = this.getWorkoutMovementDataCount(workout);
-        const hasMovementData = movementCount > 0;
-        const dataPointsText = hasMovementData
-          ? ` • ${movementCount} data points`
-          : "";
+        let averageLoadKg = Number.isFinite(workout.averageLoad)
+          ? workout.averageLoad
+          : null;
+        if (!Number.isFinite(averageLoadKg)) {
+          const averageLoads = this.calculateAverageLoadForWorkout(
+            Array.isArray(workout.movementData) ? workout.movementData : [],
+            workout.warmupEndTime,
+            workout.endTime,
+          );
+          averageLoadKg = averageLoads ? averageLoads.averageTotal : null;
+        }
+        const averageText =
+          Number.isFinite(averageLoadKg) && averageLoadKg > 0
+            ? ` • Avg load ${this.formatWeightWithUnit(averageLoadKg)}`
+            : "";
 
         const key = this.getWorkoutHistoryKey(workout);
         const isSelected =
@@ -6631,7 +6641,7 @@ class VitruvianApp {
       ${workout.setNumber && workout.setTotal ? ` (Set ${workout.setNumber}/${workout.setTotal})` : ""}
     </div>
     <div class="history-item-details">
-      ${weightStr} • ${workout.reps} reps${peakText}${dataPointsText}
+      ${weightStr} • ${workout.reps} reps${peakText}${averageText}
     </div>
     ${actionsBlock}
   </div>`;
